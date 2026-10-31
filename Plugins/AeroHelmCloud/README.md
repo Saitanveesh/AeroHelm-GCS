@@ -52,3 +52,19 @@ Then copy the \`plugins/AeroHelmCloud.cs\` file into that executable's adjacent 
 ## Next engineering task
 
 Implement a separate, versioned **AeroHelm MAVLink relay protocol** between Pi, server, and desktop, with per-aircraft exclusive authority and message freshness enforced onboard. Validate it on a propellers-removed Pixhawk and in SITL. After this, bind its stream to Mission Planner's existing transport interface, then test parameters and calibration behaviour end to end. Do not simply make the cloud API forward arbitrary commands from web clients.
+
+## Building the full legacy solution on Windows
+
+Do **not** use `dotnet build MissionPlanner.sln` for the complete solution. The .NET SDK MSBuild host cannot run the COM reference task (`MSB4803`) and may fail on legacy WinForms `.resx` files (`MSB3822` / `MSB3823`). Use the VS2022 .NET Framework MSBuild executable instead:
+
+```powershell
+.\scripts\Build-AeroHelmGCS.ps1
+```
+
+Or check just the plugin validation target:
+
+```powershell
+.\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
+```
+
+The script discovers Visual Studio 2022, forces a serial MSBuild run to limit DLL locking, prints errors, and retains all warnings in an untracked `build-logs` folder. Close Mission Planner and other active builds first. The main executable may compile while optional solution projects fail; treat the complete build as successful only if MSBuild exits zero. Legacy vulnerable NuGet dependencies are tracked separately from build-tool errors and should not be suppressed for a production release.
