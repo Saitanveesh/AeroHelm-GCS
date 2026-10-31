@@ -53,6 +53,19 @@ Then copy the \`plugins/AeroHelmCloud.cs\` file into that executable's adjacent 
 
 Implement a separate, versioned **AeroHelm MAVLink relay protocol** between Pi, server, and desktop, with per-aircraft exclusive authority and message freshness enforced onboard. Validate it on a propellers-removed Pixhawk and in SITL. After this, bind its stream to Mission Planner's existing transport interface, then test parameters and calibration behaviour end to end. Do not simply make the cloud API forward arbitrary commands from web clients.
 
+## Troubleshooting toolchain detection
+
+If the script reports that Visual Studio MSBuild was not found, it may mean you have only the .NET SDK installed, or Visual Studio was installed without the MSBuild/.NET desktop components. The build script now searches Visual Studio **2022 and 2026**, including Build Tools, without a 2022-only version filter.
+
+To inspect installations:
+
+```powershell
+& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -all -products '*' -property installationPath
+& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -all -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe'
+```
+
+If the first command returns a Visual Studio location but the second returns nothing, open Visual Studio Installer -> Modify -> select **.NET desktop development** (Visual Studio) or **.NET desktop build tools** (Build Tools), including the .NET Framework 4.7.2 targeting pack. Re-run the script. The script deliberately creates `build-logs/aerohelm-solution.log` only after it has found a valid MSBuild.exe, so a missing log following a discovery error is expected.
+
 ## Building the full legacy solution on Windows
 
 Do **not** use `dotnet build MissionPlanner.sln` for the complete solution. The .NET SDK MSBuild host cannot run the COM reference task (`MSB4803`) and may fail on legacy WinForms `.resx` files (`MSB3822` / `MSB3823`). Use the VS2022 .NET Framework MSBuild executable instead:
