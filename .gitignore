@@ -49,3 +49,6 @@ obj3/
 
 /.claude/settings.local.json
 /CLAUDE.md
+
+# Local build diagnostics; do not commit user machine paths or logs.
+/build-logs/
