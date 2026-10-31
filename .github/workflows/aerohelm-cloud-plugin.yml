@@ -1,0 +1,32 @@
+name: AeroHelm Cloud Plugin Validation
+
+on:
+  push:
+    branches:
+      - feat/aerohelm-cloud-plugin
+    paths:
+      - "plugins/AeroHelmCloud.cs"
+      - "Plugins/AeroHelmCloud/**"
+      - ".github/workflows/aerohelm-cloud-plugin.yml"
+  pull_request:
+    paths:
+      - "plugins/AeroHelmCloud.cs"
+      - "Plugins/AeroHelmCloud/**"
+      - ".github/workflows/aerohelm-cloud-plugin.yml"
+  workflow_dispatch:
+
+jobs:
+  plugin-build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj --verbosity quiet
+      - name: Compile plugin against Mission Planner
+        run: dotnet build Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj --configuration Release --no-restore --verbosity minimal
