@@ -6,6 +6,8 @@
 //loadassembly: System.Web.Extensions
 // Copyright (C) AeroHelm contributors. GPL-3.0-or-later (see repository COPYING.txt).
 
+extern alias FrameworkDrawing;
+
 using MissionPlanner;
 using MissionPlanner.Plugin;
 using System;
@@ -41,7 +43,7 @@ namespace AeroHelm.GcsCloud
             _button.Name = "AeroHelmCloudButton";
             _button.ToolTipText = "AeroHelm Cloud: login, aircraft registry and view sessions (no flight commands)";
             _button.DisplayStyle = ToolStripItemDisplayStyle.Text;
-            _button.ForeColor = System.Drawing.Color.White;
+            _button.ForeColor = FrameworkDrawing::System.Drawing.Color.White;
             _button.Margin = new Padding(5, 0, 5, 0);
             _button.AutoSize = true;
             _button.Click += delegate
@@ -108,12 +110,12 @@ namespace AeroHelm.GcsCloud
 
         // Neutral, high-contrast interface; deliberately separate from legacy
         // Mission Planner button theming. Hardware actions remain unavailable.
-        private static readonly System.Drawing.Color Page = System.Drawing.Color.FromArgb(21, 27, 37);
-        private static readonly System.Drawing.Color Panel = System.Drawing.Color.FromArgb(31, 40, 53);
-        private static readonly System.Drawing.Color Input = System.Drawing.Color.FromArgb(39, 49, 63);
-        private static readonly System.Drawing.Color Primary = System.Drawing.Color.FromArgb(55, 116, 221);
-        private static readonly System.Drawing.Color Foreground = System.Drawing.Color.FromArgb(236, 241, 246);
-        private static readonly System.Drawing.Color Muted = System.Drawing.Color.FromArgb(164, 177, 194);
+        private static readonly FrameworkDrawing::System.Drawing.Color Page = FrameworkDrawing::System.Drawing.Color.FromArgb(21, 27, 37);
+        private static readonly FrameworkDrawing::System.Drawing.Color Panel = FrameworkDrawing::System.Drawing.Color.FromArgb(31, 40, 53);
+        private static readonly FrameworkDrawing::System.Drawing.Color Input = FrameworkDrawing::System.Drawing.Color.FromArgb(39, 49, 63);
+        private static readonly FrameworkDrawing::System.Drawing.Color Primary = FrameworkDrawing::System.Drawing.Color.FromArgb(55, 116, 221);
+        private static readonly FrameworkDrawing::System.Drawing.Color Foreground = FrameworkDrawing::System.Drawing.Color.FromArgb(236, 241, 246);
+        private static readonly FrameworkDrawing::System.Drawing.Color Muted = FrameworkDrawing::System.Drawing.Color.FromArgb(164, 177, 194);
 
         public CloudWindow()
         {
@@ -121,10 +123,10 @@ namespace AeroHelm.GcsCloud
             StartPosition = FormStartPosition.CenterParent;
             Width = 760;
             Height = 660;
-            MinimumSize = new System.Drawing.Size(660, 590);
+            MinimumSize = new FrameworkDrawing::System.Drawing.Size(660, 590);
             BackColor = Page;
             ForeColor = Foreground;
-            Font = new System.Drawing.Font("Segoe UI", 9.5f);
+            Font = new FrameworkDrawing::System.Drawing.Font("Segoe UI", 9.5f);
             AutoScaleMode = AutoScaleMode.Font;
             FormBorderStyle = FormBorderStyle.Sizable;
             MaximizeBox = false;
@@ -218,7 +220,7 @@ namespace AeroHelm.GcsCloud
             _aircraft.BackColor = Input;
             _aircraft.ForeColor = Foreground;
             _aircraft.BorderStyle = BorderStyle.FixedSingle;
-            _aircraft.Font = new System.Drawing.Font("Consolas", 10f);
+            _aircraft.Font = new FrameworkDrawing::System.Drawing.Font("Consolas", 10f);
             _aircraft.IntegralHeight = false;
             _aircraft.HorizontalScrollbar = true;
             _aircraft.ItemHeight = 26;
@@ -239,7 +241,7 @@ namespace AeroHelm.GcsCloud
             var limitations = MakeLabel(
                 "Telemetry view only — remote MAVLink connection, calibration and flight commands are not enabled.",
                 9f, false, Muted);
-            limitations.MaximumSize = new System.Drawing.Size(680, 0);
+            limitations.MaximumSize = new FrameworkDrawing::System.Drawing.Size(680, 0);
             root.Controls.Add(limitations, 0, 5);
 
             _status.Dock = DockStyle.Fill;
@@ -258,7 +260,7 @@ namespace AeroHelm.GcsCloud
             UpdateButtons();
         }
 
-        private static Label MakeLabel(string content, float size, bool bold, System.Drawing.Color color)
+        private static Label MakeLabel(string content, float size, bool bold, FrameworkDrawing::System.Drawing.Color color)
         {
             return new Label
             {
@@ -266,9 +268,9 @@ namespace AeroHelm.GcsCloud
                 Dock = DockStyle.Fill,
                 AutoEllipsis = true,
                 ForeColor = color,
-                BackColor = System.Drawing.Color.Transparent,
-                Font = new System.Drawing.Font("Segoe UI", size,
-                    bold ? System.Drawing.FontStyle.Bold : System.Drawing.FontStyle.Regular)
+                BackColor = FrameworkDrawing::System.Drawing.Color.Transparent,
+                Font = new FrameworkDrawing::System.Drawing.Font("Segoe UI", size,
+                    bold ? FrameworkDrawing::System.Drawing.FontStyle.Bold : FrameworkDrawing::System.Drawing.FontStyle.Regular)
             };
         }
 
@@ -279,20 +281,20 @@ namespace AeroHelm.GcsCloud
             control.BackColor = Input;
             control.ForeColor = Foreground;
             control.BorderStyle = BorderStyle.FixedSingle;
-            control.Font = new System.Drawing.Font("Segoe UI", 10f);
+            control.Font = new FrameworkDrawing::System.Drawing.Font("Segoe UI", 10f);
         }
 
         private static void PrepareButton(Button button, bool primary, int width)
         {
-            button.Size = new System.Drawing.Size(width, 32);
+            button.Size = new FrameworkDrawing::System.Drawing.Size(width, 32);
             button.Margin = new Padding(0, 0, 10, 0);
             button.FlatStyle = FlatStyle.Flat;
             button.UseVisualStyleBackColor = false;
             button.FlatAppearance.BorderSize = primary ? 0 : 1;
-            button.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(89, 103, 124);
+            button.FlatAppearance.BorderColor = FrameworkDrawing::System.Drawing.Color.FromArgb(89, 103, 124);
             button.BackColor = primary ? Primary : Panel;
             button.ForeColor = Foreground;
-            button.Font = new System.Drawing.Font("Segoe UI", 9f, System.Drawing.FontStyle.Bold);
+            button.Font = new FrameworkDrawing::System.Drawing.Font("Segoe UI", 9f, FrameworkDrawing::System.Drawing.FontStyle.Bold);
         }
 
         private static void AddLine(TableLayoutPanel grid, int row, string caption, Control control)
@@ -300,7 +302,7 @@ namespace AeroHelm.GcsCloud
             grid.Controls.Add(new Label
             {
                 Text = caption, Dock = DockStyle.Fill,
-                ForeColor = Muted, BackColor = System.Drawing.Color.Transparent
+                ForeColor = Muted, BackColor = FrameworkDrawing::System.Drawing.Color.Transparent
             }, 0, row);
             grid.Controls.Add(control, 1, row);
         }
@@ -310,7 +312,7 @@ namespace AeroHelm.GcsCloud
             if (e.Index < 0 || e.Index >= _aircraft.Items.Count)
                 return;
             bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-            using (var background = new System.Drawing.SolidBrush(selected ? Primary : Input))
+            using (var background = new FrameworkDrawing::System.Drawing.SolidBrush(selected ? Primary : Input))
                 e.Graphics.FillRectangle(background, e.Bounds);
             System.Windows.Forms.TextRenderer.DrawText(
                 e.Graphics,

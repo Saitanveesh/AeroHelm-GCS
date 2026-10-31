@@ -12,7 +12,9 @@
     <Compile Include="..\..\plugins\AeroHelmCloud.cs" Link="AeroHelmCloud.cs" />
     <ProjectReference Include="..\..\MissionPlanner.csproj" />
     <Reference Include="System.Web.Extensions" />
-    <Reference Include="System.Drawing" />
+    <Reference Include="System.Drawing">
+      <Aliases>global,FrameworkDrawing</Aliases>
+    </Reference>
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
 </Project>
