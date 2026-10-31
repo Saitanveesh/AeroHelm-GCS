@@ -1,29 +1,76 @@
-# Build AeroHelm-GCS using the Visual Studio 2022 .NET Framework MSBuild engine.
-# This is required for legacy COM references and WinForms resources.
-# Usage: .\scripts\Build-AeroHelmGCS.ps1
-#        .\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
+# AeroHelm GCS Windows build. Use Visual Studio's full-framework MSBuild.exe,
+# not "dotnet build", for Mission Planner's legacy COM and WinForms resources.
+# Works with Visual Studio / Build Tools 2022 and 2026 if the required
+# .NET desktop components are installed.
+#
+# .\scripts\Build-AeroHelmGCS.ps1
+# .\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
+# .\scripts\Build-AeroHelmGCS.ps1 -MSBuildPath 'C:\path\to\MSBuild.exe'
 param(
     [ValidateSet("Solution", "Plugin")]
-    [string]$Target = "Solution"
+    [string] $Target = "Solution",
+    [string] $MSBuildPath = ""
 )
 $ErrorActionPreference = "Stop"
-
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$vswhere = Join-Path "${env:ProgramFiles(x86)}" "Microsoft Visual Studio\Installer\vswhere.exe"
-if (-not (Test-Path $vswhere)) {
-    throw "Visual Studio Installer / vswhere.exe not found. Install Visual Studio 2022 with MSBuild and .NET desktop development."
+
+function Find-FrameworkMSBuild {
+    param([string] $ExplicitPath)
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        if (-not (Test-Path -LiteralPath $ExplicitPath -PathType Leaf)) {
+            throw "The specified MSBuild.exe does not exist: $ExplicitPath"
+        }
+        if ([IO.Path]::GetFileName($ExplicitPath) -ine "MSBuild.exe") {
+            throw "-MSBuildPath must point to Visual Studio's MSBuild.exe, not dotnet.exe"
+        }
+        return (Resolve-Path -LiteralPath $ExplicitPath).Path
+    }
+
+    $programFilesX86 = [Environment]::GetFolderPath("ProgramFilesX86")
+    $vswhere = Join-Path $programFilesX86 "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+        # No VS2022-only version filter: VS2026 (18.x), VS2022 (17.x),
+        # Community, Professional, Enterprise and Build Tools are all eligible.
+        # The Microsoft-supported -find option returns the full MSBuild.exe path.
+        $findArguments = @("-products", "*", "-requires", "Microsoft.Component.MSBuild",
+                           "-find", 'MSBuild\**\Bin\MSBuild.exe')
+        $found = @(& $vswhere -latest @findArguments 2>$null)
+        if (-not $found) {
+            $found = @(& $vswhere -all @findArguments 2>$null)
+        }
+        foreach ($candidate in $found) {
+            $candidate = ([string] $candidate).Trim()
+            if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                return $candidate
+            }
+        }
+
+        Write-Host "Visual Studio Installer was found, but no usable MSBuild.exe was detected." -ForegroundColor Yellow
+        $installations = @(& $vswhere -all -products "*" -property installationPath 2>$null)
+        if ($installations) {
+            Write-Host "Detected Visual Studio installation directories:"
+            foreach ($installation in $installations) {
+                Write-Host " - $installation"
+            }
+            Write-Host "Open Visual Studio Installer -> Modify -> install '.NET desktop development' / '.NET desktop build tools'." -ForegroundColor Yellow
+        } else {
+            Write-Host "No completed Visual Studio / Build Tools installation was detected." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "Visual Studio Installer's vswhere.exe was not found." -ForegroundColor Yellow
+    }
+
+    # A custom developer command prompt may already put full-framework
+    # MSBuild.exe on PATH. This must not be confused with dotnet build.
+    $onPath = Get-Command "MSBuild.exe" -ErrorAction SilentlyContinue
+    if ($onPath -and $onPath.Source -and (Test-Path -LiteralPath $onPath.Source -PathType Leaf)) {
+        return $onPath.Source
+    }
+
+    throw "Install/modify Visual Studio 2022/2026 or Build Tools with .NET desktop development, MSBuild and .NET Framework 4.7.2 targeting pack. Then rerun this script. 'dotnet --version' alone is insufficient."
 }
 
-$vsLocation = (& $vswhere -latest -version '[17.0,18.0)' -products '*' -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1)
-if ([string]::IsNullOrWhiteSpace($vsLocation)) {
-    throw "Visual Studio 2022 MSBuild is not installed. Use Visual Studio Installer to add the .NET desktop development workload."
-}
-$msbuild = Join-Path $vsLocation "MSBuild\Current\Bin\MSBuild.exe"
-if (-not (Test-Path $msbuild)) {
-    throw "Visual Studio .NET Framework MSBuild.exe was not found at: $msbuild"
-}
-
-# Don't build into an active Mission Planner runtime: its plugin DLLs can be locked.
+$msbuild = Find-FrameworkMSBuild -ExplicitPath $MSBuildPath
 if (Get-Process -Name MissionPlanner -ErrorAction SilentlyContinue) {
     throw "MissionPlanner.exe is running. Close it before rebuilding so plugin DLLs can be copied."
 }
@@ -32,16 +79,19 @@ $project = if ($Target -eq "Plugin") {
 } else {
     Join-Path $repoRoot "MissionPlanner.sln"
 }
-if (-not (Test-Path $project)) { throw "Build target missing: $project" }
+if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
+    throw "Build target missing: $project"
+}
 
+# The build log is created only AFTER MSBuild discovery succeeds.
 $logFolder = Join-Path $repoRoot "build-logs"
 New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
 $logPath = Join-Path $logFolder ("aerohelm-" + $Target.ToLowerInvariant() + ".log")
 
-Write-Host "Builder: $msbuild"
+Write-Host "Using full-framework MSBuild: $msbuild"
 Write-Host "Target: $project"
-Write-Host "Full log: $logPath"
-Write-Host "Serial build is enabled to reduce concurrent DLL copy conflicts."
+Write-Host "Build log: $logPath"
+Write-Host "Serial build enabled to reduce concurrent plugin DLL copy conflicts."
 
 Push-Location $repoRoot
 try {
@@ -51,10 +101,10 @@ try {
     Pop-Location
 }
 if ($code -ne 0) {
-    Write-Host "Build failed. Share only the error lines from: $logPath" -ForegroundColor Red
-    if (Test-Path $logPath) {
-        Get-Content $logPath | Select-String " : error " | Select-Object -Last 30
+    Write-Host "Build failed. Errors from $logPath :" -ForegroundColor Red
+    if (Test-Path -LiteralPath $logPath) {
+        Get-Content -LiteralPath $logPath | Select-String " : error " | Select-Object -Last 30
     }
     exit $code
 }
-Write-Host "Build completed successfully. Review security/dependency warnings in $logPath." -ForegroundColor Green
+Write-Host "Build succeeded. Review warnings in $logPath before releasing AeroHelm-GCS." -ForegroundColor Green
