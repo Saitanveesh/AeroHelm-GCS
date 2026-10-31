@@ -1,5 +1,8 @@
 # AeroHelm Cloud — Mission Planner plugin, milestone 1
 
+**Current recommended installation:** see [Windows DLL installation and troubleshooting](INSTALL_WINDOWS.md). Use the compiled DLL installer instead of copying the raw `.cs` source into the runtime folder.
+
+
 The original Mission Planner user interface, calibration workflows, firmware tools and MAVLink transport are **unchanged**.
 
 This first plugin adds a **AeroHelm Cloud** menu item to Mission Planner that allows the operator to:
