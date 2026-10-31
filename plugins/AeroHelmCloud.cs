@@ -121,7 +121,7 @@ namespace AeroHelm.GcsCloud
             _login.AutoSize = true;
             _refresh.AutoSize = true;
             grid.Controls.Add(loginRow, 1, 3);
-            grid.Controls.Add(new Label { Text = "Live aircraft (read-only)", Dock = DockStyle.Fill, TextAlign = System.Drawing.ContentAlignment.MiddleLeft }, 0, 4);
+            grid.Controls.Add(new Label { Text = "Live aircraft (read-only)", Dock = DockStyle.Fill }, 0, 4);
             _aircraft.Dock = DockStyle.Fill;
             grid.Controls.Add(_aircraft, 0, 5);
             grid.SetColumnSpan(_aircraft, 2);
@@ -162,7 +162,6 @@ namespace AeroHelm.GcsCloud
             grid.Controls.Add(new Label
             {
                 Text = caption, Dock = DockStyle.Fill,
-                TextAlign = System.Drawing.ContentAlignment.MiddleLeft
             }, 0, row);
             grid.Controls.Add(control, 1, row);
         }
