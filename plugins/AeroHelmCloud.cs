@@ -361,13 +361,13 @@ namespace AeroHelm.GcsCloud
             base.Dispose(disposing);
         }
 
-        private sealed class LoginResult
+        public sealed class LoginResult
         {
             public string access_token { get; set; }
             public int expires_in { get; set; }
         }
 
-        private sealed class AircraftInfo
+        public sealed class AircraftInfo
         {
             public string vehicle_id { get; set; }
             public string source { get; set; }
@@ -375,7 +375,7 @@ namespace AeroHelm.GcsCloud
             public string mode { get; set; }
         }
 
-        private sealed class ConnectionInfo
+        public sealed class ConnectionInfo
         {
             public string connection_id { get; set; }
         }
