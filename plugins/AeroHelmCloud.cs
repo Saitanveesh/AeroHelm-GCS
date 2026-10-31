@@ -21,35 +21,46 @@ namespace AeroHelm.GcsCloud
 {
     public sealed class AeroHelmCloudPlugin : MissionPlanner.Plugin.Plugin
     {
-        private ToolStripMenuItem _menu;
+        private ToolStripButton _button;
 
         public override string Name { get { return "AeroHelm Cloud"; } }
-        public override string Version { get { return "0.1.0"; } }
+        public override string Version { get { return "0.1.1"; } }
         public override string Author { get { return "AeroHelm Contributors"; } }
 
         public override bool Init() { return true; }
 
         public override bool Loaded()
         {
-            _menu = new ToolStripMenuItem("AeroHelm Cloud");
-            var show = new ToolStripMenuItem("Aircraft registry / view sessions");
-            show.Click += delegate
+            // Mission Planner uses an icon-oriented MenuStrip with the COM selectors
+            // and ArduPilot logo aligned to the right. Appending a ToolStripMenuItem
+            // after those items can leave it hidden in the overflow area.
+            // Place a distinct, text-only button immediately after HELP instead.
+            _button = new ToolStripButton("CLOUD");
+            _button.Name = "AeroHelmCloudButton";
+            _button.ToolTipText = "AeroHelm Cloud: login, aircraft registry and view sessions (no flight commands)";
+            _button.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            _button.ForeColor = System.Drawing.Color.White;
+            _button.Margin = new Padding(5, 0, 5, 0);
+            _button.AutoSize = true;
+            _button.Click += delegate
             {
                 using (var window = new CloudWindow())
                     window.ShowDialog(MainV2.instance);
             };
-            _menu.DropDownItems.Add(show);
-            MainV2.instance.MainMenu.Items.Add(_menu);
+
+            var menu = MainV2.instance.MainMenu;
+            var helpIndex = menu.Items.IndexOf(MainV2.instance.MenuHelp);
+            menu.Items.Insert(helpIndex >= 0 ? helpIndex + 1 : 0, _button);
             return true;
         }
 
         public override bool Exit()
         {
-            if (_menu != null)
+            if (_button != null)
             {
-                MainV2.instance.MainMenu.Items.Remove(_menu);
-                _menu.Dispose();
-                _menu = null;
+                MainV2.instance.MainMenu.Items.Remove(_button);
+                _button.Dispose();
+                _button = null;
             }
             return true;
         }
