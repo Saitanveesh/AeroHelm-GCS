@@ -85,9 +85,6 @@ namespace AeroHelm.GcsCloud
         }
     }
 
-    // This dialog owns its colors; Mission Planner's legacy theme would
-    // otherwise repaint buttons in bright green and obscure status text.
-    [MissionPlanner.Utilities.PreventTheming]
     internal sealed class CloudWindow : Form
     {
         private readonly TextBox _server = new TextBox();
@@ -119,138 +116,77 @@ namespace AeroHelm.GcsCloud
 
         public CloudWindow()
         {
-            Text = "AeroHelm Cloud";
+            Text = "AeroHelm Cloud — Aircraft registry";
             StartPosition = FormStartPosition.CenterParent;
-            Width = 760;
-            Height = 660;
-            MinimumSize = new FrameworkDrawing::System.Drawing.Size(660, 590);
-            BackColor = Page;
-            ForeColor = Foreground;
-            Font = new FrameworkDrawing::System.Drawing.Font("Segoe UI", 9.5f);
-            AutoScaleMode = AutoScaleMode.Font;
-            FormBorderStyle = FormBorderStyle.Sizable;
-            MaximizeBox = false;
+            Width = 570;
+            Height = 490;
+            MinimumSize = new FrameworkDrawing::System.Drawing.Size(500, 440);
 
-            var root = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Page,
-                ColumnCount = 1,
-                RowCount = 7,
-                Padding = new Padding(23, 14, 23, 14)
-            };
-            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 77));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 199));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
-            Controls.Add(root);
+            var grid = new TableLayoutPanel();
+            grid.Dock = DockStyle.Fill;
+            grid.Padding = new Padding(13);
+            grid.RowCount = 9;
+            grid.ColumnCount = 2;
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            Controls.Add(grid);
 
-            var header = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill, BackColor = Page, RowCount = 2, ColumnCount = 1
-            };
-            header.RowStyles.Add(new RowStyle(SizeType.Absolute, 39));
-            header.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-            header.Controls.Add(MakeLabel("AeroHelm Cloud", 17f, true, Foreground), 0, 0);
-            header.Controls.Add(MakeLabel("Secure aircraft registry and telemetry viewing", 9f, false, Muted), 0, 1);
-            root.Controls.Add(header, 0, 0);
-
-            var loginPanel = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill, BackColor = Panel,
-                ColumnCount = 2, RowCount = 5, Padding = new Padding(15, 10, 15, 8)
-            };
-            loginPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 127));
-            loginPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            loginPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-            loginPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-            loginPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-            loginPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-            loginPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-            var connectionHeading = MakeLabel("CLOUD CONNECTION", 9f, true, Muted);
-            loginPanel.Controls.Add(connectionHeading, 0, 0);
-            loginPanel.SetColumnSpan(connectionHeading, 2);
-
-            PrepareInput(_server);
-            PrepareInput(_username);
-            PrepareInput(_password);
             _server.Text = "https://";
+            _server.Dock = DockStyle.Fill;
             _username.Text = "operator";
+            _username.Dock = DockStyle.Fill;
             _password.UseSystemPasswordChar = true;
-            AddLine(loginPanel, 1, "Server URL", _server);
-            AddLine(loginPanel, 2, "Operator", _username);
-            AddLine(loginPanel, 3, "Password", _password);
-
-            _login.Text = "Sign in";
+            _password.Dock = DockStyle.Fill;
+            _login.Text = "Sign in & list aircraft";
             _refresh.Text = "Refresh aircraft";
-            _connect.Text = "Open telemetry view";
-            _disconnect.Text = "Close view";
-            PrepareButton(_login, true, 117);
-            PrepareButton(_refresh, false, 155);
-            PrepareButton(_connect, true, 184);
-            PrepareButton(_disconnect, false, 122);
-            var authActions = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill, BackColor = Panel,
-                FlowDirection = FlowDirection.LeftToRight,
-                Margin = new Padding(0), Padding = new Padding(0, 3, 0, 0)
-            };
-            authActions.Controls.Add(_login);
-            authActions.Controls.Add(_refresh);
-            loginPanel.Controls.Add(authActions, 1, 4);
-            root.Controls.Add(loginPanel, 0, 1);
+            _connect.Text = "Connect view";
+            _disconnect.Text = "Disconnect view";
 
-            var registry = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill, BackColor = Page,
-                ColumnCount = 2, RowCount = 1
-            };
-            registry.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            registry.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 185));
-            registry.Controls.Add(MakeLabel("AIRCRAFT REGISTRY", 9f, true, Muted), 0, 0);
-            registry.Controls.Add(MakeLabel("Hardware telemetry only", 9f, false, Muted), 1, 0);
-            root.Controls.Add(registry, 0, 2);
-
+            AddLine(grid, 0, "Cloud URL", _server);
+            AddLine(grid, 1, "Username", _username);
+            AddLine(grid, 2, "Password", _password);
+            var loginRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = false };
+            loginRow.Controls.Add(_login);
+            loginRow.Controls.Add(_refresh);
+            _login.AutoSize = true;
+            _refresh.AutoSize = true;
+            grid.Controls.Add(loginRow, 1, 3);
+            grid.Controls.Add(new Label { Text = "Live aircraft (read-only)", Dock = DockStyle.Fill }, 0, 4);
             _aircraft.Dock = DockStyle.Fill;
-            _aircraft.Margin = new Padding(0, 0, 0, 8);
-            _aircraft.BackColor = Input;
-            _aircraft.ForeColor = Foreground;
-            _aircraft.BorderStyle = BorderStyle.FixedSingle;
-            _aircraft.Font = new FrameworkDrawing::System.Drawing.Font("Consolas", 10f);
-            _aircraft.IntegralHeight = false;
-            _aircraft.HorizontalScrollbar = true;
-            _aircraft.ItemHeight = 26;
-            _aircraft.DrawMode = DrawMode.OwnerDrawFixed;
-            _aircraft.DrawItem += DrawAircraft;
-            root.Controls.Add(_aircraft, 0, 3);
+            grid.Controls.Add(_aircraft, 0, 5);
+            grid.SetColumnSpan(_aircraft, 2);
 
-            var sessionActions = new FlowLayoutPanel
+            var actions = new FlowLayoutPanel { Dock = DockStyle.Fill };
+            actions.Controls.Add(_connect);
+            actions.Controls.Add(_disconnect);
+            _connect.AutoSize = true;
+            _disconnect.AutoSize = true;
+            grid.Controls.Add(actions, 0, 6);
+            grid.SetColumnSpan(actions, 2);
+
+            var caveat = new Label
             {
-                Dock = DockStyle.Fill, BackColor = Page,
-                FlowDirection = FlowDirection.LeftToRight,
-                Margin = new Padding(0), Padding = new Padding(0, 7, 0, 0)
+                Text = "Connect opens a cloud telemetry-view session only. It does NOT connect Mission Planner's MAVLink stream or grant flight-control authority.",
+                Dock = DockStyle.Fill,
+                AutoEllipsis = true,
+                ForeColor = FrameworkDrawing::System.Drawing.Color.DarkRed
             };
-            sessionActions.Controls.Add(_connect);
-            sessionActions.Controls.Add(_disconnect);
-            root.Controls.Add(sessionActions, 0, 4);
-
-            var limitations = MakeLabel(
-                "Telemetry view only — remote MAVLink connection, calibration and flight commands are not enabled.",
-                9f, false, Muted);
-            limitations.MaximumSize = new FrameworkDrawing::System.Drawing.Size(680, 0);
-            root.Controls.Add(limitations, 0, 5);
-
+            grid.Controls.Add(caveat, 0, 7);
+            grid.SetColumnSpan(caveat, 2);
             _status.Dock = DockStyle.Fill;
-            _status.Margin = new Padding(0, 6, 0, 0);
-            _status.Text = "Not signed in · No cloud session";
-            _status.ForeColor = Muted;
-            _status.BackColor = Page;
+            _status.Text = "Not signed in";
             _status.AutoEllipsis = true;
-            root.Controls.Add(_status, 0, 6);
+            grid.Controls.Add(_status, 0, 8);
+            grid.SetColumnSpan(_status, 2);
 
             _login.Click += async (s, e) => await LoginAsync();
             _refresh.Click += async (s, e) => await RefreshAsync();
@@ -260,66 +196,13 @@ namespace AeroHelm.GcsCloud
             UpdateButtons();
         }
 
-        private static Label MakeLabel(string content, float size, bool bold, FrameworkDrawing::System.Drawing.Color color)
-        {
-            return new Label
-            {
-                Text = content,
-                Dock = DockStyle.Fill,
-                AutoEllipsis = true,
-                ForeColor = color,
-                BackColor = FrameworkDrawing::System.Drawing.Color.Transparent,
-                Font = new FrameworkDrawing::System.Drawing.Font("Segoe UI", size,
-                    bold ? FrameworkDrawing::System.Drawing.FontStyle.Bold : FrameworkDrawing::System.Drawing.FontStyle.Regular)
-            };
-        }
-
-        private static void PrepareInput(TextBox control)
-        {
-            control.Dock = DockStyle.Fill;
-            control.Margin = new Padding(0, 2, 0, 3);
-            control.BackColor = Input;
-            control.ForeColor = Foreground;
-            control.BorderStyle = BorderStyle.FixedSingle;
-            control.Font = new FrameworkDrawing::System.Drawing.Font("Segoe UI", 10f);
-        }
-
-        private static void PrepareButton(Button button, bool primary, int width)
-        {
-            button.Size = new FrameworkDrawing::System.Drawing.Size(width, 32);
-            button.Margin = new Padding(0, 0, 10, 0);
-            button.FlatStyle = FlatStyle.Flat;
-            button.UseVisualStyleBackColor = false;
-            button.FlatAppearance.BorderSize = primary ? 0 : 1;
-            button.FlatAppearance.BorderColor = FrameworkDrawing::System.Drawing.Color.FromArgb(89, 103, 124);
-            button.BackColor = primary ? Primary : Panel;
-            button.ForeColor = Foreground;
-            button.Font = new FrameworkDrawing::System.Drawing.Font("Segoe UI", 9f, FrameworkDrawing::System.Drawing.FontStyle.Bold);
-        }
-
         private static void AddLine(TableLayoutPanel grid, int row, string caption, Control control)
         {
             grid.Controls.Add(new Label
             {
                 Text = caption, Dock = DockStyle.Fill,
-                ForeColor = Muted, BackColor = FrameworkDrawing::System.Drawing.Color.Transparent
             }, 0, row);
             grid.Controls.Add(control, 1, row);
-        }
-
-        private void DrawAircraft(object sender, DrawItemEventArgs e)
-        {
-            if (e.Index < 0 || e.Index >= _aircraft.Items.Count)
-                return;
-            bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
-            using (var background = new FrameworkDrawing::System.Drawing.SolidBrush(selected ? Primary : Input))
-                e.Graphics.FillRectangle(background, e.Bounds);
-            System.Windows.Forms.TextRenderer.DrawText(
-                e.Graphics,
-                _aircraft.Items[e.Index].ToString(),
-                _aircraft.Font, e.Bounds, Foreground,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-            e.DrawFocusRectangle();
         }
 
         private bool Authenticated
