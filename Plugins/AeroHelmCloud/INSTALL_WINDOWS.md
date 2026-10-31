@@ -44,7 +44,7 @@ The plugin signs in to the existing AeroHelm Cloud API, lists reported aircraft,
 ## Current AeroHelm UI adjustments
 
 - The plugin temporarily hides the upstream **Simulation** and **Help** toolbar buttons when loaded and restores their previous visibility on plugin unload. It does not modify Mission Planner's underlying command implementations or internal navigation state.
-- The cloud dialog has a structured, high-contrast layout (server, credentials, registry, viewing actions, and status). It uses the upstream `PreventTheming` attribute to prevent Mission Planner's legacy green button theme from overwriting this dialog's palette.
-- The original local serial/TCP/UDP Connect action is unchanged. The cloud dialog's **Open telemetry view** remains non-flight-control only.
+- The Cloud dialog uses the original Mission Planner-style WinForms layout and inherits Mission Planner's own theme, including its conventional controls. The separately styled dark UI has been reverted at the user's request.
+- The original local serial/TCP/UDP Connect action is unchanged. The cloud dialog's **Connect view** remains non-flight-control only.
 
 To apply changes, close the running GCS, pull the branch, rerun the installer, and restart the executable. No full-solution rebuild should be necessary if the base Mission Planner build is still valid and the plugin validation build passes.
