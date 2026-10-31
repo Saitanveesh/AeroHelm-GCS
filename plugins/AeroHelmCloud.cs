@@ -3,6 +3,7 @@
 // Cloud "Connect" is an operator telemetry VIEW session, never flight authority.
 // Requires HTTPS except loopback development. Credentials/tokens stay in memory.
 // Mission Planner retains its original USB/TCP/UDP connection functionality.
+//loadassembly: System.Web.Extensions
 // Copyright (C) AeroHelm contributors. GPL-3.0-or-later (see repository COPYING.txt).
 
 using MissionPlanner;
