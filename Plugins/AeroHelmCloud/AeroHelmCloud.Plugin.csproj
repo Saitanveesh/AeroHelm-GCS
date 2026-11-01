@@ -10,6 +10,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\plugins\AeroHelmCloud.cs" Link="AeroHelmCloud.cs" />
+    <Compile Include="..\..\plugins\AeroHelmWorkspace.cs" Link="AeroHelmWorkspace.cs" />
+    <Compile Include="..\..\plugins\AeroHelmSurveyPlanner.cs" Link="AeroHelmSurveyPlanner.cs" />
     <ProjectReference Include="..\..\MissionPlanner.csproj" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Drawing">
