@@ -1894,7 +1894,21 @@ namespace MissionPlanner
             }
             else
             {
-                doConnect(comPort, _connectionControl.CMB_serialport.Text, _connectionControl.CMB_baudrate.Text);
+                // AeroHelm M1 is a deliberately receive-only cloud TCP link.
+                // The normal parameter-sync workflow sends PARAM_REQUEST_* messages,
+                // which the M1 bridge intentionally discards. Without this opt-in,
+                // Mission Planner appears frozen at "Getting Params" indefinitely.
+                // Only skip the initial parameter download for explicit TCP M1 tests;
+                // preserve normal USB/radio and ordinary TCP behavior by default.
+                bool aeroHelmReadOnly =
+                    string.Equals(Environment.GetEnvironmentVariable("AEROHELM_CLOUD_READONLY"),
+                                  "1", StringComparison.Ordinal) &&
+                    string.Equals(_connectionControl.CMB_serialport.Text, "TCP",
+                                  StringComparison.OrdinalIgnoreCase);
+                if (aeroHelmReadOnly)
+                    log.Warn("AeroHelm M1 read-only TCP: skip parameter download; calibration, mission upload and configuration writes are unavailable.");
+                doConnect(comPort, _connectionControl.CMB_serialport.Text,
+                          _connectionControl.CMB_baudrate.Text, !aeroHelmReadOnly);
             }
 
             _connectionControl.UpdateSysIDS();
