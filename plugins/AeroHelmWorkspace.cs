@@ -152,6 +152,18 @@ namespace AeroHelm.GcsCloud
 
             generate.Click += (s, e) => Generate();
             export.Click += (s, e) => Export();
+
+            // Never export an old flight path after the operator changes inputs.
+            EventHandler invalidate = (s, e) =>
+            {
+                draft = null;
+                export.Enabled = false;
+                grid.Rows.Clear();
+                status.Text = "Survey inputs changed. Regenerate and review the draft before export.\n" +
+                              "No commands or mission uploads are available from SURVEY.";
+            };
+            foreach (var input in new[] { north, south, east, west, spacing, altitude, speed })
+                input.ValueChanged += invalidate;
         }
 
         private void Generate()
