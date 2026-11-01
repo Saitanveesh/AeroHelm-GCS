@@ -24,6 +24,9 @@ namespace AeroHelm.GcsCloud
     public sealed class AeroHelmCloudPlugin : MissionPlanner.Plugin.Plugin
     {
         private ToolStripButton _button;
+        private ToolStripButton _survey;
+        private ToolStripButton _vision;
+        private ToolStripButton _link;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
 
@@ -57,6 +60,37 @@ namespace AeroHelm.GcsCloud
             var helpIndex = menu.Items.IndexOf(main.MenuHelp);
             menu.Items.Insert(helpIndex >= 0 ? helpIndex + 1 : 0, _button);
 
+            // The additional AeroHelm tools are deliberately passive:
+            // SURVEY exports offline drafts, VISION opens a private camera page,
+            // LINK reads diagnostic status. None forwards MAVLink flight commands.
+            int at = menu.Items.IndexOf(_button) + 1;
+            _survey = NewToolbarButton("SURVEY", "Offline survey draft + route safety checks");
+            _survey.Click += delegate
+            {
+                using (var window = new AeroHelmSurveyWindow())
+                    window.ShowDialog(MainV2.instance);
+            };
+            menu.Items.Insert(at++, _survey);
+
+            _vision = NewToolbarButton("VISION", "Private onboard camera viewer");
+            _vision.Image = CameraIcon();
+            _vision.ImageScaling = ToolStripItemImageScaling.None;
+            _vision.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
+            _vision.Click += delegate
+            {
+                using (var window = new AeroHelmVisionWindow())
+                    window.ShowDialog(MainV2.instance);
+            };
+            menu.Items.Insert(at++, _vision);
+
+            _link = NewToolbarButton("LINK", "Check cloud telemetry freshness and viewer count");
+            _link.Click += delegate
+            {
+                using (var window = new AeroHelmLinkWindow())
+                    window.ShowDialog(MainV2.instance);
+            };
+            menu.Items.Insert(at++, _link);
+
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
             // may still need for diagnosis, SITL and maintenance.
@@ -65,6 +99,37 @@ namespace AeroHelm.GcsCloud
             main.MenuSimulation.Visible = false;
             main.MenuHelp.Visible = false;
             return true;
+        }
+
+        private static ToolStripButton NewToolbarButton(string label, string tip)
+        {
+            return new ToolStripButton(label)
+            {
+                Name = "AeroHelm" + label + "Button",
+                ToolTipText = tip,
+                DisplayStyle = ToolStripItemDisplayStyle.Text,
+                ForeColor = FrameworkDrawing::System.Drawing.Color.White,
+                Margin = new Padding(4, 0, 4, 0),
+                AutoSize = true
+            };
+        }
+
+        private static FrameworkDrawing::System.Drawing.Bitmap CameraIcon()
+        {
+            // Render vector camera artwork at runtime: no third-party icons/fonts.
+            var img = new FrameworkDrawing::System.Drawing.Bitmap(20, 20);
+            using (var g = FrameworkDrawing::System.Drawing.Graphics.FromImage(img))
+            using (var pen = new FrameworkDrawing::System.Drawing.Pen(
+                FrameworkDrawing::System.Drawing.Color.White, 1.6f))
+            {
+                g.SmoothingMode = FrameworkDrawing::System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.DrawRectangle(pen, 2, 6, 16, 11);
+                g.DrawEllipse(pen, 7, 9, 6, 6);
+                g.DrawLine(pen, 5, 6, 7, 3);
+                g.DrawLine(pen, 7, 3, 12, 3);
+                g.DrawLine(pen, 12, 3, 14, 6);
+            }
+            return img;
         }
 
         public override bool Exit()
@@ -77,9 +142,19 @@ namespace AeroHelm.GcsCloud
                     main.MenuSimulation.Visible = _simulationWasVisible;
                     main.MenuHelp.Visible = _helpWasVisible;
                     main.MainMenu.Items.Remove(_button);
+                    main.MainMenu.Items.Remove(_survey);
+                    main.MainMenu.Items.Remove(_vision);
+                    main.MainMenu.Items.Remove(_link);
                 }
+                _survey.Dispose();
+                _vision.Image.Dispose();
+                _vision.Dispose();
+                _link.Dispose();
                 _button.Dispose();
                 _button = null;
+                _survey = null;
+                _vision = null;
+                _link = null;
             }
             return true;
         }
@@ -140,7 +215,7 @@ namespace AeroHelm.GcsCloud
             grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             Controls.Add(grid);
 
-            _server.Text = "https://";
+            _server.Text = AeroHelmWorkspaceSettings.CloudOrigin();
             _server.Dock = DockStyle.Fill;
             _username.Text = "operator";
             _username.Dock = DockStyle.Fill;
@@ -316,6 +391,10 @@ namespace AeroHelm.GcsCloud
                 if (parsed == null || string.IsNullOrEmpty(parsed.access_token))
                     throw new InvalidOperationException("Cloud login response is invalid.");
                 _baseUrl = origin;
+                // Persist only the nonsecret HTTPS origin, never password or JWT.
+                try { AeroHelmWorkspaceSettings.Save("cloud-url", origin); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
                 _accessToken = parsed.access_token;
                 _tokenDeadline = DateTime.UtcNow.AddSeconds(Math.Max(30, parsed.expires_in - 30));
                 _status.Text = "Authenticated. Loading aircraft...";
