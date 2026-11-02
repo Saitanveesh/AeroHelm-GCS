@@ -7,8 +7,10 @@ on:
       - feat/aerohelm-workspace-vision-mission
       - feat/aerohelm-platform-v2
       - feat/aerohelm-m2-readonly-transport
+      - feat/aerohelm-touch-console
     paths:
       - "plugins/AeroHelmCloud.cs"
+      - "plugins/AeroHelmTouchPanel.cs"
       - "plugins/AeroHelmWorkspace.cs"
       - "plugins/AeroHelmOperations.cs"
       - "plugins/AeroHelmPlatformV2.cs"
