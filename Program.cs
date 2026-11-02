@@ -72,6 +72,12 @@ namespace MissionPlanner
 
         public static string[] names = new string[] {"VVVVZ"};
         public static bool MONO = false;
+        // Cloud authentication session stays in memory only. It controls API
+        // access and must NOT be treated as permission to fly the aircraft.
+        public static string AeroHelmOperatorToken = null;
+        public static string AeroHelmCloudOrigin = null;
+        public static DateTime AeroHelmTokenExpiresUtc = DateTime.MinValue;
+
 
         static Program()
         {
@@ -477,6 +483,14 @@ namespace MissionPlanner
             {
                 Thread.CurrentThread.Name = "Base Thread";
                 Console.WriteLine("Application.Run(new MainV2())");
+                // Product-branded AeroHelm opens its cloud sign-in BEFORE the
+                // native GCS, retaining an explicit offline local-maintenance
+                // recovery path for USB/firmware diagnostics.
+                if (AeroHelmStartupGate.ShouldRequire(Program.args))
+                {
+                    if (!AeroHelmStartupGate.Authenticate())
+                        return;
+                }
                 Application.Run(new MainV2());
             }
             catch (Exception ex)
