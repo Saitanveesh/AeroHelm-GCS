@@ -29,7 +29,7 @@ namespace AeroHelm.GcsCloud
         private string lastMissionHash;
         private bool running;
 
-        public AeroHelmIntelWindow()
+        public AeroHelmIntelWindow(string initialSection = "FLEET")
         {
             Text="AeroHelm INTEL — Mission assurance and fleet intelligence";
             StartPosition=FormStartPosition.CenterParent;
@@ -47,6 +47,14 @@ namespace AeroHelm.GcsCloud
             var hist=new TabPage("HISTORY");
             var security=new TabPage("SECURITY");
             tabs.TabPages.AddRange(new[]{fleet,mission,param,hist,security});
+            switch ((initialSection ?? "").ToUpperInvariant())
+            {
+                case "SECURITY": tabs.SelectedTab = security; break;
+                case "ANALYTICS": tabs.SelectedTab = hist; break;
+                case "PREFLIGHT": tabs.SelectedTab = mission; break;
+                case "PARAMETERS": tabs.SelectedTab = param; break;
+                default: tabs.SelectedTab = fleet; break;
+            }
 
             report.Dock=DockStyle.Bottom;
             report.Height=270;
