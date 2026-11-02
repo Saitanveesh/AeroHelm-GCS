@@ -60,7 +60,10 @@ namespace AeroHelm.GcsCloud
         private readonly Button start = new Button();
         private readonly Button abort = new Button();
         private readonly Button cal = new Button();
+        private readonly System.Windows.Forms.Timer leaseRenewal = new System.Windows.Forms.Timer();
+        private string calibrationRequestId = "";
         private bool busy;
+        private bool renewing;
 
         public AeroHelmOpsWindow()
         {
@@ -79,6 +82,8 @@ namespace AeroHelm.GcsCloud
                 "Hardware autonomous flight is blocked; supervised calibration requires " +
                 "independent local Pi approval.";
             Controls.Add(status);
+            leaseRenewal.Interval=10000; // 30-second lease; renew every 10 seconds
+            leaseRenewal.Tick+=async(s,e)=>await RenewSimulationLease();
 
             var sim=new FlowLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(12),
                 AutoScroll=true,FlowDirection=FlowDirection.TopDown,WrapContents=false};
@@ -106,6 +111,15 @@ namespace AeroHelm.GcsCloud
             start.Click+=async(s,e)=>await MissionAction("start");
             abort.Click+=async(s,e)=>await MissionAction("abort");
             sim.Controls.Add(start);sim.Controls.Add(abort);
+            var pause = new Button{Text="PAUSE simulation",Width=255};
+            pause.Click+=async(s,e)=>await MissionAction("pause");
+            sim.Controls.Add(pause);
+            var resume = new Button{Text="RESUME simulation",Width=255};
+            resume.Click+=async(s,e)=>await MissionAction("resume");
+            sim.Controls.Add(resume);
+            var refresh = new Button{Text="Refresh mission progress",Width=255};
+            refresh.Click+=async(s,e)=>await RefreshMission();
+            sim.Controls.Add(refresh);
             sim.Controls.Add(new Label{Width=680,Height=55,
                 Text="AeroHelm production Oracle VM has simulation OFF. Use a dedicated SITL/simulation API instance. " +
                      "Neither these controls nor the waypoint draft can command a real Pixhawk."});
@@ -127,6 +141,9 @@ namespace AeroHelm.GcsCloud
             cal.Text="Request supervised calibration";cal.Width=260;
             cal.Click+=async(s,e)=>await Calibrate();
             maint.Controls.Add(cal);
+            var checkCal = new Button{Text="Refresh calibration result",Width=260};
+            checkCal.Click+=async(s,e)=>await RefreshCalibration();
+            maint.Controls.Add(checkCal);
             maint.Controls.Add(new Label{Width=650,Height=90,
                 Text="After requesting, the local Pi operator must run:\n" +
                     "agent/.venv/bin/python -m agent.supervised_calibration <request-uuid>\n" +
@@ -240,8 +257,9 @@ namespace AeroHelm.GcsCloud
                 var reply=await Api("POST","api/v1/leases",new{vehicle_id="AH-SIM-001"});
                 var doc=json.Deserialize<Dictionary<string,object>>(reply);
                 leaseId.Text=Convert.ToString(doc["lease_id"]);
-                status.Text="Simulation-only lease acquired. It expires after 30 seconds; " +
-                            "long missions require lease renewal (not yet automated in this UI).";
+                leaseRenewal.Start();
+                status.Text="Simulation-only lease acquired and scheduled for 10-second renewal. " +
+                            "Closing OPS stops renewal; the server expires the lease automatically.";
             }catch(Exception ex){status.Text=Error(ex);}
             finally{Busy(false,status.Text);}
         }
@@ -281,8 +299,9 @@ namespace AeroHelm.GcsCloud
                DateTime.UtcNow>=Program.AeroHelmTokenExpiresUtc)
                 throw new InvalidOperationException("Cloud session expired.");
             var origin=AeroHelmWorkspaceSettings.CheckedPrivateUrl(Program.AeroHelmCloudOrigin);
-            var uri=new Uri(new Uri(origin.GetLeftPart(UriPartial.Authority)+"/"),
-                "api/v1/operations/missions/"+Uri.EscapeDataString(id)+"/"+action);
+            string route=action=="renew" ? "api/v1/leases/AH-SIM-001/renew" :
+                "api/v1/operations/missions/"+Uri.EscapeDataString(id)+"/"+action;
+            var uri=new Uri(new Uri(origin.GetLeftPart(UriPartial.Authority)+"/"),route);
             var req=(HttpWebRequest)WebRequest.Create(uri);
             req.Method="POST";req.AllowAutoRedirect=false;req.Timeout=12000;
             req.Headers[HttpRequestHeader.Authorization]="Bearer "+Program.AeroHelmOperatorToken;
@@ -294,6 +313,54 @@ namespace AeroHelm.GcsCloud
             using(var response=(HttpWebResponse)req.GetResponse())
             using(var reader=new StreamReader(response.GetResponseStream()))
                 return reader.ReadToEnd();
+        }
+
+        private async Task RenewSimulationLease()
+        {
+            if(renewing || string.IsNullOrWhiteSpace(leaseId.Text))return;
+            renewing=true;
+            try
+            {
+                await Task.Run(()=>RequestWithLease("renew",missionId.Text,leaseId.Text));
+            }
+            catch(Exception ex)
+            {
+                leaseRenewal.Stop();
+                status.Text="Simulation control lease renewal failed: "+Error(ex)+
+                    ". The server will abort an active mission after lease expiry.";
+            }
+            finally { renewing=false; }
+        }
+
+        private async Task RefreshMission()
+        {
+            if(string.IsNullOrWhiteSpace(missionId.Text))return;
+            try
+            {
+                var body=await Api("GET","api/v1/operations/missions/"+
+                    Uri.EscapeDataString(missionId.Text));
+                var info=json.Deserialize<Dictionary<string,object>>(body);
+                status.Text="Mission "+missionId.Text+" | "+
+                    Convert.ToString(info["status"])+" | waypoint "+
+                    Convert.ToString(info["waypoint_index"])+" | metres "+
+                    Convert.ToString(info["completed_distance_m"]);
+            }catch(Exception ex){status.Text=Error(ex);}
+        }
+
+        private async Task RefreshCalibration()
+        {
+            if(string.IsNullOrEmpty(calibrationRequestId))
+            {
+                status.Text="Request a supervised calibration first.";return;
+            }
+            try
+            {
+                var body=await Api("GET","api/v1/operations/calibrations/"+
+                    Uri.EscapeDataString(calibrationRequestId));
+                var info=json.Deserialize<Dictionary<string,object>>(body);
+                status.Text="Calibration "+calibrationRequestId+" | "+
+                    Convert.ToString(info["status"])+" | "+Convert.ToString(info["detail"]);
+            }catch(Exception ex){status.Text=Error(ex);}
         }
 
         private async Task Calibrate()
@@ -312,6 +379,7 @@ namespace AeroHelm.GcsCloud
                     await Api("POST","api/v1/operations/calibrations",
                         new{request_id=id,kind=kind.SelectedItem.ToString(),
                             human_at_aircraft=true,props_removed=true}));
+                calibrationRequestId=id;
                 status.Text="REQUESTED "+kind.SelectedItem+" | ID: "+id+Environment.NewLine+
                     "At the powered-on Pi terminal, operator must run:"+Environment.NewLine+
                     "cd ~/AeroHelm && agent/.venv/bin/python -m agent.supervised_calibration "+id+
@@ -323,7 +391,12 @@ namespace AeroHelm.GcsCloud
 
         protected override void Dispose(bool disposing)
         {
-            if(disposing)leaseId.Clear();
+            if(disposing)
+            {
+                leaseRenewal.Stop();
+                leaseRenewal.Dispose();
+                leaseId.Clear();
+            }
             base.Dispose(disposing);
         }
     }
