@@ -27,6 +27,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _survey;
         private ToolStripButton _vision;
         private ToolStripButton _link;
+        private ToolStripButton _ops;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
 
@@ -91,6 +92,14 @@ namespace AeroHelm.GcsCloud
             };
             menu.Items.Insert(at++, _link);
 
+            _ops = NewToolbarButton("OPS", "Simulation mission execution and supervised bench calibration");
+            _ops.Click += delegate
+            {
+                using (var window = new AeroHelmOpsWindow())
+                    window.ShowDialog(MainV2.instance);
+            };
+            menu.Items.Insert(at++, _ops);
+
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
             // may still need for diagnosis, SITL and maintenance.
@@ -145,16 +154,19 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_survey);
                     main.MainMenu.Items.Remove(_vision);
                     main.MainMenu.Items.Remove(_link);
+                    main.MainMenu.Items.Remove(_ops);
                 }
                 _survey.Dispose();
                 _vision.Image.Dispose();
                 _vision.Dispose();
                 _link.Dispose();
+                _ops.Dispose();
                 _button.Dispose();
                 _button = null;
                 _survey = null;
                 _vision = null;
                 _link = null;
+                _ops = null;
             }
             return true;
         }
@@ -215,7 +227,8 @@ namespace AeroHelm.GcsCloud
             grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             Controls.Add(grid);
 
-            _server.Text = AeroHelmWorkspaceSettings.CloudOrigin();
+            _server.Text = !string.IsNullOrEmpty(Program.AeroHelmCloudOrigin)
+                ? Program.AeroHelmCloudOrigin : AeroHelmWorkspaceSettings.CloudOrigin();
             _server.Dock = DockStyle.Fill;
             _username.Text = "operator";
             _username.Dock = DockStyle.Fill;
@@ -268,6 +281,18 @@ namespace AeroHelm.GcsCloud
             _connect.Click += async (s, e) => await ConnectAsync();
             _disconnect.Click += async (s, e) => await DisconnectAsync();
             _aircraft.SelectedIndexChanged += (s, e) => UpdateButtons();
+            // Reuse the startup authentication session. No duplicate login.
+            if (!string.IsNullOrEmpty(Program.AeroHelmOperatorToken) &&
+                DateTime.UtcNow < Program.AeroHelmTokenExpiresUtc)
+            {
+                _baseUrl = Program.AeroHelmCloudOrigin;
+                _accessToken = Program.AeroHelmOperatorToken;
+                _tokenDeadline = Program.AeroHelmTokenExpiresUtc;
+                _status.Text = "Authenticated at AeroHelm startup. Refreshing aircraft...";
+                Shown += async (s,e) => { try { await RefreshInternalAsync(); }
+                    catch (Exception ex) { _status.Text = ex.Message; }
+                    finally { UpdateButtons(); } };
+            }
             UpdateButtons();
         }
 
@@ -396,6 +421,10 @@ namespace AeroHelm.GcsCloud
                 catch (IOException) { }
                 catch (UnauthorizedAccessException) { }
                 _accessToken = parsed.access_token;
+                Program.AeroHelmOperatorToken = _accessToken;
+                Program.AeroHelmCloudOrigin = origin;
+                Program.AeroHelmTokenExpiresUtc = DateTime.UtcNow.AddSeconds(
+                    Math.Max(30, parsed.expires_in - 30));
                 _tokenDeadline = DateTime.UtcNow.AddSeconds(Math.Max(30, parsed.expires_in - 30));
                 _status.Text = "Authenticated. Loading aircraft...";
                 await RefreshInternalAsync();
