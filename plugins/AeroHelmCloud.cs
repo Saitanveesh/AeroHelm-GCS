@@ -29,6 +29,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _link;
         private ToolStripButton _ops;
         private ToolStripButton _intel;
+        private ToolStripButton _workspace;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
 
@@ -109,6 +110,15 @@ namespace AeroHelm.GcsCloud
             };
             menu.Items.Insert(at++, _intel);
 
+            _workspace = NewToolbarButton("HOME", "Open AeroHelm nine-module touch workspace");
+            _workspace.Name = "AeroHelmTouchWorkspaceButton";
+            _workspace.Click += delegate
+            {
+                using (var window = new AeroHelmTouchWindow())
+                    window.ShowDialog(MainV2.instance);
+            };
+            menu.Items.Insert(at++, _workspace);
+
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
             // may still need for diagnosis, SITL and maintenance.
@@ -165,6 +175,7 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_link);
                     main.MainMenu.Items.Remove(_ops);
                     main.MainMenu.Items.Remove(_intel);
+                    main.MainMenu.Items.Remove(_workspace);
                 }
                 _survey.Dispose();
                 _vision.Image.Dispose();
@@ -172,6 +183,7 @@ namespace AeroHelm.GcsCloud
                 _link.Dispose();
                 _ops.Dispose();
                 _intel.Dispose();
+                _workspace.Dispose();
                 _button.Dispose();
                 _button = null;
                 _survey = null;
@@ -179,6 +191,7 @@ namespace AeroHelm.GcsCloud
                 _link = null;
                 _ops = null;
                 _intel = null;
+                _workspace = null;
             }
             return true;
         }
