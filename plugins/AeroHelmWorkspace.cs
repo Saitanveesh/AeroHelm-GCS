@@ -366,13 +366,18 @@ namespace AeroHelm.GcsCloud
                 var origin = new Uri(address.GetLeftPart(UriPartial.Authority) + "/");
                 var result = await Task.Run(() =>
                 {
+                    var timer = System.Diagnostics.Stopwatch.StartNew();
                     var health = Read(origin, "health");
+                    timer.Stop();
+                    var apiMs = timer.ElapsedMilliseconds;
+                    timer.Restart();
                     var mavlink = Read(origin, "api/v1/mavlink/health");
-                    return new[] { health, mavlink };
+                    timer.Stop();
+                    return new { health, mavlink, apiMs, linkMs=timer.ElapsedMilliseconds };
                 });
                 var json = new JavaScriptSerializer();
-                var h = json.Deserialize<Dictionary<string, object>>(result[0]);
-                var m = json.Deserialize<Dictionary<string, object>>(result[1]);
+                var h = json.Deserialize<Dictionary<string, object>>(result.health);
+                var m = json.Deserialize<Dictionary<string, object>>(result.mavlink);
                 AeroHelmWorkspaceSettings.Save("cloud-url", origin.GetLeftPart(UriPartial.Authority));
                 output.Text =
                     "Cloud: " + Convert.ToString(h["status"]) + Environment.NewLine +
@@ -382,6 +387,11 @@ namespace AeroHelm.GcsCloud
                     "Fresh MAVLink: " + Convert.ToString(m["fresh"]) + Environment.NewLine +
                     "Total frames: " + Convert.ToString(m["frames_received"]) + Environment.NewLine +
                     "GCS viewers: " + Convert.ToString(m["viewers"]) + Environment.NewLine +
+                    "API HTTP response: " + result.apiMs.ToString(CultureInfo.InvariantCulture) + " ms" + Environment.NewLine +
+                    "Link endpoint response: " + result.linkMs.ToString(CultureInfo.InvariantCulture) + " ms" + Environment.NewLine +
+                    "Frame rate (5s): " + Convert.ToString(m.ContainsKey("frame_rate_5s") ? m["frame_rate_5s"] : "server update required") + Environment.NewLine +
+                    "Heartbeat age: " + Convert.ToString(m.ContainsKey("heartbeat_age_ms") ? m["heartbeat_age_ms"] : "unknown") + " ms" + Environment.NewLine +
+                    "Dropped queued frames: " + Convert.ToString(m.ContainsKey("viewer_frames_dropped") ? m["viewer_frames_dropped"] : "unknown") + Environment.NewLine +
                     "UTC checked: " + DateTime.UtcNow.ToString("u", CultureInfo.InvariantCulture) +
                     Environment.NewLine + Environment.NewLine +
                     "Diagnostics only. Fresh telemetry is not proof of safe flight or command authority.";
