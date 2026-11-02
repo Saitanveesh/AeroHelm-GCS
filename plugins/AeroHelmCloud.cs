@@ -30,6 +30,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _ops;
         private ToolStripButton _intel;
         private ToolStripButton _touch;
+        private EventHandler _touchStartupShown;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
 
@@ -130,6 +131,34 @@ namespace AeroHelm.GcsCloud
             _helpWasVisible = main.MenuHelp.Visible;
             main.MenuSimulation.Visible = false;
             main.MenuHelp.Visible = false;
+            // Dedicated Windows tablet/kiosk mode is opt-in. Native Mission
+            // Planner still starts normally first, including existing
+            // AeroHelm operator login and all radio/USB recovery paths.
+            if (string.Equals(Environment.GetEnvironmentVariable("AEROHELM_TOUCH_STARTUP"),
+                              "1", StringComparison.Ordinal))
+            {
+                Action openTouch = () =>
+                {
+                    if (main.IsDisposed) return;
+                    using (var panel = new AeroHelmTouchPanel())
+                        panel.ShowDialog(main);
+                };
+                if (main.Visible && main.IsHandleCreated)
+                {
+                    main.BeginInvoke(openTouch);
+                }
+                else
+                {
+                    _touchStartupShown = (sender, args) =>
+                    {
+                        main.Shown -= _touchStartupShown;
+                        _touchStartupShown = null;
+                        if (!main.IsDisposed && main.IsHandleCreated)
+                            main.BeginInvoke(openTouch);
+                    };
+                    main.Shown += _touchStartupShown;
+                }
+            }
             return true;
         }
 
@@ -171,6 +200,11 @@ namespace AeroHelm.GcsCloud
                 var main = MainV2.instance;
                 if (main != null && !main.IsDisposed)
                 {
+                    if (_touchStartupShown != null)
+                    {
+                        main.Shown -= _touchStartupShown;
+                        _touchStartupShown = null;
+                    }
                     main.MenuSimulation.Visible = _simulationWasVisible;
                     main.MenuHelp.Visible = _helpWasVisible;
                     main.MainMenu.Items.Remove(_button);
