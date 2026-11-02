@@ -28,6 +28,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _vision;
         private ToolStripButton _link;
         private ToolStripButton _ops;
+        private ToolStripButton _intel;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
 
@@ -100,6 +101,14 @@ namespace AeroHelm.GcsCloud
             };
             menu.Items.Insert(at++, _ops);
 
+            _intel = NewToolbarButton("INTEL", "Fleet, mission assurance, parameter drift, history and security");
+            _intel.Click += delegate
+            {
+                using (var window = new AeroHelmIntelWindow())
+                    window.ShowDialog(MainV2.instance);
+            };
+            menu.Items.Insert(at++, _intel);
+
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
             // may still need for diagnosis, SITL and maintenance.
@@ -155,18 +164,21 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_vision);
                     main.MainMenu.Items.Remove(_link);
                     main.MainMenu.Items.Remove(_ops);
+                    main.MainMenu.Items.Remove(_intel);
                 }
                 _survey.Dispose();
                 _vision.Image.Dispose();
                 _vision.Dispose();
                 _link.Dispose();
                 _ops.Dispose();
+                _intel.Dispose();
                 _button.Dispose();
                 _button = null;
                 _survey = null;
                 _vision = null;
                 _link = null;
                 _ops = null;
+                _intel = null;
             }
             return true;
         }
