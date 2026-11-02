@@ -1,14 +1,12 @@
 // AeroHelm Touch Launcher — genuine Windows Mission Planner navigation.
 // Nine large touch targets, backed by native MP Flight Data/Flight Planner
-// and existing AeroHelm plugins. A phone uses the separate /touch/ PWA.
+// and existing AeroHelm plugins. Mobile is a separate future release.
 // Copyright AeroHelm contributors, GPL-3.0-or-later.
 extern alias FrameworkDrawing;
 using Drawing = FrameworkDrawing::System.Drawing;
 using Drawing2D = FrameworkDrawing::System.Drawing.Drawing2D;
 using MissionPlanner;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Windows.Forms;
 
 namespace AeroHelm.GcsCloud
@@ -409,23 +407,6 @@ namespace AeroHelm.GcsCloud
             host.Controls.Add(b);
         }
 
-        private void OpenTouchUrl()
-        {
-            try
-            {
-                var baseUrl=AeroHelmWorkspaceSettings.CheckedPrivateUrl(
-                    AeroHelmWorkspaceSettings.CloudOrigin());
-                if(baseUrl.Scheme!=Uri.UriSchemeHttps)
-                    throw new InvalidOperationException("Mobile portal requires HTTPS.");
-                var origin=baseUrl.GetLeftPart(UriPartial.Authority);
-                var touch=new Uri(origin+"/touch/");
-                Process.Start(new ProcessStartInfo{FileName=touch.AbsoluteUri,UseShellExecute=true});
-            }
-            catch(Exception ex)
-            {
-                MessageBox.Show(this,"Unable to open private touch portal: "+ex.Message,
-                    "AeroHelm",MessageBoxButtons.OK,MessageBoxIcon.Information);
-            }
-        }
+
     }
 }
