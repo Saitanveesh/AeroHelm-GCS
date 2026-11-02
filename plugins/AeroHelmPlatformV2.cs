@@ -110,6 +110,11 @@ namespace AeroHelm.GcsCloud
             targets.ScrollBars=ScrollBars.Vertical;paramPanel.Controls.Add(targets);
             paramPanel.Controls.Add(ActionButton("Compare parameter snapshot",
                 async()=>await CompareParameters()));
+            paramPanel.Controls.Add(ActionButton("Request read-only parameter refresh from Pi",
+                async()=>await Run(()=>OperationsApi.Request("POST",
+                    "api/v1/vehicles/"+Id()+"/parameters/refresh"),"Read-only parameter capture")));
+            paramPanel.Controls.Add(ActionButton("Inspect parameter snapshot completeness",
+                async()=>await ParameterSnapshotStatus()));
             paramPanel.Controls.Add(new Label{Text="Use SETUP/local connection for supported authorized changes. This panel never writes values.",
                 AutoSize=true,ForeColor=Drawing.Color.DarkRed});
 
@@ -260,6 +265,32 @@ namespace AeroHelm.GcsCloud
                  "api/v2/missions/shadow/"+Id(),
                  new{plan=plan,expected_sha256=lastMissionHash}),
                  "Mission shadow");
+        }
+
+        private async Task ParameterSnapshotStatus()
+        {
+            if(running)return;
+            running=true;
+            report.Text="Querying authenticated parameter cache state...";
+            try
+            {
+                var body=await Task.Run(()=>OperationsApi.Request("GET",
+                    "api/v1/vehicles/"+Id()+"/parameters"));
+                var result=json.Deserialize<Dictionary<string,object>>(body);
+                bool complete=result.ContainsKey("verified_complete") &&
+                    Convert.ToBoolean(result["verified_complete"]);
+                report.Text="Pixhawk parameter snapshot status: "+Convert.ToString(result["status"])+
+                    Environment.NewLine+
+                    "Received parameters: "+Convert.ToString(result["count"])+
+                    " / "+Convert.ToString(result["expected"])+Environment.NewLine+
+                    "Verified complete: "+complete+Environment.NewLine+
+                    "Captured at (UTC): "+(result.ContainsKey("captured_at")?
+                        Convert.ToString(result["captured_at"]):"unknown")+Environment.NewLine+
+                    "This is a previously collected Pi snapshot, not a live parameter read. "+
+                    "It cannot authorize remote configuration, mission upload or armed operation.";
+            }
+            catch(Exception ex){report.Text="Parameter inspection failed: "+Explain(ex);}
+            finally{running=false;}
         }
 
         private async Task CompareParameters()
