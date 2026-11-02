@@ -145,28 +145,21 @@ namespace AeroHelm.GcsCloud
             Close();
             var main=MainV2.instance;
             main.Activate();
-            // Native Flight Data tab is already the startup/default view.
-            // A direct tab activation is wired in the plugin on verified APIs.
+            main.MenuFlightData.PerformClick();
         }
         private void OpenPlan()
         {
             Close();
             var main=MainV2.instance;
             main.Activate();
-            MessageBox.Show(main,
-                "Open the native FLIGHT PLAN tab to edit and review routes.\n"+
-                "AeroHelm SURVEY generates offline waypoint drafts; it never uploads flights.",
-                "AeroHelm PLAN",MessageBoxButtons.OK,MessageBoxIcon.Information);
+            main.MenuFlightPlanner.PerformClick();
         }
         private void OpenSettings()
         {
             Close();
             var main=MainV2.instance;
             main.Activate();
-            MessageBox.Show(main,
-                "Open Mission Planner's SETUP or CONFIG/TUNING tab for supported local configuration.\n"+
-                "Remote writes and calibration are not authorized by the touch panel.",
-                "AeroHelm SETTINGS",MessageBoxButtons.OK,MessageBoxIcon.Information);
+            main.MenuConfigTune.PerformClick();
         }
 
         private sealed class TouchTile : Button
