@@ -87,10 +87,10 @@ namespace AeroHelm.GcsCloud
                 new Destination("PLAN","▤","Mission Planner's native Flight Plan panel",OpenPlan),
                 new Destination("VISION","▣","Private camera page (server required)",()=>ShowWindow(new AeroHelmVisionWindow())),
                 new Destination("OPS","☷","Simulated mission & supervised bench maintenance",()=>ShowWindow(new AeroHelmOpsWindow())),
-                new Destination("SECURITY","⬡","Cloud security and audit diagnostics",()=>ShowWindow(new AeroHelmIntelWindow())),
-                new Destination("FLEET","▱","Authenticated fleet health and operator view",()=>ShowWindow(new AeroHelmIntelWindow())),
+                new Destination("SECURITY","⬡","Cloud security and audit diagnostics",()=>ShowWindow(new AeroHelmIntelWindow("SECURITY"))),
+                new Destination("FLEET","▱","Authenticated fleet health and operator view",()=>ShowWindow(new AeroHelmIntelWindow("FLEET"))),
                 new Destination("LINK","⌁","Cloud connection and freshness",()=>ShowWindow(new AeroHelmLinkWindow())),
-                new Destination("ANALYTICS","▥","Historical telemetry and flight reports",()=>ShowWindow(new AeroHelmIntelWindow())),
+                new Destination("ANALYTICS","▥","Historical telemetry and flight reports",()=>ShowWindow(new AeroHelmIntelWindow("ANALYTICS"))),
                 new Destination("SETTINGS","⚙","Native Mission Planner settings",OpenSettings)
             };
             for(int i=0;i<sections.Length;i++)
