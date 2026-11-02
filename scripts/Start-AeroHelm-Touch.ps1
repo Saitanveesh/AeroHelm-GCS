@@ -14,8 +14,8 @@ if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close other Mission Planner windows before launching AeroHelm Touch.'
 }
 $branch = (& git -C $root branch --show-current).Trim()
-if ($branch -ne 'feat/aerohelm-touch-console') {
-    throw "Touch launcher requires the feat/aerohelm-touch-console Git branch (found $branch)."
+if ($branch -notin @('feat/aerohelm-touch-console', 'feat/aerohelm-windows-integration')) {
+    throw "Touch launcher requires the reviewed Windows integration branch (found $branch)."
 }
 if ($ManualTouch) {
     [Environment]::SetEnvironmentVariable('AEROHELM_TOUCH_STARTUP','0','Process')

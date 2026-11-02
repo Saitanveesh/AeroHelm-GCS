@@ -8,9 +8,12 @@ on:
       - feat/aerohelm-platform-v2
       - feat/aerohelm-m2-readonly-transport
       - feat/aerohelm-touch-console
+      - feat/aerohelm-windows-integration
     paths:
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmTouchPanel.cs"
+      - "scripts/Build-Integrated-AeroHelm.ps1"
+      - "scripts/Start-AeroHelm-Touch.ps1"
       - "plugins/AeroHelmWorkspace.cs"
       - "plugins/AeroHelmOperations.cs"
       - "plugins/AeroHelmPlatformV2.cs"
@@ -22,6 +25,9 @@ on:
   pull_request:
     paths:
       - "plugins/AeroHelmCloud.cs"
+      - "plugins/AeroHelmTouchPanel.cs"
+      - "scripts/Build-Integrated-AeroHelm.ps1"
+      - "scripts/Start-AeroHelm-Touch.ps1"
       - "plugins/AeroHelmPlatformV2.cs"
       - "Plugins/AeroHelmCloud/**"
       - ".github/workflows/aerohelm-cloud-plugin.yml"
