@@ -8,7 +8,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$expected = "feat/aerohelm-m2-readonly-transport"
+$expected = "feat/aerohelm-touch-workspace"
 $branch = (& git -C $root branch --show-current).Trim()
 if ($LASTEXITCODE -ne 0 -or $branch -ne $expected) {
     throw "Expected Git branch $expected; current branch $branch. Git fetch/switch manually first."
