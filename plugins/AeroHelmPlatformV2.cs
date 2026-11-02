@@ -117,6 +117,12 @@ namespace AeroHelm.GcsCloud
             hPanel.Controls.Add(ActionButton("Recent live telemetry (up to 100)",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/vehicles/"+Id()+"/history?limit=100"),"Live history")));
+            hPanel.Controls.Add(ActionButton("Generate flight data report",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                    "api/v2/vehicles/"+Id()+"/report"),"Flight report")));
+            hPanel.Controls.Add(ActionButton("Preview GeoJSON historical flight path",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                    "api/v2/vehicles/"+Id()+"/replay.geojson"),"Flight path GeoJSON")));
             hPanel.Controls.Add(ActionButton("Historical offline telemetry (up to 100)",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/vehicles/"+Id()+"/archive?limit=100"),"Offline journal")));
