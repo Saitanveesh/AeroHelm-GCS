@@ -119,6 +119,20 @@ namespace AeroHelm.GcsCloud
             };
             menu.Items.Insert(at++, _workspace);
 
+            // Optional operator-facing kiosk profile. The existing Mission
+            // Planner main window remains behind HOME and retains all flight
+            // controls. No automatic cloud link or command is initiated.
+            if (string.Equals(Environment.GetEnvironmentVariable("AEROHELM_TOUCH_HOME"),
+                              "1", StringComparison.Ordinal))
+            {
+                main.BeginInvoke((Action)(() =>
+                {
+                    if (main.IsDisposed) return;
+                    using (var window = new AeroHelmTouchWindow())
+                        window.ShowDialog(main);
+                }));
+            }
+
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
             // may still need for diagnosis, SITL and maintenance.
