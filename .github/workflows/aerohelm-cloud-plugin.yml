@@ -6,11 +6,13 @@ on:
       - feat/aerohelm-cloud-plugin
       - feat/aerohelm-workspace-vision-mission
       - feat/aerohelm-platform-v2
+      - feat/aerohelm-m2-readonly-transport
     paths:
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmWorkspace.cs"
       - "plugins/AeroHelmOperations.cs"
       - "plugins/AeroHelmPlatformV2.cs"
+      - "scripts/Start-AeroHelm-NativeCloud.ps1"
       - "plugins/AeroHelmSurveyPlanner.cs"
       - "Tools/AeroHelmSurveyTests/**"
       - "Plugins/AeroHelmCloud/**"
