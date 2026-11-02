@@ -27,10 +27,10 @@ expose Oracle port 8000.
 | PLAN | Native Mission Planner Flight Planner view |
 | VISION | AeroHelm private HTTPS camera viewer/launcher |
 | OPS | AeroHelm simulation and locally approved maintenance UI |
-| SECURITY | INTEL workspace; currently opens multi-tab INTEL, security is there |
-| FLEET | INTEL workspace; FLEET tab currently needs manual selection |
+| SECURITY | INTEL directly opens SECURITY tab |
+| FLEET | INTEL directly opens FLEET tab |
 | LINK | AeroHelm cloud link diagnostic form |
-| ANALYTICS | INTEL workspace; HISTORY/report tabs |
+| ANALYTICS | INTEL directly opens HISTORY/report tab |
 | SETTINGS | Native Mission Planner Config/Tuning |
 
 A HOME button in Mission Planner opens the overlay. The existing CLOUD,
@@ -115,8 +115,6 @@ Windows Mission Planner process.
 
 - Replace legacy Mission Planner visual chrome with consistent AeroHelm
   navigation, without destroying upstream plugin/config/diagnostic access.
-- Open the *specific* INTEL subtab from SECURITY/FLEET/ANALYTICS rather than
-  the shared multi-tab default.
 - Integrate video using embedded WebView2, after media server and second
   camera hardware are qualified.
 - Offer a signed Windows distribution and a phone home-screen PWA after
