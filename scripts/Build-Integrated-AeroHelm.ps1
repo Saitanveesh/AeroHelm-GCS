@@ -8,10 +8,10 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$expected = "feat/aerohelm-touch-console"
+$allowedBranches = @("feat/aerohelm-touch-console", "feat/aerohelm-windows-integration")
 $branch = (& git -C $root branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne $expected) {
-    throw "Expected Git branch $expected; current branch $branch. Git fetch/switch manually first."
+if ($LASTEXITCODE -ne 0 -or $branch -notin $allowedBranches) {
+    throw "Expected a reviewed AeroHelm Windows development branch; current branch $branch. Git fetch/switch manually first."
 }
 if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw "Close all AeroHelm/MissionPlanner windows before build."
