@@ -5,9 +5,12 @@ on:
     branches:
       - feat/aerohelm-cloud-plugin
       - feat/aerohelm-workspace-vision-mission
+      - feat/aerohelm-platform-v2
     paths:
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmWorkspace.cs"
+      - "plugins/AeroHelmOperations.cs"
+      - "plugins/AeroHelmPlatformV2.cs"
       - "plugins/AeroHelmSurveyPlanner.cs"
       - "Tools/AeroHelmSurveyTests/**"
       - "Plugins/AeroHelmCloud/**"
@@ -15,6 +18,7 @@ on:
   pull_request:
     paths:
       - "plugins/AeroHelmCloud.cs"
+      - "plugins/AeroHelmPlatformV2.cs"
       - "Plugins/AeroHelmCloud/**"
       - ".github/workflows/aerohelm-cloud-plugin.yml"
   workflow_dispatch:
