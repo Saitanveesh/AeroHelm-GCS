@@ -48,10 +48,11 @@ namespace AeroHelm.GcsCloud
             if (!Uri.TryCreate(input.Trim(), UriKind.Absolute, out result) ||
                 !string.IsNullOrEmpty(result.UserInfo) || !string.IsNullOrEmpty(result.Fragment) ||
                 !string.IsNullOrEmpty(result.Query) ||
-                result.Scheme != Uri.UriSchemeHttps ||
-                !(result.Host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase) ||
-                  result.IsLoopback))
-                throw new ArgumentException("Use a private Tailscale HTTPS (*.ts.net) URL or HTTPS loopback. Do not include credentials, query strings or fragments.");
+                !((result.Scheme == Uri.UriSchemeHttps &&
+                   (result.Host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase) ||
+                    result.IsLoopback)) ||
+                  (result.Scheme == Uri.UriSchemeHttp && result.IsLoopback)))
+                throw new ArgumentException("Use Tailscale HTTPS (*.ts.net) or HTTP(S) loopback for local simulation. Do not include credentials, queries or fragments.");
             return result;
         }
 
