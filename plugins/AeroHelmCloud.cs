@@ -29,6 +29,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _link;
         private ToolStripButton _ops;
         private ToolStripButton _intel;
+        private ToolStripButton _touch;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
 
@@ -109,6 +110,19 @@ namespace AeroHelm.GcsCloud
             };
             menu.Items.Insert(at++, _intel);
 
+            // Single touch-first entry point for nine actual workspaces.
+            // Existing classic buttons are retained as a fallback for
+            // mouse/keyboard operators and older Mission Planner workflows.
+            _touch = NewToolbarButton("TOUCH", "Open nine-module AeroHelm touch workspace");
+            _touch.Font = new FrameworkDrawing::System.Drawing.Font(
+                "Segoe UI Semibold", 10f, FrameworkDrawing::System.Drawing.FontStyle.Bold);
+            _touch.Click += delegate
+            {
+                using (var panel = new AeroHelmTouchPanel())
+                    panel.ShowDialog(MainV2.instance);
+            };
+            menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _touch);
+
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
             // may still need for diagnosis, SITL and maintenance.
@@ -165,6 +179,7 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_link);
                     main.MainMenu.Items.Remove(_ops);
                     main.MainMenu.Items.Remove(_intel);
+                    main.MainMenu.Items.Remove(_touch);
                 }
                 _survey.Dispose();
                 _vision.Image.Dispose();
@@ -172,6 +187,7 @@ namespace AeroHelm.GcsCloud
                 _link.Dispose();
                 _ops.Dispose();
                 _intel.Dispose();
+                _touch.Dispose();
                 _button.Dispose();
                 _button = null;
                 _survey = null;
@@ -179,6 +195,7 @@ namespace AeroHelm.GcsCloud
                 _link = null;
                 _ops = null;
                 _intel = null;
+                _touch = null;
             }
             return true;
         }
