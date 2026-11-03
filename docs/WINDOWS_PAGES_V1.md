@@ -18,7 +18,7 @@ branch only after code review; do not merge into `master` before release tests.
 | FLIGHT | Mission Planner Flight Data | Native GCS, no new cloud control |
 | PLAN | Mission Planner Flight Planner | Native GCS, not remote mission execution |
 | VISION | Private dual-camera launcher | Two locally saved independent private HTTPS/loopback links; no false live-video indicator |
-| OPS | Existing simulated mission and supervised maintenance windows | Simulation-only autonomy; local approval required for permitted calibration |
+| OPS | Existing simulated mission, supervised maintenance and authenticated read-only CAPABILITIES page | Simulation-only autonomy; local approval required for permitted calibration |
 | SECURITY | New read-only status page | `GET /api/v2/security/posture`, `GET /api/v2/security/audit?limit=75` |
 | FLEET | New read-only fleet page | `GET /api/v2/fleet`, selected aircraft `/alerts` |
 | LINK | Existing diagnostics upgraded | `/health` and `/api/v1/mavlink/health` with explicit fresh/stale/unknown; optional 15s polling |
