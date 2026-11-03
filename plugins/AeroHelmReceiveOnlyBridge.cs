@@ -23,7 +23,7 @@ namespace AeroHelm.GcsCloud
         private long frames;
         private long heartbeats;
         private long attitudes;
-        private DateTime lastFrameUtc = DateTime.MinValue;
+        private long lastFrameUtcTicks;
 
         internal string Summary
         {
@@ -33,8 +33,10 @@ namespace AeroHelm.GcsCloud
                 long count = Interlocked.Read(ref frames);
                 long hb = Interlocked.Read(ref heartbeats);
                 long att = Interlocked.Read(ref attitudes);
-                string age = lastFrameUtc == DateTime.MinValue ? "never" :
-                    Math.Max(0, (int)(DateTime.UtcNow - lastFrameUtc).TotalSeconds) + "s ago";
+                long lastTicks = Interlocked.Read(ref lastFrameUtcTicks);
+                string age = lastTicks == 0 ? "never" :
+                    Math.Max(0, (int)(DateTime.UtcNow - new DateTime(
+                        lastTicks, DateTimeKind.Utc)).TotalSeconds) + "s ago";
                 return "LOCAL TCP / " + status + " | frames " + count +
                     " | HEARTBEAT " + hb + " | ATTITUDE " + att + " | last " + age;
             }
@@ -78,6 +80,10 @@ namespace AeroHelm.GcsCloud
                 }
                 catch (ObjectDisposedException) when (stop.IsCancellationRequested) { return; }
                 catch (SocketException) when (stop.IsCancellationRequested) { return; }
+                catch (OperationCanceledException) when (!stop.IsCancellationRequested)
+                {
+                    state = "LOCAL TCP DISCONNECTED";
+                }
                 catch (Exception ex) when (!stop.IsCancellationRequested)
                 {
                     state = "STREAM UNAVAILABLE: " + ex.GetType().Name;
@@ -162,7 +168,7 @@ namespace AeroHelm.GcsCloud
                         Interlocked.Increment(ref frames);
                         if (messageId == 0) Interlocked.Increment(ref heartbeats);
                         if (messageId == 30) Interlocked.Increment(ref attitudes);
-                        lastFrameUtc = DateTime.UtcNow;
+                        Interlocked.Exchange(ref lastFrameUtcTicks, DateTime.UtcNow.Ticks);
                         state = "RECEIVING READ-ONLY MAVLINK";
                     }
                 }
