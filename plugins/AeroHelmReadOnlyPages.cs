@@ -327,9 +327,20 @@ namespace AeroHelm.GcsCloud
                 state.Text = "UNAVAILABLE / NOT VERIFIED";
                 var web = ex as System.Net.WebException;
                 var http = web == null ? null : web.Response as System.Net.HttpWebResponse;
-                detail.Text = http == null ? "Unable to retrieve " + operation + ": " + ex.Message :
-                    "Cloud rejected the request (HTTP " + (int)http.StatusCode +
-                    "). Sign in again using CLOUD if your token expired.";
+                if (http == null)
+                    detail.Text = "Unable to retrieve " + operation + ": " + ex.Message;
+                else if (http.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    detail.Text = "The requested read-only API or aircraft was not found (HTTP 404)." +
+                        Environment.NewLine +
+                        "Check Oracle backend version: this page needs AeroHelm v2 endpoints. " +
+                        "The deployed M1 telemetry API does not provide every GCS module.";
+                else if (http.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                         http.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    detail.Text = "Cloud authentication/permission failed (HTTP " +
+                        (int)http.StatusCode + "). Sign in again using CLOUD.";
+                else
+                    detail.Text = "Cloud rejected the request (HTTP " +
+                        (int)http.StatusCode + "). Verify backend availability.";
                 if (http != null) http.Dispose();
                 detail.Text += Environment.NewLine +
                     "Do not rely on cached telemetry or reports when the cloud is unreachable.";
