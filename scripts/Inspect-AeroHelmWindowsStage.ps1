@@ -32,7 +32,8 @@ if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') {
     throw 'Unable to establish reproducible Git commit.'
 }
 if ($actualBranch -notin @('feat/aerohelm-touch-console',
-                           'feat/aerohelm-windows-readiness-v2')) {
+                           'feat/aerohelm-windows-readiness-v2',
+                           'feat/aerohelm-windows-release-candidate')) {
     throw "Unreviewed Windows release branch: $actualBranch"
 }
 $dirty = @(& git -C $root status --porcelain --untracked-files=no)

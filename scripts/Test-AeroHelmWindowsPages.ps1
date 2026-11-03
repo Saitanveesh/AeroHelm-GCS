@@ -19,6 +19,9 @@ $workspace = Read-Source 'plugins/AeroHelmWorkspace.cs'
 $operations = Read-Source 'plugins/AeroHelmOperations.cs'
 $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
 $cloud = Read-Source 'plugins/AeroHelmCloud.cs'
+$installer = Read-Source 'scripts/Install-AeroHelmCloud.ps1'
+$rollback = Read-Source 'scripts/Restore-AeroHelmPlugin.ps1'
+$launcher = Read-Source 'scripts/Start-AeroHelm-Touch.ps1'
 
 foreach ($row in @(
     '"FLIGHT", "PLAN", "VISION"',
@@ -39,6 +42,15 @@ Require-Text $touch 'api/v1/mavlink/health' 'HOME status must use read-only MAVL
 Require-Text $touch 'CLOUD / STALE OR DISCONNECTED' 'HOME must report stale aircraft status.'
 Require-Text $touch 'CLOUD / UNAVAILABLE' 'HOME needs a fail-closed disconnected state.'
 Require-Text $cloud 'AEROHELM_TOUCH_STARTUP' 'Windows touch startup opt-in is missing.'
+Require-Text $cloud 'AEROHELM_REDUCED_TOOLBAR' 'Native HELP and Simulation menus must be retained by default.'
+Require-Text $launcher 'AEROHELM_CLOUD_READONLY' 'Windows launcher must set read-only cloud environment.'
+Require-Text $launcher 'Duplicate AeroHelm source plugin' 'Launcher must refuse a duplicate runtime plugin.'
+Require-Text $installer 'previous_dll_sha256' 'Plugin installer must record previous DLL checksum.'
+Require-Text $installer 'Copy-Item -LiteralPath $target -Destination' 'Installer must back up the installed DLL.'
+Require-Text $installer 'previous_source_sha256' 'Installer must preserve legacy dynamic source plugin.'
+Require-Text $installer 'Plugin installation failed; attempting to restore' 'Installer must roll back failed installation.'
+Require-Text $rollback 'Assert-PreviousHash' 'Rollback must verify backup hashes before restoration.'
+Require-Text $rollback 'if (-not $Apply)' 'Restoration must require an explicit -Apply switch.'
 
 foreach ($route in @(
     'api/v2/fleet',

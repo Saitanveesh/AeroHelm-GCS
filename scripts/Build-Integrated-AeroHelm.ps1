@@ -8,7 +8,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$allowedBranches = @("feat/aerohelm-touch-console", "feat/aerohelm-windows-integration", "feat/aerohelm-windows-pages-v1", "feat/aerohelm-windows-readiness-v2")
+$allowedBranches = @("feat/aerohelm-touch-console", "feat/aerohelm-windows-integration", "feat/aerohelm-windows-pages-v1", "feat/aerohelm-windows-readiness-v2", "feat/aerohelm-windows-release-candidate")
 $branch = (& git -C $root branch --show-current).Trim()
 if ($LASTEXITCODE -ne 0 -or $branch -notin $allowedBranches) {
     throw "Expected a reviewed AeroHelm Windows development branch; current branch $branch. Git fetch/switch manually first."
@@ -30,7 +30,7 @@ try {
     & powershell -ExecutionPolicy Bypass -File .\scripts\Build-AeroHelmGCS.ps1
     if ($LASTEXITCODE -ne 0) { throw "AeroHelm GCS full solution build failed." }
 
-    Write-Host "[4/5] Compile and install CLOUD + SURVEY + VISION + LINK + OPS" -ForegroundColor Cyan
+    Write-Host "[4/5] Transactionally install compiled CLOUD + SURVEY + VISION + LINK + OPS" -ForegroundColor Cyan
     & powershell -ExecutionPolicy Bypass -File .\scripts\Install-AeroHelmCloud.ps1
     if ($LASTEXITCODE -ne 0) { throw "AeroHelm plugin installation failed." }
 

@@ -32,7 +32,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmTouchPanel()
         {
-            Text = "AeroHelm — Windows Control Workspace";
+            Text = "AeroHelm — Windows Control Workspace (0.2.0 RC)";
             Width = 1100;
             Height = 800;
             MinimumSize = new Drawing.Size(640, 540);
