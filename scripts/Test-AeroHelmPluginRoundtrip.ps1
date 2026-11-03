@@ -34,6 +34,32 @@ $beforeDll = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInv
 $beforeSource = (Get-FileHash -LiteralPath $legacy -Algorithm SHA256).Hash.ToLowerInvariant()
 $backupRoot = Join-Path $root 'build-logs\plugin-backups'
 try {
+    # First force the verified DLL copy to fail AFTER the replacement, then
+    # prove the installer restored the old binary and source automatically.
+    $injectedFailureObserved = $false
+    $env:AEROHELM_TEST_FAIL_AFTER_COPY = '1'
+    try {
+        & (Join-Path $PSScriptRoot 'Install-AeroHelmCloud.ps1')
+    }
+    catch {
+        $injectedFailureObserved =
+            $_.Exception.Message.Contains('INJECTED CI FAILURE AFTER DLL INSTALL')
+    }
+    finally {
+        Remove-Item Env:AEROHELM_TEST_FAIL_AFTER_COPY -ErrorAction SilentlyContinue
+    }
+    if (-not $injectedFailureObserved) {
+        throw 'Expected injected installation failure was not observed.'
+    }
+    if ((Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant() -ne $beforeDll) {
+        throw 'Automatic installer error rollback did not restore previous DLL bytes.'
+    }
+    if (-not (Test-Path -LiteralPath $legacy -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $legacy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $beforeSource) {
+        throw 'Automatic installer error rollback did not restore previous C# plugin.'
+    }
+
+    # Now test normal installation, inspect-only, and explicit manual restore.
     & (Join-Path $PSScriptRoot 'Install-AeroHelmCloud.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Plugin installer reported a nonzero exit status.' }
     if (-not (Test-Path -LiteralPath $dest -PathType Leaf)) {
@@ -44,10 +70,13 @@ try {
     }
     $afterDll = (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($afterDll -eq $beforeDll) { throw 'New compiled DLL did not replace CI sentinel.' }
+    # The injected failed transaction may have an incomplete snapshot with
+    # no manifest. Only a committed, verified install is restorable.
     $backups = @(Get-ChildItem -LiteralPath $backupRoot -Directory |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'manifest.json') } |
         Sort-Object LastWriteTimeUtc -Descending)
     if ($backups.Count -ne 1) {
-        throw "Expected exactly one CI-local plugin backup, found $($backups.Count)."
+        throw "Expected one fully verified CI-local plugin backup, found $($backups.Count)."
     }
     $name = $backups[0].Name
     & (Join-Path $PSScriptRoot 'Restore-AeroHelmPlugin.ps1') -BackupName $name
@@ -67,7 +96,7 @@ try {
     if ((Get-FileHash -LiteralPath $legacy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $beforeSource) {
         throw 'Rollback failed to restore old dynamic C# bytes.'
     }
-    Write-Host 'PASS: compiled install, SHA-256 verify, legacy-source removal, inspect-only mode, and rollback.'
+    Write-Host 'PASS: injected automatic failure rollback, verified install, old-source removal, inspect-only mode, and manual rollback.'
 }
 finally {
     # Worktree is ephemeral CI. Never leave sentinel plugins in the artifact output.
