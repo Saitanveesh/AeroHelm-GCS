@@ -323,6 +323,14 @@ namespace AeroHelm.GcsCloud
                 Environment.NewLine+"Camera 2 is not considered available until separately tested on hardware.";
             layout.Controls.Add(status,0,5);
             LoadCamera();
+            // Reopening the VISION tile opens the known camera immediately.
+            // Video still travels directly over private Tailscale/WebRTC.
+            if (string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_VISION_AUTO_OPEN"),"1",StringComparison.Ordinal))
+                Shown += (s,e) => BeginInvoke(new Action(() => {
+                    if (camera.SelectedIndex == 0 && !string.IsNullOrWhiteSpace(url.Text))
+                        Open();
+                }));
             KeyDown+=(s,e)=>{
                 if(e.KeyCode==Keys.Escape){Close();e.Handled=true;}
             };
@@ -336,8 +344,31 @@ namespace AeroHelm.GcsCloud
         private void LoadCamera()
         {
             url.Text=AeroHelmWorkspaceSettings.Get(Key);
-            saved.Text="Local configuration: "+(string.IsNullOrWhiteSpace(url.Text) ?
-                "NOT CONFIGURED" : "address on file (stream availability UNKNOWN)");
+            bool suggested = false;
+            // The session launcher provides the already-established Pi address.
+            // Never construct a public or unauthenticated camera endpoint.
+            if (camera.SelectedIndex == 0 && string.IsNullOrWhiteSpace(url.Text))
+            {
+                var proposed = Environment.GetEnvironmentVariable("AEROHELM_CAMERA1_URL");
+                if (!string.IsNullOrWhiteSpace(proposed))
+                {
+                    try
+                    {
+                        var address = AeroHelmWorkspaceSettings.CheckedPrivateUrl(proposed);
+                        if (address.Scheme == Uri.UriSchemeHttps &&
+                            address.Host.EndsWith(".ts.net",StringComparison.OrdinalIgnoreCase))
+                        {
+                            url.Text = address.AbsoluteUri;
+                            suggested = true;
+                        }
+                    }
+                    catch (ArgumentException) { /* Invalid URL stays blank. */ }
+                }
+            }
+            saved.Text = string.IsNullOrWhiteSpace(url.Text) ?
+                "Local configuration: NOT CONFIGURED" : suggested ?
+                "Private Camera 1 URL prefilled; live stream still unverified." :
+                "Local configuration: address on file (stream availability UNKNOWN)";
         }
 
         private Uri Validate()
