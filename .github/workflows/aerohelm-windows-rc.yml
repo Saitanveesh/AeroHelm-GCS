@@ -1,7 +1,7 @@
 name: AeroHelm Windows RC Validation (isolated)
 
 # This workflow lives on default branch solely to make native RC CI runnable.
-# It checks out a PINNED development commit and never writes to master,
+# It checks out the current development branch and records the commit tested.
 # signs an installer, accesses aircraft, or uses production credentials.
 on:
   push:
@@ -22,13 +22,64 @@ jobs:
       AEROHELM_DISPOSABLE_CI: "1"
       AEROHELM_CLOUD_READONLY: "1"
     steps:
-      - name: Check out pinned Windows development snapshot and submodules
+      - name: Check out current Windows development branch and submodules
         uses: actions/checkout@v4
         with:
-          ref: 863dd9c159933aee056ee3cfd081a6f5cd6783cb
+          ref: feat/aerohelm-touch-console
           submodules: recursive
           persist-credentials: false
           fetch-depth: 1
+
+      - name: Record exact tested source commit
+        shell: powershell
+        run: |
+          $commit = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[a-f0-9]{40}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Check offline source contracts
+        shell: powershell
+        run: |
+          & .\scripts\Test-AeroHelmWindowsPages.ps1
+          if (-not $?) { exit 1 }
+
+      - name: Run offline survey geometry regression suite
+        shell: powershell
+        run: |
+          dotnet run --project Tools\AeroHelmSurveyTests\AeroHelmSurveyTests.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build full Mission Planner Release solution with Visual Studio MSBuild
+        shell: powershell
+        run: |
+          & .\scripts\Build-AeroHelmGCS.ps1 -Target Solution
+          if (-not $?) { exit 1 }
+
+      - name: Compile AeroHelm plugin against actual Mission Planner assemblies
+        shell: powershell
+        run: |
+          & .\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
+          if (-not $?) { exit 1 }
+
+      - name: Test DLL install and rollback with disposable CI fixture
+        shell: powershell
+        run: |
+          & .\scripts\Test-AeroHelmPluginRoundtrip.ps1
+          if (-not $?) { exit 1 }
+
+      - name: Declare scope of successful result
+        if: success()
+        shell: powershell
+        run: |
+          Write-Host "SOURCE + WINDOWS COMPILE + DISPOSABLE INSTALL/ROLLBACK: PASSED"
+          Write-Host "NOT TESTED: native GCS GUI loading/touch UX, cloud login, Pi/Pixhawk, physical flight, video or signed deployment."
+          Write-Host "DO NOT merge hardware actuation into master based on these results."
+) {
+            throw "Cannot identify GCS source commit."
+          }
+          Write-Host "AeroHelm Windows development commit under test: $commit"
 
       - name: Install supported .NET SDK (no secrets or cloud account)
         uses: actions/setup-dotnet@v4
