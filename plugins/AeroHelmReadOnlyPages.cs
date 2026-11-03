@@ -60,7 +60,9 @@ namespace AeroHelm.GcsCloud
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,35));
             Controls.Add(layout);
 
-            var header = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1 };
+            var header = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 2 };
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,75));
+            header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
             header.RowStyles.Add(new RowStyle(SizeType.Absolute,42));
             header.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             header.Controls.Add(new Label {
@@ -74,6 +76,16 @@ namespace AeroHelm.GcsCloud
                 Font = new Drawing.Font("Segoe UI",10f),
                 TextAlign = Drawing.ContentAlignment.MiddleLeft
             },0,1);
+            var home = new Button {
+                Text = "← HOME", Dock = DockStyle.Fill,
+                FlatStyle = FlatStyle.Flat, BackColor = Surface, ForeColor = Ink,
+                UseVisualStyleBackColor = false,
+                Font = new Drawing.Font("Segoe UI Semibold",12f,Drawing.FontStyle.Bold)
+            };
+            home.FlatAppearance.BorderSize = 0;
+            home.Click += (s,e) => Close();
+            header.Controls.Add(home,1,0);
+            header.SetRowSpan(home,2);
             layout.Controls.Add(header,0,0);
 
             var bar = new FlowLayoutPanel {
