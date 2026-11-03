@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\plugins\AeroHelmCloud.cs" Link="AeroHelmCloud.cs" />
+    <Compile Include="..\..\plugins\AeroHelmReceiveOnlyBridge.cs" Link="AeroHelmReceiveOnlyBridge.cs" />
     <Compile Include="..\..\plugins\AeroHelmWorkspace.cs" Link="AeroHelmWorkspace.cs" />
     <Compile Include="..\..\plugins\AeroHelmSurveyPlanner.cs" Link="AeroHelmSurveyPlanner.cs" />
     <Compile Include="..\..\plugins\AeroHelmOperations.cs" Link="AeroHelmOperations.cs" />
