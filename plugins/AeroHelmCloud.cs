@@ -35,7 +35,7 @@ namespace AeroHelm.GcsCloud
         private bool _helpWasVisible;
 
         public override string Name { get { return "AeroHelm Cloud"; } }
-        public override string Version { get { return "0.1.1"; } }
+        public override string Version { get { return "0.2.0"; } }
         public override string Author { get { return "AeroHelm Contributors"; } }
 
         public override bool Init() { return true; }
