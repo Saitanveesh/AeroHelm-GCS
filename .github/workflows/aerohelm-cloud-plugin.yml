@@ -10,6 +10,7 @@ on:
       - feat/aerohelm-touch-console
       - feat/aerohelm-windows-integration
       - feat/aerohelm-windows-pages-v1
+      - feat/aerohelm-windows-readiness-v2
     paths:
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmTouchPanel.cs"
