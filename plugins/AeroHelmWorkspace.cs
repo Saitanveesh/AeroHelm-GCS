@@ -225,83 +225,166 @@ namespace AeroHelm.GcsCloud
         }
     }
 
+    // The camera page is a launcher, not an invented live video stream.
+    // Camera 2 is configurable independently and is UNKNOWN until Pi testing.
     internal sealed class AeroHelmVisionWindow : Form
     {
+        private readonly ComboBox camera = new ComboBox();
         private readonly TextBox url = new TextBox();
         private readonly Label status = new Label();
+        private readonly Label saved = new Label();
+
         public AeroHelmVisionWindow()
         {
-            Text = "AeroHelm VISION — Onboard camera";
-            Width = 650; Height = 280;
-            MinimumSize = new Drawing.Size(550, 240);
+            Text = "AeroHelm VISION — Private cameras";
+            Width = 760;
+            Height = 405;
+            MinimumSize = new Drawing.Size(620,360);
             StartPosition = FormStartPosition.CenterParent;
+            AutoScaleMode = AutoScaleMode.Dpi;
+            BackColor = Drawing.Color.FromArgb(8,8,8);
+            ForeColor = Drawing.Color.White;
+            Font = new Drawing.Font("Segoe UI",11);
+            KeyPreview = true;
 
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(14),
-                ColumnCount = 1, RowCount = 4 };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            var layout = new TableLayoutPanel {
+                Dock = DockStyle.Fill, Padding = new Padding(20),
+                ColumnCount = 1, RowCount = 6
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,52));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,49));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,50));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,56));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,30));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             Controls.Add(layout);
-            layout.Controls.Add(new Label
-            {
-                Dock = DockStyle.Fill,
-                Text = "Camera 1 — Private WebRTC stream URL (Tailscale HTTPS only).",
-                TextAlign = Drawing.ContentAlignment.MiddleLeft
-            }, 0, 0);
+            var visionHeading = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1
+            };
+            visionHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,75));
+            visionHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
+            visionHeading.Controls.Add(new Label {
+                Text="VISION  /  PRIVATE CAMERA VIEWERS",
+                Dock=DockStyle.Fill,
+                Font=new Drawing.Font("Segoe UI Semibold",16,Drawing.FontStyle.Bold),
+                ForeColor=Drawing.Color.White,
+                TextAlign=Drawing.ContentAlignment.MiddleLeft
+            },0,0);
+            var visionHome = new Button {
+                Text = "← HOME", Dock = DockStyle.Fill,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Drawing.Color.FromArgb(38,38,38),
+                ForeColor = Drawing.Color.White
+            };
+            visionHome.FlatAppearance.BorderSize = 0;
+            visionHome.Click += (s,e) => Close();
+            visionHeading.Controls.Add(visionHome,1,0);
+            layout.Controls.Add(visionHeading,0,0);
 
-            url.Dock = DockStyle.Fill;
-            url.Text = AeroHelmWorkspaceSettings.Get("vision-url");
-            layout.Controls.Add(url, 0, 1);
-            var actions = new FlowLayoutPanel { Dock = DockStyle.Fill };
-            var open = new Button { Text = "Open live video", Width = 145, Height = 28 };
-            var save = new Button { Text = "Save camera address", Width = 155, Height = 28 };
-            actions.Controls.Add(open);
-            actions.Controls.Add(save);
-            layout.Controls.Add(actions, 0, 2);
-            status.Dock = DockStyle.Fill;
-            status.Text = "Video requires a separate camera server on the Pi. The Oracle 1 GB VM is NOT a video relay.\n" +
-                          "This launcher opens a trusted Tailscale HTTPS WebRTC page in the default browser; an embedded WebView2 player is not yet installed.";
-            status.ForeColor = Drawing.Color.DarkRed;
-            layout.Controls.Add(status, 0, 3);
-            save.Click += (s, e) => Save();
-            open.Click += (s, e) => Open();
+            camera.DropDownStyle=ComboBoxStyle.DropDownList;
+            camera.Items.AddRange(new object[] {"CAMERA 1 — Primary","CAMERA 2 — Optional"});
+            camera.SelectedIndex=0;
+            camera.Dock=DockStyle.Fill;
+            camera.BackColor=Drawing.Color.FromArgb(38,38,38);
+            camera.ForeColor=Drawing.Color.White;
+            camera.SelectedIndexChanged+=(s,e)=>LoadCamera();
+            layout.Controls.Add(camera,0,1);
+
+            url.Dock=DockStyle.Fill;
+            url.BackColor=Drawing.Color.FromArgb(32,32,32);
+            url.ForeColor=Drawing.Color.White;
+            url.BorderStyle=BorderStyle.FixedSingle;
+            url.AccessibleName="Selected camera private HTTPS address";
+            layout.Controls.Add(url,0,2);
+            var actions=new FlowLayoutPanel {Dock=DockStyle.Fill,WrapContents=false,AutoScroll=true};
+            var open=new Button {Text="OPEN CAMERA IN BROWSER",Width=235,Height=42};
+            var save=new Button {Text="SAVE PRIVATE URL",Width=190,Height=42};
+            foreach(var button in new[]{open,save})
+            {
+                button.FlatStyle=FlatStyle.Flat;
+                button.FlatAppearance.BorderSize=0;
+                button.BackColor=Drawing.Color.FromArgb(38,38,38);
+                button.ForeColor=Drawing.Color.White;
+                button.Margin=new Padding(0,0,10,0);
+                actions.Controls.Add(button);
+            }
+            open.Click+=(s,e)=>Open();
+            save.Click+=(s,e)=>Save();
+            layout.Controls.Add(actions,0,3);
+
+            saved.Dock=DockStyle.Fill;
+            saved.ForeColor=Drawing.Color.FromArgb(186,186,186);
+            layout.Controls.Add(saved,0,4);
+            status.Dock=DockStyle.Fill;
+            status.ForeColor=Drawing.Color.FromArgb(196,196,196);
+            status.Text="Streaming is hosted on the Raspberry Pi / private network, not Oracle."+
+                Environment.NewLine+"This page opens the actual private camera server; it does not simulate video."+
+                Environment.NewLine+"Camera 2 is not considered available until separately tested on hardware.";
+            layout.Controls.Add(status,0,5);
+            LoadCamera();
+            KeyDown+=(s,e)=>{
+                if(e.KeyCode==Keys.Escape){Close();e.Handled=true;}
+            };
+        }
+
+        private string Key
+        {
+            get { return camera.SelectedIndex==1 ? "vision-url-2" : "vision-url"; }
+        }
+
+        private void LoadCamera()
+        {
+            url.Text=AeroHelmWorkspaceSettings.Get(Key);
+            saved.Text="Local configuration: "+(string.IsNullOrWhiteSpace(url.Text) ?
+                "NOT CONFIGURED" : "address on file (stream availability UNKNOWN)");
+        }
+
+        private Uri Validate()
+        {
+            if(string.IsNullOrWhiteSpace(url.Text))
+                throw new ArgumentException("Configure the camera's private address first.");
+            var address=AeroHelmWorkspaceSettings.CheckedPrivateUrl(url.Text);
+            // Loopback HTTP is retained only for isolated bench/video development.
+            if(address.Scheme!=Uri.UriSchemeHttps && !address.IsLoopback)
+                throw new ArgumentException("Camera must use private Tailscale HTTPS.");
+            return address;
         }
 
         private bool Save()
         {
             try
             {
-                var address = AeroHelmWorkspaceSettings.CheckedPrivateUrl(url.Text);
-                AeroHelmWorkspaceSettings.Save("vision-url", address.AbsoluteUri);
-                status.Text = "Saved private camera URL locally (no token saved). Video server must be configured separately.";
+                var address=Validate();
+                AeroHelmWorkspaceSettings.Save(Key,address.AbsoluteUri);
+                saved.Text="Saved locally. Actual camera stream status remains UNKNOWN until verified.";
                 return true;
             }
-            catch (Exception ex) when (ex is ArgumentException || ex is IOException ||
-                                       ex is UnauthorizedAccessException)
+            catch(Exception ex) when(ex is ArgumentException || ex is IOException ||
+                                      ex is UnauthorizedAccessException)
             {
-                status.Text = "Invalid camera URL: " + ex.Message;
+                status.Text="Camera configuration rejected: "+ex.Message;
                 return false;
             }
         }
 
         private void Open()
         {
-            if (!Save()) return;
+            if(!Save())return;
             try
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = url.Text.Trim(),
-                    UseShellExecute = true
+                var address=Validate();
+                Process.Start(new ProcessStartInfo {
+                    FileName=address.AbsoluteUri, UseShellExecute=true
                 });
-                status.Text = "Opened your private video address in the default browser.\n" +
-                              "Live video appears only if your Pi camera server and WebRTC path are running.";
+                status.Text="Opened selected private camera page in your browser."+
+                    Environment.NewLine+"No stream is assumed active until the Pi server responds."+
+                    Environment.NewLine+"Return here to select the other camera.";
             }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception ||
-                                       ex is InvalidOperationException)
+            catch(Exception ex) when(ex is System.ComponentModel.Win32Exception ||
+                                      ex is InvalidOperationException || ex is ArgumentException)
             {
-                status.Text = "Could not open browser: " + ex.Message;
+                status.Text="Cannot open private camera page: "+ex.Message;
             }
         }
     }
@@ -311,32 +394,85 @@ namespace AeroHelm.GcsCloud
         private readonly TextBox url = new TextBox();
         private readonly TextBox output = new TextBox();
         private readonly Button check = new Button();
+        private readonly Label freshness = new Label();
+        private readonly CheckBox autoRefresh = new CheckBox();
+        private readonly System.Windows.Forms.Timer refreshTimer = new System.Windows.Forms.Timer();
+        private bool checking;
 
         public AeroHelmLinkWindow()
         {
             Text = "AeroHelm LINK — Cloud link diagnostics";
-            Width = 660; Height = 410;
+            Width = 770; Height = 470;
+            MinimumSize = new Drawing.Size(620,400);
             StartPosition = FormStartPosition.CenterParent;
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12),
-                RowCount = 3, ColumnCount = 1 };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
+            AutoScaleMode = AutoScaleMode.Dpi;
+            BackColor = Drawing.Color.FromArgb(8,8,8);
+            ForeColor = Drawing.Color.White;
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(15),
+                RowCount = 4, ColumnCount = 1 };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(layout);
+            var linkHeading = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1
+            };
+            linkHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,75));
+            linkHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
+            freshness.Dock = DockStyle.Fill;
+            freshness.Text = "LINK / UNKNOWN — no connection check has run";
+            freshness.ForeColor = Drawing.Color.FromArgb(210,210,210);
+            freshness.Font = new Drawing.Font("Segoe UI Semibold",15,Drawing.FontStyle.Bold);
+            freshness.TextAlign = Drawing.ContentAlignment.MiddleLeft;
+            linkHeading.Controls.Add(freshness,0,0);
+            var linkHome = new Button {
+                Text = "← HOME", Dock = DockStyle.Fill,
+                BackColor = Drawing.Color.FromArgb(38,38,38),
+                ForeColor = Drawing.Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            linkHome.FlatAppearance.BorderSize = 0;
+            linkHome.Click += (s,e) => Close();
+            linkHeading.Controls.Add(linkHome,1,0);
+            layout.Controls.Add(linkHeading,0,0);
             url.Text = AeroHelmWorkspaceSettings.CloudOrigin();
             url.Dock = DockStyle.Fill;
-            layout.Controls.Add(url, 0, 0);
-            check.Text = "Check cloud and MAVLink";
-            check.Width = 180;
+            url.BackColor = Drawing.Color.FromArgb(34,34,34);
+            url.ForeColor = Drawing.Color.White;
+            layout.Controls.Add(url, 0, 1);
+            check.Text = "CHECK CLOUD + MAVLINK";
+            check.Width = 225; check.Height = 41;
+            check.FlatStyle = FlatStyle.Flat;
+            check.FlatAppearance.BorderSize = 0;
+            check.BackColor = Drawing.Color.FromArgb(38,38,38);
+            check.ForeColor = Drawing.Color.White;
             check.Click += async (s,e) => await CheckAsync();
-            layout.Controls.Add(check, 0, 1);
+            autoRefresh.Text = "Monitor every 15 seconds (read only)";
+            autoRefresh.AutoSize = true;
+            autoRefresh.ForeColor = Drawing.Color.FromArgb(210,210,210);
+            autoRefresh.Margin = new Padding(12,11,0,0);
+            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            buttons.Controls.Add(check);
+            buttons.Controls.Add(autoRefresh);
+            layout.Controls.Add(buttons, 0, 2);
+            refreshTimer.Interval = 15000;
+            refreshTimer.Tick += async (s,e) => await CheckAsync();
+            autoRefresh.CheckedChanged += (s,e) => {
+                if (autoRefresh.Checked) refreshTimer.Start();
+                else refreshTimer.Stop();
+            };
             output.Dock = DockStyle.Fill;
             output.Multiline = true;
             output.ReadOnly = true;
             output.ScrollBars = ScrollBars.Vertical;
             output.Font = new Drawing.Font("Consolas", 10);
             output.Text = "No test has run. Link diagnostics are informational and do not establish flight safety.";
-            layout.Controls.Add(output, 0, 2);
+            output.BackColor = Drawing.Color.FromArgb(25,25,25);
+            output.ForeColor = Drawing.Color.FromArgb(230,230,230);
+            output.BorderStyle = BorderStyle.None;
+            layout.Controls.Add(output, 0, 3);
+            FormClosing += (s,e) => refreshTimer.Stop();
         }
 
         private static string Read(Uri origin, string route)
@@ -357,7 +493,11 @@ namespace AeroHelm.GcsCloud
 
         private async Task CheckAsync()
         {
+            if (checking || IsDisposed || Disposing) return;
+            checking = true;
             check.Enabled = false;
+            freshness.Text = "LINK / CHECKING — no data confirmed";
+            freshness.ForeColor = Drawing.Color.FromArgb(212,212,212);
             output.Text = "Connecting to private AeroHelm Cloud...";
             try
             {
@@ -379,7 +519,13 @@ namespace AeroHelm.GcsCloud
                 var json = new JavaScriptSerializer();
                 var h = json.Deserialize<Dictionary<string, object>>(result.health);
                 var m = json.Deserialize<Dictionary<string, object>>(result.mavlink);
+                if (IsDisposed || Disposing) return;
                 AeroHelmWorkspaceSettings.Save("cloud-url", origin.GetLeftPart(UriPartial.Authority));
+                bool fresh = m.ContainsKey("fresh") && m["fresh"] is bool && (bool)m["fresh"];
+                freshness.Text = fresh ? "LINK / FRESH TELEMETRY (CLOUD REPORTED)" :
+                                         "LINK / STALE OR NO PIXHAWK STREAM";
+                freshness.ForeColor = fresh ? Drawing.Color.FromArgb(196,236,196) :
+                                              Drawing.Color.FromArgb(255,184,150);
                 output.Text =
                     "Cloud: " + Convert.ToString(h["status"]) + Environment.NewLine +
                     "Mode: " + Convert.ToString(h["mode"]) + Environment.NewLine +
@@ -399,10 +545,23 @@ namespace AeroHelm.GcsCloud
             }
             catch (Exception ex)
             {
+                if (IsDisposed || Disposing) return;
+                freshness.Text = "LINK / UNAVAILABLE — NO VERIFIED TELEMETRY";
+                freshness.ForeColor = Drawing.Color.FromArgb(255,184,150);
                 output.Text = "Link check failed: " + ex.Message +
                     "\nCheck Tailscale, cloud API, hostname and TLS. No certificate checks were disabled.";
             }
-            finally { check.Enabled = true; }
+            finally
+            {
+                checking = false;
+                if (!IsDisposed && !Disposing) check.Enabled = true;
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) refreshTimer.Dispose();
+            base.Dispose(disposing);
         }
     }
 }

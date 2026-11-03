@@ -74,7 +74,9 @@ namespace AeroHelm.GcsCloud
             var tabs=new TabControl{Dock=DockStyle.Fill};
             var simulation=new TabPage("AUTONOMY — SIMULATION ONLY");
             var maintenance=new TabPage("MAINTENANCE — PHYSICAL APPROVAL");
+            var policy=new TabPage("CAPABILITIES — READ ONLY");
             tabs.TabPages.Add(simulation);tabs.TabPages.Add(maintenance);
+            tabs.TabPages.Add(policy);
             Controls.Add(tabs);
             status.Dock=DockStyle.Bottom;status.Height=140;status.Multiline=true;
             status.ScrollBars=ScrollBars.Vertical;status.ReadOnly=true;
@@ -148,6 +150,88 @@ namespace AeroHelm.GcsCloud
                 Text="After requesting, the local Pi operator must run:\n" +
                     "agent/.venv/bin/python -m agent.supervised_calibration <request-uuid>\n" +
                     "The remote API alone cannot approve the physical calibration."});
+
+            // Read-only policy overview is suitable for checking the cloud
+            // before any later Pi/hardware acceptance. Never grants a lease.
+            var policyPage=new FlowLayoutPanel {
+                Dock=DockStyle.Fill,Padding=new Padding(12),
+                AutoScroll=true,FlowDirection=FlowDirection.TopDown,WrapContents=false
+            };
+            policy.Controls.Add(policyPage);
+            policyPage.Controls.Add(new Label {
+                Text="Cloud capabilities are declarations, NOT a physical flight-clearance.",
+                Width=680,Height=44
+            });
+            var capabilityReport=new TextBox {
+                Multiline=true,ReadOnly=true,ScrollBars=ScrollBars.Vertical,
+                Width=680,Height=260,
+                Text="No authenticated policy response has been requested."
+            };
+            var refreshPolicy=new Button {Text="Refresh read-only cloud capabilities",Width=310};
+            refreshPolicy.Click+=async(s,e)=>{
+                refreshPolicy.Enabled=false;
+                capabilityReport.Text="Retrieving authenticated operations policy...";
+                try
+                {
+                    capabilityReport.Text=await Api("GET","api/v1/operations/capabilities");
+                }
+                catch(Exception ex){capabilityReport.Text="Policy unavailable: "+Error(ex);}
+                finally {if(!IsDisposed)refreshPolicy.Enabled=true;}
+            };
+            policyPage.Controls.Add(refreshPolicy);
+            policyPage.Controls.Add(capabilityReport);
+            policyPage.Controls.Add(new Label {
+                Width=680,Height=80,
+                Text="Only a physically present Pi operator may authorize permitted supervised calibration."+
+                     Environment.NewLine+
+                     "Cloud autonomous missions run in a separate simulator; real aircraft execution remains blocked."
+            });
+
+            foreach(var panel in new[]{sim,maint,policyPage})
+            {
+                var home=new Button {Text="← HOME / CLOSE OPS",Width=300,Height=42};
+                home.Click+=(s,e)=>Close();
+                panel.Controls.Add(home);
+                panel.Controls.SetChildIndex(home,0);
+            }
+            BackColor=Drawing.Color.FromArgb(8,8,8);
+            ForeColor=Drawing.Color.White;
+            AutoScaleMode=AutoScaleMode.Dpi;
+            KeyPreview=true;
+            KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape){Close();e.Handled=true;}};
+            ApplyDarkTheme(this);
+        }
+
+        private static void ApplyDarkTheme(Control parent)
+        {
+            foreach(Control child in parent.Controls)
+            {
+                if(child is TabPage || child is FlowLayoutPanel || child is TabControl)
+                {
+                    child.BackColor=Drawing.Color.FromArgb(18,18,18);
+                    child.ForeColor=Drawing.Color.White;
+                }
+                if(child is Button)
+                {
+                    var button=(Button)child;
+                    button.Height=Math.Max(40,button.Height);
+                    button.FlatStyle=FlatStyle.Flat;
+                    button.FlatAppearance.BorderSize=0;
+                    button.BackColor=Drawing.Color.FromArgb(39,39,39);
+                    button.ForeColor=Drawing.Color.White;
+                    button.UseVisualStyleBackColor=false;
+                }
+                else if(child is TextBox || child is ComboBox)
+                {
+                    child.BackColor=Drawing.Color.FromArgb(32,32,32);
+                    child.ForeColor=Drawing.Color.White;
+                }
+                else if(child is Label || child is CheckBox)
+                {
+                    child.ForeColor=Drawing.Color.FromArgb(222,222,222);
+                }
+                ApplyDarkTheme(child);
+            }
         }
 
         private void Busy(bool value,string message)
