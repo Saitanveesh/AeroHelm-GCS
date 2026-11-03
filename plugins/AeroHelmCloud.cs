@@ -420,8 +420,11 @@ namespace AeroHelm.GcsCloud
             Uri url;
             if (!Uri.TryCreate(text.Trim(), UriKind.Absolute, out url))
                 throw new InvalidOperationException("Enter an absolute cloud URL.");
-            if (url.Scheme != Uri.UriSchemeHttps && !(url.Scheme == Uri.UriSchemeHttp && url.IsLoopback))
-                throw new InvalidOperationException("Cloud requires HTTPS. HTTP is allowed only for loopback development.");
+            if (!(url.Scheme == Uri.UriSchemeHttps &&
+                  (url.Host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase) ||
+                   url.IsLoopback) ||
+                  url.Scheme == Uri.UriSchemeHttp && url.IsLoopback))
+                throw new InvalidOperationException("Cloud requires private Tailscale HTTPS. HTTP is allowed only on loopback.");
             if (!string.IsNullOrEmpty(url.UserInfo) || !string.IsNullOrEmpty(url.Query) ||
                 !string.IsNullOrEmpty(url.Fragment) || url.AbsolutePath != "/")
                 throw new InvalidOperationException("Enter only the cloud origin; no path, query or credentials.");
