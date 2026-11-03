@@ -30,6 +30,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _ops;
         private ToolStripButton _intel;
         private ToolStripButton _touch;
+        internal static AeroHelmReceiveOnlyBridge ActiveNativeBridge;
         private EventHandler _touchStartupShown;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
@@ -138,6 +139,16 @@ namespace AeroHelm.GcsCloud
                 main.MenuSimulation.Visible = false;
                 main.MenuHelp.Visible = false;
             }
+            // The native loopback bridge consumes the already authenticated
+            // in-memory startup session: one cloud login, no Python terminal.
+            // Never run both the native and legacy Python bridges on port 5760.
+            if (string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_INTERNAL_TCP_BRIDGE"), "1", StringComparison.Ordinal))
+            {
+                ActiveNativeBridge = new AeroHelmReceiveOnlyBridge();
+                ActiveNativeBridge.Start(); // Fail closed if login/port unavailable.
+            }
+
             // Dedicated Windows tablet/kiosk mode is opt-in. Native Mission
             // Planner still starts normally first, including existing
             // AeroHelm operator login and all radio/USB recovery paths.
@@ -202,6 +213,11 @@ namespace AeroHelm.GcsCloud
 
         public override bool Exit()
         {
+            if (ActiveNativeBridge != null)
+            {
+                ActiveNativeBridge.Dispose();
+                ActiveNativeBridge = null;
+            }
             if (_button != null)
             {
                 var main = MainV2.instance;
