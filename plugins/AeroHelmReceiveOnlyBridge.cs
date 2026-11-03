@@ -55,8 +55,9 @@ namespace AeroHelm.GcsCloud
             {
                 listener.Start(1); // Exclusive loopback port; no public or LAN bind.
                 cancellation = new CancellationTokenSource();
+                var stop = cancellation.Token; // capture before shutdown can null the field
                 state = "WAITING FOR NATIVE TCP CLIENT";
-                worker = Task.Run(() => AcceptLoopAsync(cancellation.Token));
+                worker = Task.Run(() => AcceptLoopAsync(stop));
                 return true;
             }
             catch (SocketException)
