@@ -16,6 +16,7 @@ on:
       - "plugins/AeroHelmReadOnlyPages.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
       - "scripts/Start-AeroHelm-Touch.ps1"
+      - "scripts/Test-AeroHelmWindowsPages.ps1"
       - "plugins/AeroHelmWorkspace.cs"
       - "plugins/AeroHelmOperations.cs"
       - "plugins/AeroHelmPlatformV2.cs"
@@ -31,12 +32,22 @@ on:
       - "plugins/AeroHelmTouchPanel.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
       - "scripts/Start-AeroHelm-Touch.ps1"
+      - "scripts/Test-AeroHelmWindowsPages.ps1"
       - "plugins/AeroHelmPlatformV2.cs"
       - "Plugins/AeroHelmCloud/**"
       - ".github/workflows/aerohelm-cloud-plugin.yml"
   workflow_dispatch:
 
 jobs:
+  windows-page-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify native Windows page source contracts (no aircraft)
+        shell: pwsh
+        run: ./scripts/Test-AeroHelmWindowsPages.ps1
+
   plugin-build:
     runs-on: windows-latest
     timeout-minutes: 35
