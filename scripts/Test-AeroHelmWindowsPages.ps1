@@ -34,6 +34,10 @@ foreach ($module in @('FLEET','SECURITY','ANALYTICS')) {
 }
 Require-Text $touch 'MainV2.instance' 'Mission Planner must remain the native root.'
 Require-Text $touch 'Keys.Escape' 'Touch view must retain Escape-to-close.'
+Require-Text $touch 'RefreshCloudStatusAsync' 'HOME authenticated link status is missing.'
+Require-Text $touch 'api/v1/mavlink/health' 'HOME status must use read-only MAVLink health.'
+Require-Text $touch 'CLOUD / STALE OR DISCONNECTED' 'HOME must report stale aircraft status.'
+Require-Text $touch 'CLOUD / UNAVAILABLE' 'HOME needs a fail-closed disconnected state.'
 Require-Text $cloud 'AEROHELM_TOUCH_STARTUP' 'Windows touch startup opt-in is missing.'
 
 foreach ($route in @(
@@ -46,6 +50,9 @@ foreach ($route in @(
     Require-Text $pages $route "Missing authenticated read-only backend contract: $route"
 }
 Require-Text $pages 'OperationsApi.Request("GET",route)' 'Page requests must use GET only.'
+Require-Text $pages 'case "discover": route = "api/v2/fleet"' 'Analytics must discover registered aircraft.'
+Require-Text $pages 'availableAircraft.Items.Count == 1' 'Auto-selection must require one unambiguous registered aircraft.'
+Require-Text $pages 'if (operation == "discover")' 'Analytics discovery needs an independent response view.'
 if ($pages -match 'OperationsApi.Request\("(POST|PUT|PATCH|DELETE)"') {
     throw 'Read-only pages unexpectedly contain an API mutation.'
 }

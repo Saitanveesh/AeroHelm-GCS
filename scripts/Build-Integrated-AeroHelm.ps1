@@ -8,7 +8,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$allowedBranches = @("feat/aerohelm-touch-console", "feat/aerohelm-windows-integration", "feat/aerohelm-windows-pages-v1")
+$allowedBranches = @("feat/aerohelm-touch-console", "feat/aerohelm-windows-integration", "feat/aerohelm-windows-pages-v1", "feat/aerohelm-windows-readiness-v2")
 $branch = (& git -C $root branch --show-current).Trim()
 if ($LASTEXITCODE -ne 0 -or $branch -notin $allowedBranches) {
     throw "Expected a reviewed AeroHelm Windows development branch; current branch $branch. Git fetch/switch manually first."

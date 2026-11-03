@@ -22,6 +22,7 @@ namespace AeroHelm.GcsCloud
         private readonly DataGridView table = new DataGridView();
         private readonly TextBox detail = new TextBox();
         private readonly TextBox vehicleId = new TextBox();
+        private readonly ComboBox availableAircraft = new ComboBox();
         private readonly Label state = new Label();
         private readonly List<Button> actions = new List<Button>();
         private bool busy;
@@ -121,6 +122,22 @@ namespace AeroHelm.GcsCloud
             }
             else
             {
+                // Analytics cannot assume a hard-coded aircraft ID. Discover
+                // actual registered vehicles from the existing authenticated
+                // FLEET API, then require a choice if more than one is present.
+                availableAircraft.DropDownStyle = ComboBoxStyle.DropDownList;
+                availableAircraft.Width = 160;
+                availableAircraft.Height = 35;
+                availableAircraft.BackColor = Surface;
+                availableAircraft.ForeColor = Ink;
+                availableAircraft.AccessibleName = "Select an authenticated aircraft";
+                availableAircraft.SelectedIndexChanged += (s,e) => {
+                    if(availableAircraft.SelectedItem != null)
+                        vehicleId.Text = Convert.ToString(availableAircraft.SelectedItem,
+                            CultureInfo.InvariantCulture);
+                };
+                bar.Controls.Add(availableAircraft);
+                ActionButton(bar,"Discover aircraft","discover");
                 ActionButton(bar,"Flight report", "report");
                 ActionButton(bar,"Recent telemetry", "history");
                 ActionButton(bar,"Offline archive", "archive");
@@ -185,8 +202,18 @@ namespace AeroHelm.GcsCloud
                 if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; }
             };
             Shown += async (s,e) =>
-                await LoadAsync(section == "FLEET" ? "fleet" :
-                                section == "SECURITY" ? "posture" : "report");
+            {
+                if (section == "ANALYTICS")
+                {
+                    await LoadAsync("discover");
+                    // Only one registered aircraft can be selected without
+                    // operator ambiguity; never invent or assume an ID.
+                    if (!IsDisposed && !Disposing && availableAircraft.Items.Count == 1)
+                        await LoadAsync("report");
+                }
+                else
+                    await LoadAsync(section == "FLEET" ? "fleet" : "posture");
+            };
         }
 
         private void ActionButton(FlowLayoutPanel parent, string caption, string operation)
@@ -253,6 +280,7 @@ namespace AeroHelm.GcsCloud
                 switch (operation)
                 {
                     case "fleet": route = "api/v2/fleet"; break;
+                    case "discover": route = "api/v2/fleet"; break;
                     case "alerts": route = "api/v2/vehicles/" + CheckedAircraftId() + "/alerts"; break;
                     case "posture": route = "api/v2/security/posture"; break;
                     case "audit": route = "api/v2/security/audit?limit=75"; break;
@@ -264,7 +292,10 @@ namespace AeroHelm.GcsCloud
             }
             catch (Exception ex)
             {
-                state.Text = "INPUT REQUIRED"; detail.Text = ex.Message; return;
+                table.Rows.Clear();
+                state.Text = "INPUT REQUIRED / NO VERIFIED DATA";
+                detail.Text = ex.Message;
+                return;
             }
 
             busy = true;
@@ -272,6 +303,11 @@ namespace AeroHelm.GcsCloud
             // Clear prior observations before new requests. Disconnected data must
             // not remain visible and appear to be the latest aircraft state.
             table.Rows.Clear();
+            if (operation == "discover")
+            {
+                availableAircraft.Items.Clear();
+                vehicleId.Clear();
+            }
             detail.Text = "Requesting authenticated " + operation + " view...";
             state.Text = "CHECKING  |  No link/safety assumption";
             try
@@ -308,7 +344,40 @@ namespace AeroHelm.GcsCloud
 
         private void Render(string operation, Dictionary<string,object> result)
         {
-            if (operation == "fleet")
+            if (operation == "discover")
+            {
+                SetColumns("Aircraft","Telemetry","Last sample (s)","Risk flags");
+                var vehicles = Array(Value(result,"vehicles"));
+                foreach (var entry in vehicles)
+                {
+                    var vehicle = AsObject(entry);
+                    var id = Convert.ToString(Value(vehicle,"vehicle_id"),CultureInfo.InvariantCulture);
+                    if (string.IsNullOrEmpty(id) ||
+                        !Regex.IsMatch(id,@"\A[A-Za-z0-9_-]{3,64}\z",
+                            RegexOptions.CultureInvariant))
+                        continue;
+                    availableAircraft.Items.Add(id);
+                    bool fresh = Value(vehicle,"online") is bool &&
+                                 (bool)Value(vehicle,"online");
+                    var row = table.Rows.Add(id,fresh ? "FRESH (<5s)" : "STALE / OFF",
+                        Display(Value(vehicle,"last_sample_age_s")),
+                        Display(Value(vehicle,"risks")));
+                    if (!fresh) table.Rows[row].DefaultCellStyle.ForeColor =
+                        Drawing.Color.FromArgb(244,176,151);
+                }
+                if (availableAircraft.Items.Count == 1)
+                    availableAircraft.SelectedIndex = 0;
+                detail.Text = availableAircraft.Items.Count == 0 ?
+                    "No registered aircraft are available for analytics." +
+                    Environment.NewLine + "No report has been retrieved." :
+                    availableAircraft.Items.Count == 1 ?
+                    "One registered aircraft found. A historical report may be retrieved." :
+                    "Multiple aircraft found. Choose an aircraft from the dropdown" +
+                    Environment.NewLine + "before requesting a report or history.";
+                detail.Text += Environment.NewLine +
+                    "Fleet freshness is not aircraft flight readiness.";
+            }
+            else if (operation == "fleet")
             {
                 SetColumns("Aircraft","Link","Sample age (s)","Mode","Armed",
                            "Battery (%)","GNSS sats","Risk flags");
