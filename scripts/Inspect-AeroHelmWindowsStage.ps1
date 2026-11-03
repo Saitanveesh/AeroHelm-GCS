@@ -35,6 +35,11 @@ if ($actualBranch -notin @('feat/aerohelm-touch-console',
                            'feat/aerohelm-windows-readiness-v2')) {
     throw "Unreviewed Windows release branch: $actualBranch"
 }
+$dirty = @(& git -C $root status --porcelain --untracked-files=no)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot verify local Git worktree.' }
+if ($dirty.Count -gt 0) {
+    throw 'Tracked source modifications are present. Commit/stash before recording a reproducible readiness result.'
+}
 if ($Stage -eq 'Build' -and (Get-Process MissionPlanner -ErrorAction SilentlyContinue)) {
     throw 'Close Mission Planner before building. Do not replace loaded runtime binaries.'
 }
