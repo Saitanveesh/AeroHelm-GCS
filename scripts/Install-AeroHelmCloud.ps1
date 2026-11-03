@@ -72,6 +72,15 @@ try {
     $installedHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($installedHash -ne $sourceHash) { throw 'Installed plugin DLL failed SHA-256 verification.' }
 
+    # Deliberate failure injection is available ONLY on a disposable CI
+    # runner with two independent explicit opt-ins. It allows an automated
+    # regression test to assert the PREVIOUS runtime bytes are restored.
+    if ($env:GITHUB_ACTIONS -eq 'true' -and
+        $env:AEROHELM_DISPOSABLE_CI -eq '1' -and
+        $env:AEROHELM_TEST_FAIL_AFTER_COPY -eq '1') {
+        throw 'INJECTED CI FAILURE AFTER DLL INSTALL — validating automatic rollback.'
+    }
+
     # The old interpreted C# plugin would create duplicate toolbar instances.
     # Remove it only AFTER DLL installation succeeded and a backup exists.
     if ($hadSource) { Remove-Item -LiteralPath $oldSource -Force -ErrorAction Stop }

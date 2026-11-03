@@ -21,6 +21,7 @@ $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
 $cloud = Read-Source 'plugins/AeroHelmCloud.cs'
 $installer = Read-Source 'scripts/Install-AeroHelmCloud.ps1'
 $rollback = Read-Source 'scripts/Restore-AeroHelmPlugin.ps1'
+$roundtrip = Read-Source 'scripts/Test-AeroHelmPluginRoundtrip.ps1'
 $launcher = Read-Source 'scripts/Start-AeroHelm-Touch.ps1'
 
 foreach ($row in @(
@@ -51,6 +52,11 @@ Require-Text $installer 'previous_source_sha256' 'Installer must preserve legacy
 Require-Text $installer 'Plugin installation failed; attempting to restore' 'Installer must roll back failed installation.'
 Require-Text $rollback 'Assert-PreviousHash' 'Rollback must verify backup hashes before restoration.'
 Require-Text $rollback 'if (-not $Apply)' 'Restoration must require an explicit -Apply switch.'
+Require-Text $installer 'AEROHELM_TEST_FAIL_AFTER_COPY' 'Installer must support triple-gated CI failure injection.'
+Require-Text $installer "`$env:GITHUB_ACTIONS -eq 'true'" 'Installer fault injection requires Actions flag.'
+Require-Text $roundtrip 'Expected injected installation failure was not observed.' 'CI must exercise automatic failure rollback.'
+Require-Text $roundtrip 'Automatic installer error rollback did not restore previous DLL bytes.' 'CI must prove original DLL was restored.'
+Require-Text $roundtrip 'Automatic installer error rollback did not restore previous C# plugin.' 'CI must prove old dynamic source was restored.'
 
 foreach ($route in @(
     'api/v2/fleet',
