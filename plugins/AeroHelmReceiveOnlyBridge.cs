@@ -82,7 +82,8 @@ namespace AeroHelm.GcsCloud
                 catch (SocketException) when (stop.IsCancellationRequested) { return; }
                 catch (OperationCanceledException) when (!stop.IsCancellationRequested)
                 {
-                    state = "LOCAL TCP DISCONNECTED";
+                    state = DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc ?
+                        "CLOUD SESSION EXPIRED; SIGN IN AGAIN" : "LOCAL TCP DISCONNECTED";
                 }
                 catch (Exception ex) when (!stop.IsCancellationRequested)
                 {
