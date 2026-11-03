@@ -23,6 +23,12 @@ namespace MissionPlanner
             if (string.Equals(Environment.GetEnvironmentVariable("AEROHELM_REQUIRE_LOGIN"),
                               "1",StringComparison.Ordinal))
                 return true;
+            // Directly launching the compiled AeroHelm GCS must also require
+            // login before exposing the touch aircraft workspace.
+            // The explicit --local-maintenance path above remains offline.
+            string compiled = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                "plugins", "AeroHelm.Cloud.Plugin.Validation.dll");
+            if (File.Exists(compiled)) return true;
             try
             {
                 string branding=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"logo.txt");
@@ -130,7 +136,10 @@ namespace MissionPlanner
             {
                 Uri url;
                 if(!Uri.TryCreate(origin.Text.Trim(),UriKind.Absolute,out url) ||
-                   (url.Scheme!=Uri.UriSchemeHttps && !(url.Scheme==Uri.UriSchemeHttp&&url.IsLoopback)) ||
+                   !(url.Scheme==Uri.UriSchemeHttps &&
+                     (url.Host.EndsWith(".ts.net",StringComparison.OrdinalIgnoreCase) ||
+                      url.IsLoopback) ||
+                     url.Scheme==Uri.UriSchemeHttp && url.IsLoopback) ||
                    !string.IsNullOrEmpty(url.UserInfo)||url.AbsolutePath!="/"||
                    !string.IsNullOrEmpty(url.Query)||!string.IsNullOrEmpty(url.Fragment))
                     throw new InvalidOperationException("Enter a trusted HTTPS cloud origin only.");
