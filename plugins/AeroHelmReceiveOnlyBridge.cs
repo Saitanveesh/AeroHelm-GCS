@@ -130,6 +130,15 @@ namespace AeroHelm.GcsCloud
             using (var linked = CancellationTokenSource.CreateLinkedTokenSource(stop))
             using (var ws = new ClientWebSocket())
             {
+                // A live WebSocket must not outlive the authenticated operator
+                // session merely because its handshake succeeded earlier.
+                var lifetime = Program.AeroHelmTokenExpiresUtc - DateTime.UtcNow;
+                if (lifetime <= TimeSpan.Zero)
+                {
+                    state = "CLOUD SESSION EXPIRED; SIGN IN AGAIN";
+                    return;
+                }
+                linked.CancelAfter(lifetime);
                 ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
                 ws.Options.SetRequestHeader("Authorization",
                     "Bearer " + Program.AeroHelmOperatorToken);
@@ -179,7 +188,8 @@ namespace AeroHelm.GcsCloud
                     // DrainGcsAsync is cancellation-aware and has no send path.
                     var ignored = drain;
                     if (!stop.IsCancellationRequested)
-                        state = "NATIVE TCP DISCONNECTED";
+                        state = DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc ?
+                            "CLOUD SESSION EXPIRED; SIGN IN AGAIN" : "NATIVE TCP DISCONNECTED";
                 }
             }
         }
