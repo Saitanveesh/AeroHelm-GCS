@@ -30,6 +30,8 @@ on:
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmReadOnlyPages.cs"
       - "plugins/AeroHelmTouchPanel.cs"
+      - "plugins/AeroHelmOperations.cs"
+      - "plugins/AeroHelmWorkspace.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
       - "scripts/Start-AeroHelm-Touch.ps1"
       - "scripts/Test-AeroHelmWindowsPages.ps1"
