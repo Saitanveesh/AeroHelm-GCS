@@ -91,15 +91,6 @@ jobs:
         run: |
           & .\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
           if ($LASTEXITCODE -ne 0) { exit 1 }
-      - name: Upload nonsecret MSBuild diagnostic logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: aerohelm-windows-msbuild-diagnostics
-          path: build-logs/aerohelm-*.log
-          if-no-files-found: ignore
-          retention-days: 7
-
   survey-draft-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
