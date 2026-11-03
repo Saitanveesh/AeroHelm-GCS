@@ -7,6 +7,9 @@ using Drawing = FrameworkDrawing::System.Drawing;
 using Drawing2D = FrameworkDrawing::System.Drawing.Drawing2D;
 using MissionPlanner;
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 namespace AeroHelm.GcsCloud
@@ -16,7 +19,10 @@ namespace AeroHelm.GcsCloud
     internal sealed class AeroHelmTouchPanel : Form
     {
         private readonly TableLayoutPanel tiles = new TableLayoutPanel();
+        private readonly Label linkStatus = new Label();
+        private readonly Button refreshStatus = new Button();
         private bool opening;
+        private bool refreshingStatus;
 
         private static readonly string[] Names = {
             "FLIGHT", "PLAN", "VISION",
@@ -78,6 +84,29 @@ namespace AeroHelm.GcsCloud
                 Font = new Drawing.Font("Segoe UI", 9f)
             };
 
+            var linkBar = new TableLayoutPanel {
+                Dock = DockStyle.Bottom, Height = 48, ColumnCount = 2,
+                BackColor = Drawing.Color.FromArgb(14,14,14),
+                Padding = new Padding(16,4,16,4)
+            };
+            linkBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,76));
+            linkBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,24));
+            linkStatus.Dock = DockStyle.Fill;
+            linkStatus.Text = "CLOUD STATUS / UNKNOWN — no verified telemetry";
+            linkStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
+            linkStatus.Font = new Drawing.Font("Segoe UI Semibold",10f,Drawing.FontStyle.Bold);
+            linkStatus.TextAlign = Drawing.ContentAlignment.MiddleLeft;
+            linkStatus.AutoEllipsis = true;
+            refreshStatus.Text = "REFRESH LINK";
+            refreshStatus.Dock = DockStyle.Fill;
+            refreshStatus.FlatStyle = FlatStyle.Flat;
+            refreshStatus.FlatAppearance.BorderSize = 0;
+            refreshStatus.BackColor = Drawing.Color.FromArgb(36,36,36);
+            refreshStatus.ForeColor = Drawing.Color.White;
+            refreshStatus.Click += async (s,e) => await RefreshCloudStatusAsync();
+            linkBar.Controls.Add(linkStatus,0,0);
+            linkBar.Controls.Add(refreshStatus,1,0);
+
             // Deliberate fixed 3x3 geometry, even after resizing. FlowLayoutPanel
             // could wrap the last tile into a fourth row, violating the reference.
             tiles.Dock = DockStyle.Fill;
@@ -102,10 +131,70 @@ namespace AeroHelm.GcsCloud
             }
             Controls.Add(tiles);
             Controls.Add(bottom);
+            Controls.Add(linkBar);
             Controls.Add(top);
+            Shown += async (s,e) => await RefreshCloudStatusAsync();
             KeyDown += (s, e) => {
                 if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; }
             };
+        }
+
+        // This is a deliberately bounded observational GET, not a flight
+        // command or automatic remote control connection. Authentication and
+        // failure states are visible; no last-known-good state is reused.
+        private async Task RefreshCloudStatusAsync()
+        {
+            if (refreshingStatus || IsDisposed || Disposing) return;
+            refreshingStatus = true;
+            refreshStatus.Enabled = false;
+            linkStatus.Text = "CLOUD STATUS / CHECKING — NO FLIGHT AUTHORITY";
+            linkStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
+            try
+            {
+                var raw = await Task.Run(() => OperationsApi.Request(
+                    "GET","api/v1/mavlink/health"));
+                if (IsDisposed || Disposing) return;
+                var result = new JavaScriptSerializer()
+                    .Deserialize<Dictionary<string,object>>(raw);
+                object freshValue, onlineValue, ageValue, idValue;
+                var fresh = result.TryGetValue("fresh",out freshValue) &&
+                            freshValue is bool && (bool)freshValue;
+                var connected = result.TryGetValue("device_online",out onlineValue) &&
+                                onlineValue is bool && (bool)onlineValue;
+                result.TryGetValue("last_frame_age_ms",out ageValue);
+                result.TryGetValue("vehicle_id",out idValue);
+                string age = ageValue == null ? "UNKNOWN" :
+                    Convert.ToString(ageValue,System.Globalization.CultureInfo.InvariantCulture);
+                string aircraft = idValue == null ? "UNKNOWN" :
+                    Convert.ToString(idValue,System.Globalization.CultureInfo.InvariantCulture);
+                if (fresh && connected)
+                {
+                    linkStatus.Text = "CLOUD / FRESH DATA — " + aircraft +
+                        "  |  LAST FRAME " + age + " ms  |  READ ONLY";
+                    linkStatus.ForeColor = Drawing.Color.FromArgb(197,231,197);
+                }
+                else
+                {
+                    linkStatus.Text = "CLOUD / STALE OR DISCONNECTED — " + aircraft +
+                        "  |  DO NOT RELY ON OLD TELEMETRY";
+                    linkStatus.ForeColor = Drawing.Color.FromArgb(244,177,150);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed || Disposing) return;
+                bool auth = ex is InvalidOperationException &&
+                    ex.Message.IndexOf("login",StringComparison.OrdinalIgnoreCase) >= 0;
+                linkStatus.Text = auth ?
+                    "CLOUD / SIGN IN USING CLOUD — NO VERIFIED TELEMETRY" :
+                    "CLOUD / UNAVAILABLE — NO VERIFIED TELEMETRY";
+                linkStatus.ForeColor = Drawing.Color.FromArgb(244,177,150);
+            }
+            finally
+            {
+                refreshingStatus = false;
+                if (!IsDisposed && !Disposing) refreshStatus.Enabled = true;
+            }
         }
 
         private void Activate(string selected)
