@@ -169,8 +169,8 @@ namespace AeroHelm.GcsCloud
                     Convert.ToString(idValue,System.Globalization.CultureInfo.InvariantCulture);
                 if (fresh && connected)
                 {
-                    linkStatus.Text = "CLOUD / FRESH DATA — " + aircraft +
-                        "  |  LAST FRAME " + age + " ms  |  READ ONLY";
+                    linkStatus.Text = "CLOUD / FRAME FLOW — " + aircraft +
+                        "  |  LAST FRAME " + age + " ms  |  HUD HEARTBEAT NOT YET VERIFIED";
                     linkStatus.ForeColor = Drawing.Color.FromArgb(197,231,197);
                 }
                 else
@@ -192,6 +192,8 @@ namespace AeroHelm.GcsCloud
             }
             finally
             {
+                if (!IsDisposed && !Disposing && AeroHelmCloudPlugin.ActiveNativeBridge != null)
+                    linkStatus.Text += "  |  " + AeroHelmCloudPlugin.ActiveNativeBridge.Summary;
                 refreshingStatus = false;
                 if (!IsDisposed && !Disposing) refreshStatus.Enabled = true;
             }
