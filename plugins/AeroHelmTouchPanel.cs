@@ -396,12 +396,26 @@ namespace AeroHelm.GcsCloud
             root.RowStyles.Add(new RowStyle(SizeType.Absolute,66));
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             Controls.Add(root);
-            root.Controls.Add(new Label {
+            var heading = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1
+            };
+            heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,75));
+            heading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
+            heading.Controls.Add(new Label {
                 Text="SETTINGS  /  WINDOWS GCS",
                 Dock=DockStyle.Fill,TextAlign=Drawing.ContentAlignment.MiddleLeft,
-                Font=new Drawing.Font("Segoe UI Semibold",20,Drawing.FontStyle.Bold),
+                Font=new Drawing.Font("Segoe UI Semibold",19,Drawing.FontStyle.Bold),
                 ForeColor=Drawing.Color.White
             },0,0);
+            var home = new Button {
+                Text="← HOME", Dock=DockStyle.Fill, FlatStyle=FlatStyle.Flat,
+                ForeColor=Drawing.Color.White,
+                BackColor=Drawing.Color.FromArgb(37,37,37)
+            };
+            home.FlatAppearance.BorderSize=0;
+            home.Click+=(s,e)=>Close();
+            heading.Controls.Add(home,1,0);
+            root.Controls.Add(heading,0,0);
 
             var info = new TableLayoutPanel { Dock=DockStyle.Fill,
                 BackColor=Drawing.Color.FromArgb(33,33,33),
