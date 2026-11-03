@@ -89,7 +89,10 @@ Require-Text $workspace 'vision-url-2' 'Second private camera configuration miss
 Require-Text $workspace 'AeroHelmWorkspaceSettings.CheckedPrivateUrl(url.Text)' 'Camera URL validation missing.'
 Require-Text $workspace 'refreshTimer.Interval = 15000' 'LINK bounded polling setting missing.'
 Require-Text $workspace 'refreshTimer.Stop()' 'LINK watcher must stop on close.'
-Require-Text $operations 'CAPABILITIES — READ ONLY' 'OPS policy page is missing.'
+# Windows PowerShell 5.1 decodes BOM-less .ps1 files as ANSI. Construct the
+# Unicode em dash at runtime so this source test works on PS 5.1 and PS 7+.
+$opsPolicyTitle = 'CAPABILITIES ' + [char]0x2014 + ' READ ONLY'
+Require-Text $operations $opsPolicyTitle 'OPS policy page is missing.'
 Require-Text $operations 'Api("GET","api/v1/operations/capabilities")' 'OPS policy must be a read-only GET.'
 Require-Text $project 'AeroHelmReadOnlyPages.cs' 'Native plugin project must compile new pages.'
 Write-Host 'PASS: Windows nine-tile wiring and read-only page contract checks.' -ForegroundColor Green
