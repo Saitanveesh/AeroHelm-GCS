@@ -2,7 +2,9 @@
 # Mission Planner retains all native controls, USB and telemetry-radio paths.
 param(
     [switch]$ManualTouch,
-    [switch]$ReadOnlyCloudHUD
+    [switch]$ReadOnlyCloudHUD,
+    [switch]$NoInternalBridge,
+    [switch]$ShowNativeToolbar
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -34,6 +36,28 @@ if ($ManualTouch) {
 } else {
     [Environment]::SetEnvironmentVariable('AEROHELM_TOUCH_STARTUP','1','Process')
 }
+# Requiring operator login before native Mission Planner and TOUCH is the
+# default here regardless of product branding. Offline maintenance remains
+# available via the explicit native --local-maintenance recovery option.
+[Environment]::SetEnvironmentVariable('AEROHELM_REQUIRE_LOGIN','1','Process')
+# Hide the nonessential HELP and SIMULATION toolbar blocks in touch mode.
+# Their upstream functionality is preserved for maintenance/recovery.
+[Environment]::SetEnvironmentVariable('AEROHELM_REDUCED_TOOLBAR',
+    $(if ($ShowNativeToolbar) { '0' } else { '1' }), 'Process')
+# In-process single-login receive-only MAVLink bridge by default.
+[Environment]::SetEnvironmentVariable('AEROHELM_INTERNAL_TCP_BRIDGE',
+    $(if ($NoInternalBridge) { '0' } else { '1' }), 'Process')
+if (-not $env:AEROHELM_CLOUD_URL) {
+    [Environment]::SetEnvironmentVariable('AEROHELM_CLOUD_URL',
+        'https://aerohelm-vcn.tailf3ab6a.ts.net', 'Process')
+}
+if (-not $env:AEROHELM_CAMERA1_URL) {
+    [Environment]::SetEnvironmentVariable('AEROHELM_CAMERA1_URL',
+        'https://saitanveesh.tailf3ab6a.ts.net/cam', 'Process')
+}
+if (-not $env:AEROHELM_VISION_AUTO_OPEN) {
+    [Environment]::SetEnvironmentVariable('AEROHELM_VISION_AUTO_OPEN','1','Process')
+}
 # READ-ONLY cloud HUD is mandatory in this release track. Keep the switch
 # for compatibility with older operator runbooks, but never permit a
 # launch flag to enable remote aircraft commands.
@@ -41,6 +65,7 @@ if ($ManualTouch) {
 Write-Host 'Starting native Windows AeroHelm GCS touch panel.'
 Write-Host 'FLIGHT and PLAN navigate within Mission Planner. The other tiles open AeroHelm modules.'
 Write-Host 'Cloud command authority does not change. No automatic arming or mission execution.'
-Write-Host 'If startup login is active, authenticate first; then the touch panel will open.'
+Write-Host 'Authenticate once at startup. The touch panel opens after successful login.'
+Write-Host 'Native TCP uses 127.0.0.1:5760 and discards all outbound commands.'
 if ($ManualTouch) { Write-Host 'Manual mode: click TOUCH in Mission Planner.' }
 Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe)
