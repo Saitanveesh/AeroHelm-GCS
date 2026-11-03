@@ -55,8 +55,12 @@ if ($Stage -in @('Source','Build')) {
 if ($Stage -eq 'Build') {
     Write-Host '[BUILD] Native Visual Studio build; writes local build and plugin outputs.'
     Write-Host 'This does not deploy Oracle, Pi or enable vehicle commands.'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (
-        Join-Path $PSScriptRoot 'Build-Integrated-AeroHelm.ps1') -SkipBranding:$SkipBranding
+    $buildScript = Join-Path $PSScriptRoot 'Build-Integrated-AeroHelm.ps1'
+    if ($SkipBranding) {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $buildScript -SkipBranding
+    } else {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $buildScript
+    }
     if ($LASTEXITCODE -ne 0) { throw 'Windows integrated build failed.' }
 }
 if ($Stage -in @('Build','Artifacts')) {
