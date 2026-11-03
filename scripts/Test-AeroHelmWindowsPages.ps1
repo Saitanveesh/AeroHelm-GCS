@@ -16,6 +16,7 @@ function Require-Text([string]$content, [string]$needle, [string]$reason) {
 $touch = Read-Source 'plugins/AeroHelmTouchPanel.cs'
 $pages = Read-Source 'plugins/AeroHelmReadOnlyPages.cs'
 $workspace = Read-Source 'plugins/AeroHelmWorkspace.cs'
+$operations = Read-Source 'plugins/AeroHelmOperations.cs'
 $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
 $cloud = Read-Source 'plugins/AeroHelmCloud.cs'
 
@@ -54,6 +55,8 @@ Require-Text $workspace 'vision-url-2' 'Second private camera configuration miss
 Require-Text $workspace 'AeroHelmWorkspaceSettings.CheckedPrivateUrl(url.Text)' 'Camera URL validation missing.'
 Require-Text $workspace 'refreshTimer.Interval = 15000' 'LINK bounded polling setting missing.'
 Require-Text $workspace 'refreshTimer.Stop()' 'LINK watcher must stop on close.'
+Require-Text $operations 'CAPABILITIES — READ ONLY' 'OPS policy page is missing.'
+Require-Text $operations 'Api("GET","api/v1/operations/capabilities")' 'OPS policy must be a read-only GET.'
 Require-Text $project 'AeroHelmReadOnlyPages.cs' 'Native plugin project must compile new pages.'
 Write-Host 'PASS: Windows nine-tile wiring and read-only page contract checks.' -ForegroundColor Green
 Write-Host 'Remaining gates: MSBuild, native plugin load, Windows touch UX, Pi/Pixhawk bench tests.'
