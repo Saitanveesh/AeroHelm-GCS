@@ -38,9 +38,9 @@ if (-not $SkipBridge) {
     } else {
         $py = Get-Command python.exe -ErrorAction Stop
         Write-Host 'Starting cloud bridge; use its masked operator password dialog.'
-        $args = @("`"$bridge`"", '--url', $CloudUrl, '--vehicle', $VehicleId,
+        $bridgeArgs = @("`"$bridge`"", '--url', $CloudUrl, '--vehicle', $VehicleId,
                   '--port', [string]$BridgePort)
-        Start-Process -FilePath $py.Source -ArgumentList $args -WorkingDirectory $backendRoot | Out-Null
+        Start-Process -FilePath $py.Source -ArgumentList $bridgeArgs -WorkingDirectory $backendRoot | Out-Null
         Write-Host 'Bridge may not listen until successful operator authentication.'
     }
 }
