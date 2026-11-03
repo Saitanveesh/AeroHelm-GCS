@@ -25,7 +25,7 @@ jobs:
       - name: Check out pinned Windows development snapshot and submodules
         uses: actions/checkout@v4
         with:
-          ref: f28db773fa14d7a0202106b0aa4aae0734459f2c
+          ref: 863dd9c159933aee056ee3cfd081a6f5cd6783cb
           submodules: recursive
           persist-credentials: false
           fetch-depth: 1
