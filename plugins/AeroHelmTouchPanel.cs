@@ -21,6 +21,9 @@ namespace AeroHelm.GcsCloud
         private readonly TableLayoutPanel tiles = new TableLayoutPanel();
         private readonly Label linkStatus = new Label();
         private readonly Button refreshStatus = new Button();
+        private readonly Label liveBridgeStatus = new Label();
+        private readonly System.Windows.Forms.Timer bridgeStatusTimer =
+            new System.Windows.Forms.Timer();
         private bool opening;
         private bool refreshingStatus;
 
@@ -76,13 +79,21 @@ namespace AeroHelm.GcsCloud
             top.Controls.Add(heading, 1, 0);
             top.Controls.Add(close, 2, 0);
 
-            var bottom = new Label {
-                Text = "WINDOWS GCS  •  Native Mission Planner remains available  •  Cloud link does not authorize physical flight",
-                Dock = DockStyle.Bottom, Height = 30,
-                TextAlign = Drawing.ContentAlignment.MiddleCenter,
-                ForeColor = Drawing.Color.FromArgb(155,155,155),
-                Font = new Drawing.Font("Segoe UI", 9f)
+            liveBridgeStatus.Text = "LOCAL TCP / UNVERIFIED — NO PHYSICAL FLIGHT AUTHORITY";
+            liveBridgeStatus.Dock = DockStyle.Bottom;
+            liveBridgeStatus.Height = 32;
+            liveBridgeStatus.TextAlign = Drawing.ContentAlignment.MiddleCenter;
+            liveBridgeStatus.AutoEllipsis = true;
+            liveBridgeStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
+            liveBridgeStatus.Font = new Drawing.Font("Segoe UI", 9f);
+            bridgeStatusTimer.Interval = 2000;
+            bridgeStatusTimer.Tick += (s,e) => {
+                var bridge = AeroHelmCloudPlugin.ActiveNativeBridge;
+                liveBridgeStatus.Text = bridge == null ?
+                    "LOCAL TCP / EXTERNAL OR DISABLED — NO PHYSICAL FLIGHT AUTHORITY" :
+                    bridge.Summary + "  |  READ ONLY";
             };
+            bridgeStatusTimer.Start();
 
             var linkBar = new TableLayoutPanel {
                 Dock = DockStyle.Bottom, Height = 48, ColumnCount = 2,
@@ -130,13 +141,14 @@ namespace AeroHelm.GcsCloud
                 tiles.Controls.Add(tile, i % 3, i / 3);
             }
             Controls.Add(tiles);
-            Controls.Add(bottom);
+            Controls.Add(liveBridgeStatus);
             Controls.Add(linkBar);
             Controls.Add(top);
             Shown += async (s,e) => await RefreshCloudStatusAsync();
             KeyDown += (s, e) => {
                 if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; }
             };
+            FormClosed += (s,e) => bridgeStatusTimer.Stop();
         }
 
         // This is a deliberately bounded observational GET, not a flight
