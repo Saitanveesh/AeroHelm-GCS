@@ -18,6 +18,7 @@ $pages = Read-Source 'plugins/AeroHelmReadOnlyPages.cs'
 $workspace = Read-Source 'plugins/AeroHelmWorkspace.cs'
 $operations = Read-Source 'plugins/AeroHelmOperations.cs'
 $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
+$mainProject = Read-Source 'MissionPlanner.csproj'
 $cloud = Read-Source 'plugins/AeroHelmCloud.cs'
 $installer = Read-Source 'scripts/Install-AeroHelmCloud.ps1'
 $rollback = Read-Source 'scripts/Restore-AeroHelmPlugin.ps1'
@@ -94,6 +95,9 @@ Require-Text $workspace 'refreshTimer.Stop()' 'LINK watcher must stop on close.'
 $opsPolicyTitle = 'CAPABILITIES ' + [char]0x2014 + ' READ ONLY'
 Require-Text $operations $opsPolicyTitle 'OPS policy page is missing.'
 Require-Text $operations 'Api("GET","api/v1/operations/capabilities")' 'OPS policy must be a read-only GET.'
+foreach ($excluded in @('obj3','Tools')) {
+    Require-Text $mainProject ('<Compile Remove="'+$excluded+'\**" />') "Main GCS must exclude $excluded from SDK default compilation."
+}
 Require-Text $project 'AeroHelmReadOnlyPages.cs' 'Native plugin project must compile new pages.'
 Write-Host 'PASS: Windows nine-tile wiring and read-only page contract checks.' -ForegroundColor Green
 Write-Host 'Remaining gates: MSBuild, native plugin load, Windows touch UX, Pi/Pixhawk bench tests.'
