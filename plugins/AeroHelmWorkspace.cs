@@ -379,32 +379,70 @@ namespace AeroHelm.GcsCloud
         private readonly TextBox url = new TextBox();
         private readonly TextBox output = new TextBox();
         private readonly Button check = new Button();
+        private readonly Label freshness = new Label();
+        private readonly CheckBox autoRefresh = new CheckBox();
+        private readonly System.Windows.Forms.Timer refreshTimer = new System.Windows.Forms.Timer();
+        private bool checking;
 
         public AeroHelmLinkWindow()
         {
             Text = "AeroHelm LINK — Cloud link diagnostics";
-            Width = 660; Height = 410;
+            Width = 770; Height = 470;
+            MinimumSize = new Drawing.Size(620,400);
             StartPosition = FormStartPosition.CenterParent;
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12),
-                RowCount = 3, ColumnCount = 1 };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
+            AutoScaleMode = AutoScaleMode.Dpi;
+            BackColor = Drawing.Color.FromArgb(8,8,8);
+            ForeColor = Drawing.Color.White;
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(15),
+                RowCount = 4, ColumnCount = 1 };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(layout);
+            freshness.Dock = DockStyle.Fill;
+            freshness.Text = "LINK / UNKNOWN — no connection check has run";
+            freshness.ForeColor = Drawing.Color.FromArgb(210,210,210);
+            freshness.Font = new Drawing.Font("Segoe UI Semibold",15,Drawing.FontStyle.Bold);
+            freshness.TextAlign = Drawing.ContentAlignment.MiddleLeft;
+            layout.Controls.Add(freshness,0,0);
             url.Text = AeroHelmWorkspaceSettings.CloudOrigin();
             url.Dock = DockStyle.Fill;
-            layout.Controls.Add(url, 0, 0);
-            check.Text = "Check cloud and MAVLink";
-            check.Width = 180;
+            url.BackColor = Drawing.Color.FromArgb(34,34,34);
+            url.ForeColor = Drawing.Color.White;
+            layout.Controls.Add(url, 0, 1);
+            check.Text = "CHECK CLOUD + MAVLINK";
+            check.Width = 225; check.Height = 41;
+            check.FlatStyle = FlatStyle.Flat;
+            check.FlatAppearance.BorderSize = 0;
+            check.BackColor = Drawing.Color.FromArgb(38,38,38);
+            check.ForeColor = Drawing.Color.White;
             check.Click += async (s,e) => await CheckAsync();
-            layout.Controls.Add(check, 0, 1);
+            autoRefresh.Text = "Monitor every 15 seconds (read only)";
+            autoRefresh.AutoSize = true;
+            autoRefresh.ForeColor = Drawing.Color.FromArgb(210,210,210);
+            autoRefresh.Margin = new Padding(12,11,0,0);
+            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            buttons.Controls.Add(check);
+            buttons.Controls.Add(autoRefresh);
+            layout.Controls.Add(buttons, 0, 2);
+            refreshTimer.Interval = 15000;
+            refreshTimer.Tick += async (s,e) => await CheckAsync();
+            autoRefresh.CheckedChanged += (s,e) => {
+                if (autoRefresh.Checked) refreshTimer.Start();
+                else refreshTimer.Stop();
+            };
             output.Dock = DockStyle.Fill;
             output.Multiline = true;
             output.ReadOnly = true;
             output.ScrollBars = ScrollBars.Vertical;
             output.Font = new Drawing.Font("Consolas", 10);
             output.Text = "No test has run. Link diagnostics are informational and do not establish flight safety.";
-            layout.Controls.Add(output, 0, 2);
+            output.BackColor = Drawing.Color.FromArgb(25,25,25);
+            output.ForeColor = Drawing.Color.FromArgb(230,230,230);
+            output.BorderStyle = BorderStyle.None;
+            layout.Controls.Add(output, 0, 3);
+            FormClosing += (s,e) => refreshTimer.Stop();
         }
 
         private static string Read(Uri origin, string route)
@@ -425,7 +463,11 @@ namespace AeroHelm.GcsCloud
 
         private async Task CheckAsync()
         {
+            if (checking || IsDisposed || Disposing) return;
+            checking = true;
             check.Enabled = false;
+            freshness.Text = "LINK / CHECKING — no data confirmed";
+            freshness.ForeColor = Drawing.Color.FromArgb(212,212,212);
             output.Text = "Connecting to private AeroHelm Cloud...";
             try
             {
@@ -447,7 +489,13 @@ namespace AeroHelm.GcsCloud
                 var json = new JavaScriptSerializer();
                 var h = json.Deserialize<Dictionary<string, object>>(result.health);
                 var m = json.Deserialize<Dictionary<string, object>>(result.mavlink);
+                if (IsDisposed || Disposing) return;
                 AeroHelmWorkspaceSettings.Save("cloud-url", origin.GetLeftPart(UriPartial.Authority));
+                bool fresh = m.ContainsKey("fresh") && m["fresh"] is bool && (bool)m["fresh"];
+                freshness.Text = fresh ? "LINK / FRESH TELEMETRY (CLOUD REPORTED)" :
+                                         "LINK / STALE OR NO PIXHAWK STREAM";
+                freshness.ForeColor = fresh ? Drawing.Color.FromArgb(196,236,196) :
+                                              Drawing.Color.FromArgb(255,184,150);
                 output.Text =
                     "Cloud: " + Convert.ToString(h["status"]) + Environment.NewLine +
                     "Mode: " + Convert.ToString(h["mode"]) + Environment.NewLine +
@@ -467,10 +515,23 @@ namespace AeroHelm.GcsCloud
             }
             catch (Exception ex)
             {
+                if (IsDisposed || Disposing) return;
+                freshness.Text = "LINK / UNAVAILABLE — NO VERIFIED TELEMETRY";
+                freshness.ForeColor = Drawing.Color.FromArgb(255,184,150);
                 output.Text = "Link check failed: " + ex.Message +
                     "\nCheck Tailscale, cloud API, hostname and TLS. No certificate checks were disabled.";
             }
-            finally { check.Enabled = true; }
+            finally
+            {
+                checking = false;
+                if (!IsDisposed && !Disposing) check.Enabled = true;
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) refreshTimer.Dispose();
+            base.Dispose(disposing);
         }
     }
 }
