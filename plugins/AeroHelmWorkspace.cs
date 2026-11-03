@@ -259,13 +259,28 @@ namespace AeroHelm.GcsCloud
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,30));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             Controls.Add(layout);
-            layout.Controls.Add(new Label {
+            var visionHeading = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1
+            };
+            visionHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,75));
+            visionHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
+            visionHeading.Controls.Add(new Label {
                 Text="VISION  /  PRIVATE CAMERA VIEWERS",
                 Dock=DockStyle.Fill,
-                Font=new Drawing.Font("Segoe UI Semibold",17,Drawing.FontStyle.Bold),
+                Font=new Drawing.Font("Segoe UI Semibold",16,Drawing.FontStyle.Bold),
                 ForeColor=Drawing.Color.White,
                 TextAlign=Drawing.ContentAlignment.MiddleLeft
             },0,0);
+            var visionHome = new Button {
+                Text = "← HOME", Dock = DockStyle.Fill,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Drawing.Color.FromArgb(38,38,38),
+                ForeColor = Drawing.Color.White
+            };
+            visionHome.FlatAppearance.BorderSize = 0;
+            visionHome.Click += (s,e) => Close();
+            visionHeading.Controls.Add(visionHome,1,0);
+            layout.Controls.Add(visionHeading,0,0);
 
             camera.DropDownStyle=ComboBoxStyle.DropDownList;
             camera.Items.AddRange(new object[] {"CAMERA 1 — Primary","CAMERA 2 — Optional"});
@@ -400,12 +415,27 @@ namespace AeroHelm.GcsCloud
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(layout);
+            var linkHeading = new TableLayoutPanel {
+                Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1
+            };
+            linkHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,75));
+            linkHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
             freshness.Dock = DockStyle.Fill;
             freshness.Text = "LINK / UNKNOWN — no connection check has run";
             freshness.ForeColor = Drawing.Color.FromArgb(210,210,210);
             freshness.Font = new Drawing.Font("Segoe UI Semibold",15,Drawing.FontStyle.Bold);
             freshness.TextAlign = Drawing.ContentAlignment.MiddleLeft;
-            layout.Controls.Add(freshness,0,0);
+            linkHeading.Controls.Add(freshness,0,0);
+            var linkHome = new Button {
+                Text = "← HOME", Dock = DockStyle.Fill,
+                BackColor = Drawing.Color.FromArgb(38,38,38),
+                ForeColor = Drawing.Color.White,
+                FlatStyle = FlatStyle.Flat
+            };
+            linkHome.FlatAppearance.BorderSize = 0;
+            linkHome.Click += (s,e) => Close();
+            linkHeading.Controls.Add(linkHome,1,0);
+            layout.Controls.Add(linkHeading,0,0);
             url.Text = AeroHelmWorkspaceSettings.CloudOrigin();
             url.Dock = DockStyle.Fill;
             url.BackColor = Drawing.Color.FromArgb(34,34,34);
