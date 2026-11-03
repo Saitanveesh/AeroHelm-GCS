@@ -59,6 +59,8 @@
     <Compile Remove="Msi\**" />
     <Compile Remove="obj2\**" />
     <Compile Remove="obj\**" />
+    <Compile Remove="obj3\**" />
+    <Compile Remove="Tools\**" />
     <Compile Remove="plugins\**" />
     <Compile Remove="Plugins\**" />
     <Compile Remove="Linux\**" />
@@ -72,6 +74,8 @@
     <EmbeddedResource Remove="Msi\**" />
     <EmbeddedResource Remove="obj2\**" />
     <EmbeddedResource Remove="obj\**" />
+    <EmbeddedResource Remove="obj3\**" />
+    <EmbeddedResource Remove="Tools\**" />
     <EmbeddedResource Remove="plugins\**" />
     <EmbeddedResource Remove="resedit\**" />
     <EmbeddedResource Remove="SikRadio\**" />
@@ -83,6 +87,8 @@
     <None Remove="Msi\**" />
     <None Remove="obj2\**" />
     <None Remove="obj\**" />
+    <None Remove="obj3\**" />
+    <None Remove="Tools\**" />
     <None Remove="plugins\**" />
     <None Remove="resedit\**" />
     <None Remove="SikRadio\**" />
