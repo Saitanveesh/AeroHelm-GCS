@@ -11,12 +11,15 @@ on:
       - feat/aerohelm-windows-integration
       - feat/aerohelm-windows-pages-v1
       - feat/aerohelm-windows-readiness-v2
+      - feat/aerohelm-windows-release-candidate
     paths:
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmTouchPanel.cs"
       - "plugins/AeroHelmReadOnlyPages.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
       - "scripts/Start-AeroHelm-Touch.ps1"
+      - "scripts/Install-AeroHelmCloud.ps1"
+      - "scripts/Restore-AeroHelmPlugin.ps1"
       - "scripts/Test-AeroHelmWindowsPages.ps1"
       - "plugins/AeroHelmWorkspace.cs"
       - "plugins/AeroHelmOperations.cs"
@@ -28,6 +31,8 @@ on:
       - ".github/workflows/aerohelm-cloud-plugin.yml"
   pull_request:
     paths:
+      - "scripts/Install-AeroHelmCloud.ps1"
+      - "scripts/Restore-AeroHelmPlugin.ps1"
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmReadOnlyPages.cs"
       - "plugins/AeroHelmTouchPanel.cs"
