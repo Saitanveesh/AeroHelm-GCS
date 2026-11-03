@@ -129,16 +129,16 @@ namespace AeroHelm.GcsCloud
                         OpenChild(new AeroHelmOpsWindow());
                         break;
                     case "SECURITY":
-                        OpenChild(new AeroHelmIntelWindow("SECURITY"));
+                        OpenChild(new AeroHelmReadOnlyPage("SECURITY"));
                         break;
                     case "FLEET":
-                        OpenChild(new AeroHelmIntelWindow("FLEET"));
+                        OpenChild(new AeroHelmReadOnlyPage("FLEET"));
                         break;
                     case "LINK":
                         OpenChild(new AeroHelmLinkWindow());
                         break;
                     case "ANALYTICS":
-                        OpenChild(new AeroHelmIntelWindow("ANALYTICS"));
+                        OpenChild(new AeroHelmReadOnlyPage("ANALYTICS"));
                         break;
                     case "SETTINGS":
                         OpenChild(new AeroHelmTouchSettingsWindow());
