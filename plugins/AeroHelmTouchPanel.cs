@@ -367,46 +367,120 @@ namespace AeroHelm.GcsCloud
         }
     }
 
+    // Windows-only settings hub. Does not expose bearer tokens or alter
+    // aircraft configuration through the cloud.
     internal sealed class AeroHelmTouchSettingsWindow : Form
     {
+        private readonly Label session = new Label();
+        private readonly Label origin = new Label();
+
         public AeroHelmTouchSettingsWindow()
         {
-            Text = "AeroHelm — Touch Settings";
-            Width = 530; Height = 340;
+            Text = "AeroHelm — Windows Settings";
+            Width = 740; Height = 560;
+            MinimumSize = new Drawing.Size(600,500);
             StartPosition = FormStartPosition.CenterParent;
-            BackColor = Drawing.Color.FromArgb(22,22,22);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            BackColor = Drawing.Color.FromArgb(8,8,8);
             ForeColor = Drawing.Color.White;
-            var stack=new FlowLayoutPanel {
-                Dock=DockStyle.Fill,Padding=new Padding(18),
-                FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true
+            Font = new Drawing.Font("Segoe UI",11);
+            KeyPreview = true;
+
+            var root = new TableLayoutPanel {
+                Dock = DockStyle.Fill, Padding = new Padding(20),
+                ColumnCount = 1, RowCount = 4
             };
-            Controls.Add(stack);
-            stack.Controls.Add(new Label {
-                Text="Mission Planner for Windows remains the flight-control foundation.",
-                Width=460,Height=52,ForeColor=Drawing.Color.White
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute,65));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute,100));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute,66));
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            Controls.Add(root);
+            root.Controls.Add(new Label {
+                Text="SETTINGS  /  WINDOWS GCS",
+                Dock=DockStyle.Fill,TextAlign=Drawing.ContentAlignment.MiddleLeft,
+                Font=new Drawing.Font("Segoe UI Semibold",20,Drawing.FontStyle.Bold),
+                ForeColor=Drawing.Color.White
+            },0,0);
+
+            var info = new TableLayoutPanel { Dock=DockStyle.Fill,
+                BackColor=Drawing.Color.FromArgb(33,33,33),
+                ColumnCount=1,RowCount=2,Padding=new Padding(15,8,15,8) };
+            info.RowStyles.Add(new RowStyle(SizeType.Percent,50));
+            info.RowStyles.Add(new RowStyle(SizeType.Percent,50));
+            foreach(var label in new[]{session,origin})
+            {
+                label.Dock=DockStyle.Fill;
+                label.ForeColor=Drawing.Color.FromArgb(228,228,228);
+                label.TextAlign=Drawing.ContentAlignment.MiddleLeft;
+                info.Controls.Add(label,0,info.Controls.Count);
+            }
+            root.Controls.Add(info,0,1);
+
+            var actions = new FlowLayoutPanel {
+                Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,
+                WrapContents=false,AutoScroll=true,Padding=new Padding(0,15,0,0)
+            };
+            root.Controls.Add(actions,0,2);
+            Add(actions,"CLOUD — login and vehicle registry",()=>{
+                using(var window=new CloudWindow()) window.ShowDialog(this);
+                RefreshSummary();
             });
-            Add(stack,"Cloud registry and operator session",()=> {
-                using(var w=new CloudWindow())w.ShowDialog(this);
+            Add(actions,"LINK — connectivity diagnostics",()=>{
+                using(var window=new AeroHelmLinkWindow()) window.ShowDialog(this);
             });
-            Add(stack,"Native Mission Planner configuration",()=>{
-                Close();MainV2.instance.MenuConfigTune.PerformClick();
+            Add(actions,"PARAMETERS — inspect verified read-only cache",()=>{
+                using(var window=new AeroHelmIntelWindow("PARAMETERS"))
+                    window.ShowDialog(this);
             });
-            stack.Controls.Add(new Label {
-                Text="Use CLOUD and native Mission Planner configuration for Windows operations. Cloud telemetry is read-only.",
-                Width=460,Height=66,ForeColor=Drawing.Color.LightGray
+            Add(actions,"MISSION PLANNER — native Config/Tuning",()=>{
+                Close();
+                var main=MainV2.instance;
+                if(main!=null && !main.IsDisposed)
+                {
+                    main.Activate();
+                    main.MenuConfigTune.PerformClick();
+                }
             });
+            Add(actions,"REFRESH — local session summary",RefreshSummary);
+            root.Controls.Add(new Label {
+                Text="Private cloud access is a view session, not flight-control authorization."+
+                    Environment.NewLine+
+                    "Native Mission Planner remains available for local recovery and configuration.",
+                Dock=DockStyle.Fill,TextAlign=Drawing.ContentAlignment.MiddleLeft,
+                ForeColor=Drawing.Color.FromArgb(180,180,180)
+            },0,3);
+            Shown+=(s,e)=>RefreshSummary();
+            KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape){Close();e.Handled=true;}};
         }
 
-        private void Add(FlowLayoutPanel host,string title,Action action)
+        private void RefreshSummary()
         {
-            var b=new Button {
-                Text=title,Width=450,Height=45,FlatStyle=FlatStyle.Flat,
-                BackColor=Drawing.Color.FromArgb(45,45,45),ForeColor=Drawing.Color.White
-            };
-            b.Click+=(s,e)=>action();
-            host.Controls.Add(b);
+            bool valid=!string.IsNullOrEmpty(Program.AeroHelmOperatorToken) &&
+                DateTime.UtcNow<Program.AeroHelmTokenExpiresUtc;
+            session.Text=valid ?
+                "Operator cloud JWT: ACTIVE (expires "+Program.AeroHelmTokenExpiresUtc.ToString("u")+")" :
+                "Operator cloud JWT: NOT AUTHENTICATED / EXPIRED";
+            string configured=Program.AeroHelmCloudOrigin;
+            if(string.IsNullOrWhiteSpace(configured))
+                configured=AeroHelmWorkspaceSettings.CloudOrigin();
+            origin.Text="Cloud origin: "+configured+
+                "  (operator tokens are never shown)";
         }
 
-
+        private static void Add(FlowLayoutPanel host,string caption,Action action)
+        {
+            var button=new Button {
+                Text=caption,Width=605,Height=49,FlatStyle=FlatStyle.Flat,
+                BackColor=Drawing.Color.FromArgb(37,37,37),
+                ForeColor=Drawing.Color.White,UseVisualStyleBackColor=false,
+                TextAlign=Drawing.ContentAlignment.MiddleLeft,
+                Padding=new Padding(16,0,0,0),Margin=new Padding(0,0,0,8)
+            };
+            button.FlatAppearance.BorderSize=0;
+            button.Click+=(s,e)=>action();
+            host.Controls.Add(button);
+        }
     }
+
 }
