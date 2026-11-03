@@ -129,8 +129,15 @@ namespace AeroHelm.GcsCloud
             // may still need for diagnosis, SITL and maintenance.
             _simulationWasVisible = main.MenuSimulation.Visible;
             _helpWasVisible = main.MenuHelp.Visible;
-            main.MenuSimulation.Visible = false;
-            main.MenuHelp.Visible = false;
+            // A GCS must keep its recovery/diagnostic navigation available.
+            // Compact toolbar hiding is opt-in only; the default preserves
+            // upstream HELP and Simulation for maintenance and debugging.
+            if (string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_REDUCED_TOOLBAR"), "1", StringComparison.Ordinal))
+            {
+                main.MenuSimulation.Visible = false;
+                main.MenuHelp.Visible = false;
+            }
             // Dedicated Windows tablet/kiosk mode is opt-in. Native Mission
             // Planner still starts normally first, including existing
             // AeroHelm operator login and all radio/USB recovery paths.
