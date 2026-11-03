@@ -22,6 +22,7 @@ $cloud = Read-Source 'plugins/AeroHelmCloud.cs'
 $installer = Read-Source 'scripts/Install-AeroHelmCloud.ps1'
 $rollback = Read-Source 'scripts/Restore-AeroHelmPlugin.ps1'
 $roundtrip = Read-Source 'scripts/Test-AeroHelmPluginRoundtrip.ps1'
+$preflight = Read-Source 'scripts/Test-AeroHelmPrivatePreflight.ps1'
 $launcher = Read-Source 'scripts/Start-AeroHelm-Touch.ps1'
 
 foreach ($row in @(
@@ -57,6 +58,14 @@ Require-Text $installer "`$env:GITHUB_ACTIONS -eq 'true'" 'Installer fault injec
 Require-Text $roundtrip 'Expected injected installation failure was not observed.' 'CI must exercise automatic failure rollback.'
 Require-Text $roundtrip 'Automatic installer error rollback did not restore previous DLL bytes.' 'CI must prove original DLL was restored.'
 Require-Text $roundtrip 'Automatic installer error rollback did not restore previous C# plugin.' 'CI must prove old dynamic source was restored.'
+Require-Text $preflight "Method='Get'" 'Private preflight must make observations via GET.'
+Require-Text $preflight "Method='Post'" 'Private preflight authentication contract missing.'
+Require-Text $preflight 'api/v1/auth/login' 'Login must be the only authenticated mutation.'
+Require-Text $preflight 'api/v2/security/posture' 'Private preflight must reject command-enabled policy.'
+Require-Text $preflight 'pi_fresh_link_reported' 'Private preflight must report link freshness.'
+Require-Text $preflight 'parameter_cache_verified_complete' 'M2 cache must be inspected.'
+Require-Text $preflight 'physical_flight_authorized=$false' 'Private preflight can never grant flight permissions.'
+Require-Text $preflight 'aerohelm-private-preflight.json' 'Preflight report must be written locally.'
 
 foreach ($route in @(
     'api/v2/fleet',
