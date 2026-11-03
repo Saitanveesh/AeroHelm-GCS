@@ -6,6 +6,7 @@ using Drawing = FrameworkDrawing::System.Drawing;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -271,6 +272,58 @@ namespace AeroHelm.GcsCloud
             return Uri.EscapeDataString(id);
         }
 
+
+        // The deployed M1 Oracle returns a JSON array from GET /api/v1/vehicles,
+        // while FLEET/ANALYTICS v2 expects {"vehicles":[...]}. Convert only the
+        // registry view. Unknown risk/security/history data stays unavailable.
+        private static string LegacyFleetSnapshot(string jsonArray)
+        {
+            var decoder = new JavaScriptSerializer();
+            var rows = decoder.DeserializeObject(jsonArray) as object[];
+            if (rows == null)
+                throw new InvalidOperationException("Unexpected M1 registry response.");
+            var mapped = new List<Dictionary<string,object>>();
+            foreach (var entry in rows)
+            {
+                var v = AsObject(entry);
+                var id = Value(v,"vehicle_id") as string;
+                if (string.IsNullOrWhiteSpace(id) ||
+                    !Regex.IsMatch(id,@"\A[A-Za-z0-9_-]{3,64}\z",
+                                   RegexOptions.CultureInvariant))
+                    continue;
+                DateTimeOffset timestamp;
+                var rawTimestamp = Convert.ToString(Value(v,"timestamp"),
+                                                     CultureInfo.InvariantCulture);
+                bool validTime = DateTimeOffset.TryParse(rawTimestamp,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out timestamp);
+                double ageSeconds = validTime ?
+                    Math.Max(0,(DateTimeOffset.UtcNow - timestamp).TotalSeconds) :
+                    double.NaN;
+                bool recent = validTime && ageSeconds < 5 &&
+                    ageSeconds >= 0 && timestamp <= DateTimeOffset.UtcNow.AddSeconds(2);
+                bool online = string.Equals(Convert.ToString(Value(v,"connection")),
+                                            "online",StringComparison.OrdinalIgnoreCase) &&
+                              string.Equals(Convert.ToString(Value(v,"source")),
+                                            "hardware",StringComparison.OrdinalIgnoreCase) &&
+                              recent;
+                mapped.Add(new Dictionary<string,object> {
+                    {"vehicle_id",id},
+                    {"online",online},
+                    {"last_sample_age_s",validTime ? (object)Math.Round(ageSeconds,1) : null},
+                    {"mode",Value(v,"mode")},
+                    {"armed",Value(v,"armed")},
+                    {"battery_pct",Value(v,"battery_pct")},
+                    {"satellites",Value(v,"satellites")},
+                    {"risks",new object[]{"M1: risk/security data unavailable"}}
+                });
+            }
+            return decoder.Serialize(new Dictionary<string,object> {
+                {"vehicles",mapped}
+            });
+        }
+
         private async Task LoadAsync(string operation)
         {
             if (busy || IsDisposed || Disposing) return;
@@ -312,13 +365,30 @@ namespace AeroHelm.GcsCloud
             state.Text = "CHECKING  |  No link/safety assumption";
             try
             {
-                var response = await Task.Run(() => OperationsApi.Request("GET",route));
+                bool usedM1Registry = false;
+                var response = await Task.Run(() => {
+                    try { return OperationsApi.Request("GET",route); }
+                    catch (WebException ex)
+                    {
+                        var http = ex.Response as HttpWebResponse;
+                        if ((operation != "fleet" && operation != "discover") ||
+                            http == null || http.StatusCode != HttpStatusCode.NotFound)
+                            throw;
+                        http.Dispose();
+                        var legacy = OperationsApi.Request("GET","api/v1/vehicles");
+                        var converted = LegacyFleetSnapshot(legacy);
+                        usedM1Registry = true;
+                        return converted;
+                    }
+                });
                 if (IsDisposed || Disposing) return;
                 var parsed = AsObject(json.DeserializeObject(response));
                 Render(operation,parsed);
                 state.Text = "OBSERVED  " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'",
                     CultureInfo.InvariantCulture) +
-                    "  |  Read-only cloud snapshot; NOT an aircraft safety clearance.";
+                    (usedM1Registry ?
+                        "  |  LEGACY M1 REGISTRY; RISK/HISTORY NOT AVAILABLE" :
+                        "  |  Read-only cloud snapshot; NOT an aircraft safety clearance.");
             }
             catch (Exception ex)
             {
