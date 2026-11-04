@@ -62,6 +62,8 @@ namespace AeroHelm.GcsCloud
             }
         }
 
+        internal bool IsListening { get { return cancellation != null; } }
+
         internal bool Start()
         {
             if (cancellation != null) return false;
