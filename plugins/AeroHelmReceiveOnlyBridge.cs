@@ -63,6 +63,33 @@ namespace AeroHelm.GcsCloud
             }
         }
 
+        // Small, meaningful headline for HOME. The full Summary remains
+        // available in LINK diagnostics; never duplicate it in cloud status.
+        internal string CompactSummary
+        {
+            get
+            {
+                if (cancellation == null)
+                {
+                    if (state.StartsWith("PORT 5760", StringComparison.Ordinal))
+                        return "LOCAL TCP / PORT 5760 OCCUPIED — CLOSE OLD BRIDGE";
+                    return "LOCAL TCP / " + state;
+                }
+                long hbTicks = Interlocked.Read(ref lastHeartbeatUtcTicks);
+                long attTicks = Interlocked.Read(ref lastAttitudeUtcTicks);
+                DateTime now = DateTime.UtcNow;
+                bool hbLive = hbTicks > 0 &&
+                    (now - new DateTime(hbTicks, DateTimeKind.Utc)).TotalSeconds < 5;
+                bool attLive = attTicks > 0 &&
+                    (now - new DateTime(attTicks, DateTimeKind.Utc)).TotalSeconds < 5;
+                if (hbLive && attLive)
+                    return "LOCAL TCP / REAL HEARTBEAT + ATTITUDE RECEIVED";
+                return "LOCAL TCP / " + state +
+                    " | HB " + (hbLive ? "LIVE" : "MISSING") +
+                    " | ATT " + (attLive ? "LIVE" : "MISSING");
+            }
+        }
+
         internal bool IsListening { get { return cancellation != null; } }
 
         internal bool Start()
@@ -85,7 +112,9 @@ namespace AeroHelm.GcsCloud
             }
             catch (SocketException)
             {
-                state = "PORT 5760 IN USE; CHECK FOR AN OLD PYTHON BRIDGE";
+                // Another process can own this port (not necessarily Python).
+                // Never kill/reuse unknown listeners or bind a public interface.
+                state = "PORT 5760 OCCUPIED";
                 return false;
             }
         }
