@@ -30,6 +30,9 @@ $preflight = Read-Source 'scripts/Test-AeroHelmPrivatePreflight.ps1'
 $launcher = Read-Source 'scripts/Start-AeroHelm-Touch.ps1'
 $session = Read-Source 'scripts/Start-AeroHelm-Session.ps1'
 $nativeBridge = Read-Source 'plugins/AeroHelmReceiveOnlyBridge.cs'
+$bridgeContracts = Read-Source 'Tools/AeroHelmMavlinkBridgeTests/Program.cs'
+$mainNative = Read-Source 'MainV2.cs'
+$integratedBuild = Read-Source 'scripts/Build-Integrated-AeroHelm.ps1'
 
 foreach ($row in @(
     '"FLIGHT", "PLAN", "VISION"',
@@ -80,6 +83,18 @@ Require-Text $cloud 'ActiveNativeBridge.Start()' 'Native receive-only bridge sta
 Require-Text $nativeBridge 'IPAddress.Loopback, 5760' 'Native TCP listener must remain loopback only.'
 Require-Text $nativeBridge 'DrainGcsAsync' 'GCS-originating bytes must be discarded.'
 Require-Text $nativeBridge 'ValidFrame' 'Inbound MAVLink frame envelope must be validated.'
+Require-Text $nativeBridge 'TryReadAttitude' 'Real FC roll/pitch decode must be tested.'
+Require-Text $nativeBridge 'HB ' 'Heartbeat freshness must be explicit.'
+Require-Text $bridgeContracts 'AeroHelmReceiveOnlyBridge.TryReadAttitude' 'Native parser regression tests missing.'
+Require-Text $integratedBuild 'AeroHelmMavlinkBridgeTests.csproj' 'Native bridge tests must run before plugin installation.'
+Require-Text $integratedBuild 'feat/gcs-research-cybershield-twin-ui' 'Build launcher must accept the reviewed research branch.'
+Require-Text $launcher 'feat/gcs-research-cybershield-twin-ui' 'Touch launcher must accept the research branch.'
+Require-Text $launcher 'AEROHELM_AUTO_NATIVE_TCP' 'FLIGHT should connect its local bridge without prompting.'
+Require-Text $mainNative 'Host = "127.0.0.1", Port = "5760"' 'Native Mission Planner TCP should bind local bridge without prompting.'
+Require-Text $touch 'main.doConnect(MainV2.comPort,"TCP","57600"' 'Touch FLIGHT must reach native verified MAVLink receive path.'
+Require-Text $cloud 'AeroHelmIconPainter.Make(label,20)' 'AeroHelm toolbar needs per-module vector icons.'
+Require-Text $cloud 'main.MenuSimulation.Visible = false' 'Hide Simulation toolbar in default GCS profile.'
+Require-Text $cloud 'main.MenuHelp.Visible = false' 'Hide Help toolbar in default GCS profile.'
 Require-Text $nativeBridge 'ws.ReceiveAsync' 'Cloud receiver must be authenticated and read only.'
 if ($nativeBridge.Contains('ws.SendAsync') -or $nativeBridge.Contains('ws.Send(')) {
     throw 'Native GCS must not send packets over the cloud WebSocket.'
