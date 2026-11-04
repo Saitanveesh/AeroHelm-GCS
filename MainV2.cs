@@ -1473,7 +1473,17 @@ namespace MissionPlanner
                     });
                     break;
                 case "TCP":
-                    comPort.BaseStream = new TcpSerial();
+                    // AeroHelm's receive-only embedded bridge is localhost-only.
+                    // Keep the native heartbeat verification; no fake HUD data.
+                    if (string.Equals(Environment.GetEnvironmentVariable(
+                            "AEROHELM_INTERNAL_TCP_BRIDGE"),"1",StringComparison.Ordinal) &&
+                        string.Equals(Environment.GetEnvironmentVariable(
+                            "AEROHELM_CLOUD_READONLY"),"1",StringComparison.Ordinal))
+                        comPort.BaseStream = new TcpSerial {
+                            Host = "127.0.0.1", Port = "5760", autoReconnect = false
+                        };
+                    else
+                        comPort.BaseStream = new TcpSerial();
                     _connectionControl.CMB_serialport.Text = "TCP";
                     break;
                 case "UDP":
