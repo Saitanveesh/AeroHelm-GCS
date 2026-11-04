@@ -79,6 +79,20 @@ namespace AeroHelm.GcsCloud
                 signed[2]=1;
                 Assert(!AeroHelmReceiveOnlyBridge.ValidFrame(signed,signed.Length,out id),
                        "signed MAVLink frame missing signature rejected");
+                byte[] attitudeV1=Frame(0xFE,30,28);
+                Buffer.BlockCopy(BitConverter.GetBytes(-0.12f),0,attitudeV1,6+4,4);
+                Buffer.BlockCopy(BitConverter.GetBytes(0.07f),0,attitudeV1,6+8,4);
+                Assert(AeroHelmReceiveOnlyBridge.TryReadAttitude(
+                    attitudeV1,attitudeV1.Length,out roll,out pitch),
+                    "real MAVLink v1 attitude payload decoded");
+                Assert(Math.Abs(roll+6.8755f)<0.01f &&
+                       Math.Abs(pitch-4.0107f)<0.01f,
+                       "MAVLink v1 roll and pitch preserve signs");
+                byte[] unsupported=Frame(0xFD,30,28);
+                unsupported[2]=0x80;
+                Assert(!AeroHelmReceiveOnlyBridge.ValidFrame(
+                    unsupported,unsupported.Length,out id),
+                    "reject unknown MAVLink v2 incompatibility bit");
                 Console.WriteLine("AeroHelm native bridge: PASS ("+count+" assertions)");
                 return 0;
             }
