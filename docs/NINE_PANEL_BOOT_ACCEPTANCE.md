@@ -56,3 +56,14 @@ agent and camera unit and enables them for the next boot without starting
 them during installation. No Tailscale Funnel or Oracle video relay.
 
 All hardware flight authority remains disabled in this acceptance phase.
+
+## Research lab additions (staged only)
+
+FLEET now has a user-consented offline energy-aware scheduler lab accepting
+explicit JSON input for up to 32 user-specified aircraft and 100 tasks;
+ANALYTICS has the Twin Lab for held-out reference fitting; SECURITY links
+research integrity and cyber-evidence views. They require a separately enabled
+V3 backend and must NEVER schedule, upload, arm or execute hardware missions.
+
+These are development features only. Do not use a scheduler proposal to infer
+verified airspace, geofence, weather, terrain or battery readiness.
