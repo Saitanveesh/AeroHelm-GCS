@@ -41,6 +41,14 @@ Require-Text $touch 'AeroHelmIconPainter.Make(name, 72)' 'Tile art must use dete
 foreach ($module in @('FLEET','SECURITY','ANALYTICS')) {
     Require-Text $touch ('new AeroHelmReadOnlyPage("'+$module+'")') "Touch page missing: $module"
 }
+Require-Text $pages 'api/v3/research/fleet' 'Research fleet service must be read-only GET.'
+Require-Text $pages 'api/v3/research/evidence-integrity' 'Security evidence verification route missing.'
+Require-Text $pages 'api/v3/vehicles/' 'Per-aircraft digital-shadow route missing.'
+Require-Text $pages 'digital-shadow' 'ANALYTICS digital shadow is not wired.'
+Require-Text $pages 'cyber-events' 'SECURITY CyberShield is not wired.'
+Require-Text $pages 'vision-events' 'Camera inference metadata viewer missing.'
+Require-Text $pages 'RenderResearch' 'Research pages must disclose experimental status.'
+Require-Text $pages 'No physical flight-control authority.' 'Research pages must not suggest flight authorization.'
 Require-Text $touch 'MainV2.instance' 'Mission Planner must remain the native root.'
 Require-Text $touch 'Keys.Escape' 'Touch view must retain Escape-to-close.'
 Require-Text $touch 'RefreshCloudStatusAsync' 'HOME authenticated link status is missing.'
