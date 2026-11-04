@@ -107,3 +107,12 @@ script refuses a conflicting listener instead of stealing its port.
 6. **Safety:** All propellers removed, vehicle disarmed and operator present before hardware acceptance. No cloud motor activation, remote arming, calibration, mission upload or parameter writes permitted.
 
 **Outstanding:** These gates have **not** been independently passed for the user's actual Windows hardware and deployed cloud. The code audit confirms source integration, not guaranteed behavior.
+
+## Runtime freshness is now enforced
+
+On the consolidated GCS branch, `Start-AeroHelm-Touch.ps1` refuses to
+launch if the post-build manifest is missing, its checkout commit differs,
+or the actual EXE/plugin SHA-256 differs. This prevents unintentionally
+opening an old GCS after `git pull`. The original working runtime remains
+available in the release snapshot for explicit recovery; it is never
+silently replaced by source-only changes.
