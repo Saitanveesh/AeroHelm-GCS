@@ -209,26 +209,14 @@ namespace AeroHelm.GcsCloud
                         {
                             Interlocked.Increment(ref attitudes);
                             Interlocked.Exchange(ref lastAttitudeUtcTicks, receivedTicks);
-                            // MAVLink ATTITUDE payload: time_boot_ms + roll/pitch
-                            // IEEE754 radians, at offsets +4 and +8. These are
-                            // measured FC frames, never invented orientations.
-                            int offset = packet[0] == 0xFE ? 6 : 10;
-                            if (packet[1] >= 12 && BitConverter.IsLittleEndian)
+                            float rollDeg,pitchDeg;
+                            if (TryReadAttitude(packet,length,out rollDeg,out pitchDeg))
                             {
-                                float roll = BitConverter.ToSingle(packet,offset+4);
-                                float pitch = BitConverter.ToSingle(packet,offset+8);
-                                double rollDeg = roll*180.0/Math.PI;
-                                double pitchDeg = pitch*180.0/Math.PI;
-                                if (!float.IsNaN(roll) && !float.IsInfinity(roll) &&
-                                    !float.IsNaN(pitch) && !float.IsInfinity(pitch) &&
-                                    Math.Abs(rollDeg) <= 180 && Math.Abs(pitchDeg) <= 90)
-                                {
-                                    Interlocked.Exchange(ref lastRollCentideg,
-                                        (long)Math.Round(rollDeg*100));
-                                    Interlocked.Exchange(ref lastPitchCentideg,
-                                        (long)Math.Round(pitchDeg*100));
-                                    Interlocked.Increment(ref validAttitudeSamples);
-                                }
+                                Interlocked.Exchange(ref lastRollCentideg,
+                                    (long)Math.Round(rollDeg*100));
+                                Interlocked.Exchange(ref lastPitchCentideg,
+                                    (long)Math.Round(pitchDeg*100));
+                                Interlocked.Increment(ref validAttitudeSamples);
                             }
                         }
                         Interlocked.Exchange(ref lastFrameUtcTicks, receivedTicks);
@@ -284,6 +272,32 @@ namespace AeroHelm.GcsCloud
                 return true;
             }
             return false;
+        }
+
+        // MAVLink 1/2 ATTITUDE (ID 30): time_boot_ms followed by IEEE754
+        // roll and pitch radians. This is passive decoding from *real frames*;
+        // a stale/invalid source never generates a new measurement.
+        internal static bool TryReadAttitude(byte[] frame, int size,
+                                             out float rollDegrees,out float pitchDegrees)
+        {
+            rollDegrees=0;
+            pitchDegrees=0;
+            int messageId;
+            if (!ValidFrame(frame,size,out messageId) || messageId!=30 ||
+                frame[1]<12 || !BitConverter.IsLittleEndian)
+                return false;
+            int offset=frame[0]==0xFE?6:10;
+            float roll=BitConverter.ToSingle(frame,offset+4);
+            float pitch=BitConverter.ToSingle(frame,offset+8);
+            if (float.IsNaN(roll) || float.IsInfinity(roll) ||
+                float.IsNaN(pitch) || float.IsInfinity(pitch))
+                return false;
+            double r=roll*180.0/Math.PI;
+            double p=pitch*180.0/Math.PI;
+            if (Math.Abs(r)>180 || Math.Abs(p)>90)return false;
+            rollDegrees=(float)r;
+            pitchDegrees=(float)p;
+            return true;
         }
 
         public void Dispose()
