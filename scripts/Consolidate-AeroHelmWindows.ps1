@@ -126,7 +126,7 @@ if(-not (Test-Path -LiteralPath $exe -PathType Leaf)){
 # hold at least one verified copy plus a safety buffer.
 $runtimeBytes=(Get-ChildItem -LiteralPath $runtime -Recurse -File -ErrorAction Stop |
     Measure-Object -Property Length -Sum).Sum
-$driveLetter=[System.IO.Path]::GetPathRoot($runtime).TrimEnd('\').TrimEnd(':')
+$driveLetter=[System.IO.Path]::GetPathRoot($runtime).Substring(0,1)
 $drive=Get-PSDrive -Name $driveLetter -ErrorAction Stop
 if($drive.Free -lt ([double]$runtimeBytes * 1.15 + 250MB)){
     throw 'Not enough free disk space to snapshot the complete old GCS runtime safely.'
