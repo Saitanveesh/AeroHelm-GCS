@@ -393,6 +393,34 @@ namespace AeroHelm.GcsCloud
                 pen.LineJoin = Drawing2D.LineJoin.Round;
                 switch(name)
                 {
+                    // Same vector icon system for touch and all toolbar plugins.
+                    // No dependency on emoji glyphs, fonts or external images.
+                    case "CLOUD":
+                        g.DrawArc(pen,4,10,9,9,90,180);
+                        g.DrawArc(pen,8,5,10,11,180,150);
+                        g.DrawArc(pen,15,11,6,7,250,200);
+                        g.DrawLine(pen,6,19,18,19);
+                        break;
+                    case "SURVEY":
+                        Lines(g,pen,new[]{P(3,7),P(10,4),P(15,7),P(21,4),
+                            P(21,18),P(15,21),P(10,18),P(3,21),P(3,7)});
+                        g.DrawLine(pen,10,4,10,18);
+                        g.DrawEllipse(pen,13,10,4,4);
+                        break;
+                    case "INTEL":
+                        g.DrawEllipse(pen,7,7,10,10);
+                        foreach(var point in new[]{P(12,2),P(21,8),P(21,16),
+                            P(12,22),P(3,16),P(3,8)})
+                        {
+                            g.DrawEllipse(pen,point.X-1,point.Y-1,2,2);
+                            g.DrawLine(pen,12,12,point.X,point.Y);
+                        }
+                        break;
+                    case "TOUCH":
+                        for(int row=0;row<3;row++)
+                            for(int col=0;col<3;col++)
+                                g.DrawRectangle(pen,3+col*7,3+row*7,4,4);
+                        break;
                     case "FLIGHT":
                         Lines(g,pen, new [] {P(17,20),P(16,13),P(21,10),P(21,7),P(16,8),
                             P(12,2),P(10,3),P(13,10),P(8,14),P(4,13),P(3,15),P(8,18),
