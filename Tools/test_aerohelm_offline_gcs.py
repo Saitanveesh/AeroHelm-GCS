@@ -74,7 +74,7 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("AEROHELM_CLOUD_READONLY", launch)
         self.assertIn("AEROHELM_INTERNAL_TCP_BRIDGE", launch)
         self.assertIn("AEROHELM_AUTO_NATIVE_TCP", launch)
-        self.assertIn("TCP 5760 is in use", session)
+        self.assertIn("TCP 5760 is occupied", session)
         self.assertIn("UseLegacyPythonBridge", session)
 
     def test_release_never_silently_uses_stale_exe_or_legacy_plugins(self):
@@ -123,6 +123,33 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("if ($listener.Count -gt 0 -and -not $SkipBridge)", session)
         self.assertIn("Refusing to reuse it.", session)
         self.assertNotIn("Stop-Process", launcher)
+
+    def test_real_attitude_preview_is_authenticated_and_never_inferred(self):
+        link = source("plugins/AeroHelmWorkspace.cs")
+        self.assertIn('OperationsApi.Request("GET","api/v1/mavlink/attitude")', link)
+        self.assertIn("AeroHelmCloudOrigin", link)
+        self.assertIn("ATTITUDE preview", link)
+        self.assertIn("STALE/MISSING — NO LIVE ATTITUDE", link)
+        self.assertIn("HUD HEARTBEAT NOT VERIFIED", link)
+        self.assertIn("GCS viewers: ", link)
+        self.assertIn("none attached; click FLIGHT", link)
+
+    def test_research_and_kerberos_are_not_misrepresented_as_deployed(self):
+        pages = source("plugins/AeroHelmReadOnlyPages.cs")
+        self.assertIn('ActionButton(bar,"Cloud capabilities", "capabilities")', pages)
+        self.assertIn('case "capabilities": route = "api/v3/research/capabilities";', pages)
+        self.assertIn("Research V3 is not deployed or enabled", pages)
+        self.assertIn("Kerberos integration: NOT PROVISIONED", pages)
+        self.assertIn("requires a provisioned KDC, SPNEGO gateway", pages)
+
+    def test_explicit_verified_bridge_stop_is_not_an_unguarded_process_kill(self):
+        session = source("scripts/Start-AeroHelm-Session.ps1")
+        self.assertIn("[switch]$StopVerifiedLegacyBridge", session)
+        self.assertIn("if ($StopVerifiedLegacyBridge", session)
+        self.assertIn("Get-CimInstance Win32_Process", session)
+        self.assertIn("aerohelm_tcp_bridge[.]py", session)
+        self.assertIn("Stop-Process -Id $ownerId -ErrorAction Stop", session)
+        self.assertIn("Refusing to reuse it.", session)
 
     def test_login_modal_cannot_be_hidden_by_topmost_splash(self):
         program = source("Program.cs")
