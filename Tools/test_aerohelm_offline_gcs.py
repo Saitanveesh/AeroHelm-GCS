@@ -151,6 +151,29 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("Stop-Process -Id $ownerId -ErrorAction Stop", session)
         self.assertIn("Refusing to reuse it.", session)
 
+    def test_six_dof_physics_is_research_only_and_visible_from_analytics(self):
+        twin = source("plugins/AeroHelmTwinLabWindow.cs")
+        pages = source("plugins/AeroHelmReadOnlyPages.cs")
+        fixture = source("Tools/fixtures/physics_lab_hover.json")
+        self.assertIn("internal sealed class AeroHelmPhysicsLabWindow", twin)
+        self.assertIn("api/v3/research/physics-lab/evaluate", twin)
+        self.assertIn("MessageBoxButtons.YesNo", twin)
+        self.assertIn("No aircraft command occurred.", twin)
+        self.assertIn('Text="Six-DOF physics lab"', pages)
+        self.assertIn("new AeroHelmPhysicsLabWindow()", pages)
+        self.assertIn("NOT measured from an actual airframe", fixture)
+
+    def test_latest_release_update_never_resets_source_or_hijacks_ports(self):
+        update = source("scripts/Update-AeroHelmLatest.ps1")
+        self.assertIn("git -C $root merge --ff-only", update)
+        self.assertIn("git -C $root status --porcelain", update)
+        self.assertIn("Repair-AeroHelmWindows.ps1", update)
+        self.assertIn("Consolidate-AeroHelmWindows.ps1", update)
+        self.assertIn("StopVerifiedLegacyBridge", update)
+        self.assertNotIn("git reset --hard", update)
+        self.assertNotIn("git clean -fdx", update)
+        self.assertNotIn("Stop-Process", update)
+
     def test_login_modal_cannot_be_hidden_by_topmost_splash(self):
         program = source("Program.cs")
         gate = source("AeroHelmStartupGate.cs")
