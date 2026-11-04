@@ -21,6 +21,11 @@ $workspace = Read-Source 'plugins/AeroHelmWorkspace.cs'
 $operations = Read-Source 'plugins/AeroHelmOperations.cs'
 $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
 $mainProject = Read-Source 'MissionPlanner.csproj'
+# Prevent the SDK's recursive Compile glob from including archived runtime
+# plugin .cs files, the source of the CS0101/CS0111 Windows build failures.
+Require-Text $mainProject 'Compile Remove="build-logs\**"' 'Historical runtime backups would be compiled as duplicate source classes.'
+Require-Text $mainProject 'EmbeddedResource Remove="build-logs\**"' 'Historical backups must be excluded from embedded resource items.'
+Require-Text $mainProject 'None Remove="build-logs\**"' 'Historical backups must be excluded from SDK None items.'
 $cloud = Read-Source 'plugins/AeroHelmCloud.cs'
 $startupGate = Read-Source 'AeroHelmStartupGate.cs'
 $installer = Read-Source 'scripts/Install-AeroHelmCloud.ps1'
