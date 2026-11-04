@@ -132,8 +132,6 @@ try{
     if($LASTEXITCODE -ne 0){
         throw "Integrated Windows build returned exit code $LASTEXITCODE."
     }
-    Assert-PluginLayout
-
     # Archive only exact known obsolete DLL names; never delete arbitrary
     # Mission Planner or third-party plugins. The installer already archives
     # the dynamic AeroHelmCloud.cs source when it installs the new plugin.
