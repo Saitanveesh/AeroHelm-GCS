@@ -10,11 +10,16 @@ Open PowerShell in C:\Users\saita\AeroHelm-GCS and run:
 
     powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-AeroHelm-Session.ps1
 
-This starts the backend receive-only TCP bridge when missing, then launches
-Mission Planner Touch. The backend checkout must remain a sibling directory
-at C:\Users\saita\AeroHelm. Port 5760 is loopback-only. A masked password
-dialog is used by the bridge; CLOUD in the GCS needs a separate login.
-No password is stored and native TCP selection remains manual in M1.
+The current research development branch starts Mission Planner with a
+**single operator cloud login**, then opens TOUCH. Its *native receive-only*
+TCP adapter listens on `127.0.0.1:5760`, so the Python TCP bridge is no longer
+required by default. Existing CLOUD dialogs reuse the authenticated token.
+**Click FLIGHT once** to open native Flight Data and attempt a real Pixhawk
+MAVLink heartbeat check without entering a TCP host/port. The local receiver
+cannot generate missing HEARTBEAT or ATTITUDE messages and cannot transmit
+outbound aircraft commands. The prior external Python adapter remains an
+explicit fallback via `-UseLegacyPythonBridge` and needs its own masked login.
+Never run both adapters on port 5760 simultaneously. No password is stored.
 
 ## Acceptance matrix (each requires an observed live outcome)
 
@@ -67,3 +72,29 @@ V3 backend and must NEVER schedule, upload, arm or execute hardware missions.
 
 These are development features only. Do not use a scheduler proposal to infer
 verified airspace, geofence, weather, terrain or battery readiness.
+
+## Toolbar and visual integration
+
+AeroHelm toolbar plugins CLOUD, SURVEY, VISION, LINK, OPS, INTEL and TOUCH
+now use deterministic native vector icons (no external font or image assets).
+The AeroHelm operator profile hides upstream HELP and SIMULATION toolbar
+tiles by default. The original Mission Planner maintenance/SITL functionality
+is not uninstalled; `-ShowNativeToolbar` and offline `--local-maintenance`
+remain narrow recovery options, never remote flight-control permissions.
+
+## Build and no-data acceptance
+
+Review branch `feat/gcs-research-cybershield-twin-ui`, close Mission Planner,
+and run `Inspect-AeroHelmWindowsStage.ps1 -Stage Source`. Only after it
+passes should the Windows operator explicitly run `-Stage Build -SkipBranding`.
+The build runs actual linked receive-only bridge protocol tests before MSBuild.
+All runtime output is backed up by the transactional plugin installer.
+
+A previous successful M1 camera/cloud handshake does NOT establish valid
+native HUD. Current Oracle M1 update now has heartbeat/attitude count fields
+in source, but the deployed service must be separately upgraded/tested.
+Expect `heartbeat_frames_received` and `attitude_frames_received` to rise;
+watch the native GCS receive-only bridge's decoded real roll/pitch values
+while gently moving an unarmed, propeller-less FC. If HB=0, investigate
+Pi UART and FC heartbeat before touching parameters or stream rates.
+All LIVE hardware acceptance remains pending.
