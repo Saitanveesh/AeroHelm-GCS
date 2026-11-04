@@ -32,6 +32,8 @@ if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') {
     throw 'Unable to establish reproducible Git commit.'
 }
 if ($actualBranch -notin @('feat/aerohelm-touch-console',
+                           'feat/gcs-unified-login-readonly-bridge',
+                           'feat/gcs-research-cybershield-twin-ui',
                            'feat/aerohelm-windows-readiness-v2',
                            'feat/aerohelm-windows-release-candidate',
                            'feat/aerohelm-combined-preflight')) {
