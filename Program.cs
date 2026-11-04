@@ -488,8 +488,20 @@ namespace MissionPlanner
                 // recovery path for USB/firmware diagnostics.
                 if (AeroHelmStartupGate.ShouldRequire(Program.args))
                 {
+                    // Mission Planner's original splash has TopMost=true.
+                    // Hide it for the ENTIRE modal sign-in: otherwise it
+                    // obstructs the password field and steals mouse focus.
+                    bool resumeSplash = Splash != null && !Splash.IsDisposed &&
+                                        Splash.Visible;
+                    if (resumeSplash)
+                    {
+                        Splash.Hide();
+                        Splash.TopMost = false;
+                    }
                     if (!AeroHelmStartupGate.Authenticate())
                         return;
+                    if (resumeSplash && Splash != null && !Splash.IsDisposed)
+                        Splash.Show();
                 }
                 Application.Run(new MainV2());
             }
