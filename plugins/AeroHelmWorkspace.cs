@@ -493,6 +493,9 @@ namespace AeroHelm.GcsCloud
                 if (autoRefresh.Checked) refreshTimer.Start();
                 else refreshTimer.Stop();
             };
+            // Diagnostics are automatic in the AeroHelm profile. No cloud
+            // settings or aircraft commands are changed by this polling.
+            autoRefresh.Checked = true;
             output.Dock = DockStyle.Fill;
             output.Multiline = true;
             output.ReadOnly = true;
@@ -503,6 +506,7 @@ namespace AeroHelm.GcsCloud
             output.ForeColor = Drawing.Color.FromArgb(230,230,230);
             output.BorderStyle = BorderStyle.None;
             layout.Controls.Add(output, 0, 3);
+            Shown += async (s,e) => await CheckAsync();
             FormClosing += (s,e) => refreshTimer.Stop();
         }
 
@@ -553,10 +557,28 @@ namespace AeroHelm.GcsCloud
                 if (IsDisposed || Disposing) return;
                 AeroHelmWorkspaceSettings.Save("cloud-url", origin.GetLeftPart(UriPartial.Authority));
                 bool fresh = m.ContainsKey("fresh") && m["fresh"] is bool && (bool)m["fresh"];
-                freshness.Text = fresh ? "LINK / FRESH TELEMETRY (CLOUD REPORTED)" :
-                                         "LINK / STALE OR NO PIXHAWK STREAM";
-                freshness.ForeColor = fresh ? Drawing.Color.FromArgb(196,236,196) :
-                                              Drawing.Color.FromArgb(255,184,150);
+                object hbReady,attReady;
+                bool? realHeartbeat = null;
+                bool? realAttitude = null;
+                if (m.TryGetValue("native_hud_heartbeat_ready",out hbReady) &&
+                    hbReady is bool) realHeartbeat = (bool)hbReady;
+                if (m.TryGetValue("attitude_stream_active",out attReady) &&
+                    attReady is bool) realAttitude = (bool)attReady;
+                if (!fresh)
+                    freshness.Text = "LINK / STALE OR NO PIXHAWK STREAM";
+                else if (realHeartbeat == false)
+                    freshness.Text = "LINK / NO REAL HEARTBEAT — HUD CANNOT CONNECT";
+                else if (realAttitude == false)
+                    freshness.Text = "LINK / MISSING ATTITUDE — HORIZON WILL FREEZE";
+                else if (realHeartbeat == true && realAttitude == true)
+                    freshness.Text = "LINK / REAL HEARTBEAT + ATTITUDE RECEIVED";
+                else
+                    freshness.Text = "LINK / CLOUD FRAMES — HUD DATA UNVERIFIED";
+                freshness.ForeColor = (!fresh || realHeartbeat == false ||
+                    realAttitude == false) ? Drawing.Color.FromArgb(255,184,150) :
+                    realHeartbeat == true && realAttitude == true ?
+                    Drawing.Color.FromArgb(196,236,196) :
+                    Drawing.Color.FromArgb(243,211,166);
                 output.Text =
                     "Cloud: " + Convert.ToString(h["status"]) + Environment.NewLine +
                     "Mode: " + Convert.ToString(h["mode"]) + Environment.NewLine +
@@ -569,6 +591,19 @@ namespace AeroHelm.GcsCloud
                     "Link endpoint response: " + result.linkMs.ToString(CultureInfo.InvariantCulture) + " ms" + Environment.NewLine +
                     "Frame rate (5s): " + Convert.ToString(m.ContainsKey("frame_rate_5s") ? m["frame_rate_5s"] : "server update required") + Environment.NewLine +
                     "Heartbeat age: " + Convert.ToString(m.ContainsKey("heartbeat_age_ms") ? m["heartbeat_age_ms"] : "unknown") + " ms" + Environment.NewLine +
+                    "Real HEARTBEAT frames: " + Convert.ToString(m.ContainsKey("heartbeat_frames_received") ?
+                        m["heartbeat_frames_received"] : "UNKNOWN (upgrade backend)") + Environment.NewLine +
+                    "Real ATTITUDE frames: " + Convert.ToString(m.ContainsKey("attitude_frames_received") ?
+                        m["attitude_frames_received"] : "UNKNOWN (upgrade backend)") + Environment.NewLine +
+                    "ATTITUDE age: " + Convert.ToString(m.ContainsKey("last_attitude_age_ms") ?
+                        m["last_attitude_age_ms"] : "UNKNOWN") + " ms" + Environment.NewLine +
+                    "Live heartbeat ready: " + Convert.ToString(realHeartbeat.HasValue ?
+                        (object)realHeartbeat.Value : "UNKNOWN") + Environment.NewLine +
+                    "Live attitude ready: " + Convert.ToString(realAttitude.HasValue ?
+                        (object)realAttitude.Value : "UNKNOWN") + Environment.NewLine +
+                    "Native GCS link: " + (AeroHelmCloudPlugin.ActiveNativeBridge == null ?
+                        "EXTERNAL OR DISABLED" : AeroHelmCloudPlugin.ActiveNativeBridge.Summary) +
+                        Environment.NewLine +
                     "Dropped queued frames: " + Convert.ToString(m.ContainsKey("viewer_frames_dropped") ? m["viewer_frames_dropped"] : "unknown") + Environment.NewLine +
                     "UTC checked: " + DateTime.UtcNow.ToString("u", CultureInfo.InvariantCulture) +
                     Environment.NewLine + Environment.NewLine +
