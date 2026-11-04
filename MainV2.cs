@@ -1449,6 +1449,18 @@ namespace MissionPlanner
 
         public void doConnect(MAVLinkInterface comPort, string portname, string baud, bool getparams = true, bool showui = true)
         {
+            // Enforce the read-only rule at the actual native connection
+            // boundary, not just the CONNECT button. Programmatic plugins
+            // must never accidentally enter Getting Params over cloud TCP.
+            bool aeroHelmReadOnlyTcp =
+                string.Equals(portname, "TCP", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_CLOUD_READONLY"), "1", StringComparison.Ordinal);
+            if (aeroHelmReadOnlyTcp)
+            {
+                getparams = false;
+                log.Warn("AeroHelm cloud TCP: suppressing PARAM_REQUEST_* because the local bridge is receive-only.");
+            }
             bool skipconnectcheck = false;
             log.Info($"We are connecting to {portname} {baud}");
             switch (portname)
@@ -1473,12 +1485,11 @@ namespace MissionPlanner
                     });
                     break;
                 case "TCP":
-                    // AeroHelm's receive-only embedded bridge is localhost-only.
-                    // Keep the native heartbeat verification; no fake HUD data.
-                    if (string.Equals(Environment.GetEnvironmentVariable(
-                            "AEROHELM_INTERNAL_TCP_BRIDGE"),"1",StringComparison.Ordinal) &&
-                        string.Equals(Environment.GetEnvironmentVariable(
-                            "AEROHELM_CLOUD_READONLY"),"1",StringComparison.Ordinal))
+                    // In AeroHelm cloud read-only mode BOTH the native and
+                    // external Python bridges are always loopback-only.
+                    // Avoid asking for an arbitrary TCP target that might accept
+                    // Mission Planner's normal outbound commands.
+                    if (aeroHelmReadOnlyTcp)
                         comPort.BaseStream = new TcpSerial {
                             Host = "127.0.0.1", Port = "5760", autoReconnect = false
                         };
