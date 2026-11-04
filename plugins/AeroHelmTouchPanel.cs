@@ -24,6 +24,8 @@ namespace AeroHelm.GcsCloud
         private readonly Label liveBridgeStatus = new Label();
         private readonly System.Windows.Forms.Timer bridgeStatusTimer =
             new System.Windows.Forms.Timer();
+        private readonly System.Windows.Forms.Timer cloudHealthTimer =
+            new System.Windows.Forms.Timer();
         private bool opening;
         private bool refreshingStatus;
 
@@ -94,6 +96,10 @@ namespace AeroHelm.GcsCloud
                     bridge.Summary + "  |  READ ONLY";
             };
             bridgeStatusTimer.Start();
+            // Keep stale data stale: refresh the cloud's read-only observations
+            // every five seconds, even when the operator never presses refresh.
+            cloudHealthTimer.Interval = 5000;
+            cloudHealthTimer.Tick += async (s,e) => await RefreshCloudStatusAsync();
 
             var linkBar = new TableLayoutPanel {
                 Dock = DockStyle.Bottom, Height = 48, ColumnCount = 2,
@@ -144,11 +150,19 @@ namespace AeroHelm.GcsCloud
             Controls.Add(liveBridgeStatus);
             Controls.Add(linkBar);
             Controls.Add(top);
-            Shown += async (s,e) => await RefreshCloudStatusAsync();
+            Shown += async (s,e) => {
+                cloudHealthTimer.Start();
+                await RefreshCloudStatusAsync();
+            };
             KeyDown += (s, e) => {
                 if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; }
             };
-            FormClosed += (s,e) => bridgeStatusTimer.Stop();
+            FormClosed += (s,e) => {
+                bridgeStatusTimer.Stop();
+                cloudHealthTimer.Stop();
+                bridgeStatusTimer.Dispose();
+                cloudHealthTimer.Dispose();
+            };
         }
 
         // This is a deliberately bounded observational GET, not a flight
@@ -179,11 +193,55 @@ namespace AeroHelm.GcsCloud
                     Convert.ToString(ageValue,System.Globalization.CultureInfo.InvariantCulture);
                 string aircraft = idValue == null ? "UNKNOWN" :
                     Convert.ToString(idValue,System.Globalization.CultureInfo.InvariantCulture);
+                // New backend distinguishes observed HEARTBEAT and ATTITUDE.
+                // Old M1 releases might omit these fields: UNKNOWN, not PASS.
+                object hbValue,attValue,hbAgeValue;
+                bool? heartbeatLive = null;
+                bool? attitudeLive = null;
+                if (result.TryGetValue("native_hud_heartbeat_ready",out hbValue)
+                    && hbValue is bool)
+                    heartbeatLive = (bool)hbValue;
+                else if (result.TryGetValue("heartbeat_age_ms",out hbAgeValue)
+                         && hbAgeValue != null)
+                {
+                    double hbAge;
+                    if (double.TryParse(Convert.ToString(hbAgeValue,
+                        System.Globalization.CultureInfo.InvariantCulture),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,out hbAge))
+                        heartbeatLive = hbAge >= 0 && hbAge < 5000;
+                }
+                if (result.TryGetValue("attitude_stream_active",out attValue)
+                    && attValue is bool)
+                    attitudeLive = (bool)attValue;
+
                 if (fresh && connected)
                 {
-                    linkStatus.Text = "CLOUD / FRAME FLOW — " + aircraft +
-                        "  |  LAST FRAME " + age + " ms  |  HUD HEARTBEAT NOT YET VERIFIED";
-                    linkStatus.ForeColor = Drawing.Color.FromArgb(197,231,197);
+                    if (heartbeatLive == false)
+                    {
+                        linkStatus.Text = "CLOUD / NO LIVE HEARTBEAT — " + aircraft +
+                            "  |  CHECK PI UART / FC POWER / STREAM";
+                        linkStatus.ForeColor = Drawing.Color.FromArgb(244,177,150);
+                    }
+                    else if (attitudeLive == false)
+                    {
+                        linkStatus.Text = "CLOUD / ATTITUDE STREAM MISSING — " + aircraft +
+                            "  |  NATIVE HORIZON CANNOT UPDATE";
+                        linkStatus.ForeColor = Drawing.Color.FromArgb(244,177,150);
+                    }
+                    else if (heartbeatLive == true && attitudeLive == true)
+                    {
+                        linkStatus.Text = "CLOUD / HEARTBEAT + ATTITUDE OBSERVED — " +
+                            aircraft + "  |  " + age +
+                            " ms  |  CHECK PHYSICAL HUD MOVEMENT";
+                        linkStatus.ForeColor = Drawing.Color.FromArgb(197,231,197);
+                    }
+                    else
+                    {
+                        linkStatus.Text = "CLOUD / FRAMES PRESENT, HUD UNVERIFIED — " +
+                            aircraft + "  |  LEGACY BACKEND";
+                        linkStatus.ForeColor = Drawing.Color.FromArgb(244,210,161);
+                    }
                 }
                 else
                 {
