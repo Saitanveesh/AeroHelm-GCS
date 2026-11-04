@@ -140,6 +140,10 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn('case "capabilities": route = "api/v3/research/capabilities";', pages)
         self.assertIn("Research V3 is not deployed or enabled", pages)
         self.assertIn("Kerberos integration: NOT PROVISIONED", pages)
+        self.assertIn('ActionButton(bar,"Kerberos readiness", "kerberos")', pages)
+        self.assertIn('if (operation == "kerberos")', pages)
+        self.assertIn('table.Rows.Add("Kerberos KDC/realm", "NOT PROVISIONED")', pages)
+        self.assertIn("no token or ticket created", pages)
         self.assertIn("requires a provisioned KDC, SPNEGO gateway", pages)
 
     def test_explicit_verified_bridge_stop_is_not_an_unguarded_process_kill(self):
