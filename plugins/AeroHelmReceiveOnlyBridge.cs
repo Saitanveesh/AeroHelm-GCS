@@ -75,6 +75,8 @@ namespace AeroHelm.GcsCloud
                         return "LOCAL TCP / PORT 5760 OCCUPIED — CHECK LISTENER";
                     return "LOCAL TCP / " + state;
                 }
+                if (state == "WAITING FOR NATIVE TCP CLIENT")
+                    return "LOCAL TCP / READY — CLICK FLIGHT TO START HUD";
                 long hbTicks = Interlocked.Read(ref lastHeartbeatUtcTicks);
                 long attTicks = Interlocked.Read(ref lastAttitudeUtcTicks);
                 DateTime now = DateTime.UtcNow;
