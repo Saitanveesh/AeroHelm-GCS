@@ -100,6 +100,17 @@ namespace MissionPlanner
             status.AutoEllipsis=true;
             panel.Controls.Add(status,0,4);panel.SetColumnSpan(status,2);
             AcceptButton=login;CancelButton=cancel;
+            // Display a real, keyboard-accessible modal sign-in as the first
+            // focused AeroHelm window. Splash is hidden by Program.Main
+            // throughout authentication, including network-await periods.
+            ShowInTaskbar=true;
+            Shown+=(s,e)=>BeginInvoke((Action)(()=>{
+                if(!IsDisposed && !Disposing)
+                {
+                    Activate();
+                    password.Focus();
+                }
+            }));
         }
 
         private static void Add(TableLayoutPanel panel,int row,string caption,Control input)
