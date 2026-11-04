@@ -35,6 +35,8 @@ on:
       - "plugins/AeroHelmSurveyPlanner.cs"
       - "Tools/AeroHelmSurveyTests/**"
       - "Tools/AeroHelmMavlinkBridgeTests/**"
+      - "Tools/test_aerohelm_offline_gcs.py"
+      - "scripts/Run-AeroHelmOfflineChecks.ps1"
       - "MainV2.cs"
       - "Plugins/AeroHelmCloud/**"
       - ".github/workflows/aerohelm-cloud-plugin.yml"
@@ -57,6 +59,10 @@ on:
       - "scripts/Test-AeroHelmPrivatePreflight.ps1"
       - "plugins/AeroHelmPlatformV2.cs"
       - "Plugins/AeroHelmCloud/**"
+      - "Tools/AeroHelmMavlinkBridgeTests/**"
+      - "Tools/test_aerohelm_offline_gcs.py"
+      - "scripts/Run-AeroHelmOfflineChecks.ps1"
+      - "MainV2.cs"
       - ".github/workflows/aerohelm-cloud-plugin.yml"
   workflow_dispatch:
 
@@ -69,6 +75,11 @@ jobs:
       - name: Verify native Windows page source contracts (no aircraft)
         shell: pwsh
         run: ./scripts/Test-AeroHelmWindowsPages.ps1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Portable offline GCS safety, icons and TCP policy tests
+        run: python -m unittest -v Tools.test_aerohelm_offline_gcs
 
   plugin-build:
     runs-on: windows-latest
