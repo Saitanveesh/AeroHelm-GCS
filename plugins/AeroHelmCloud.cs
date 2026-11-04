@@ -243,14 +243,21 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_intel);
                     main.MainMenu.Items.Remove(_touch);
                 }
-                _survey.Dispose();
-                _vision.Image.Dispose();
-                _vision.Dispose();
-                _link.Dispose();
-                _ops.Dispose();
-                _intel.Dispose();
-                _touch.Dispose();
-                _button.Dispose();
+                // Every toolbar item owns its native bitmap. Release all
+                // symbols when the plugin is unloaded; do not leak WinForms
+                // GDI handles across repeated plugin lifecycle tests.
+                foreach(var item in new ToolStripButton[]{
+                    _button,_survey,_vision,_link,_ops,_intel,_touch
+                })
+                {
+                    if(item.Image!=null)
+                    {
+                        var owned=item.Image;
+                        item.Image=null;
+                        owned.Dispose();
+                    }
+                    item.Dispose();
+                }
                 _button = null;
                 _survey = null;
                 _vision = null;
