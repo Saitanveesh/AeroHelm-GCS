@@ -32,6 +32,25 @@ $branch = (& git -C $root branch --show-current).Trim()
 if ($branch -notin @('feat/aerohelm-touch-console', 'feat/gcs-unified-login-readonly-bridge', 'feat/gcs-research-cybershield-twin-ui', 'feat/aerohelm-windows-integration', 'feat/aerohelm-windows-pages-v1', 'feat/aerohelm-windows-readiness-v2', 'feat/aerohelm-windows-release-candidate', 'feat/aerohelm-combined-preflight')) {
     throw "Touch launcher requires the reviewed Windows integration branch (found $branch)."
 }
+# The consolidated branch must NEVER silently launch an old cached
+# MissionPlanner.exe or plugin DLL. Use the local manifest produced after a
+# successful backed-up native build, not just git branch/source labels.
+if ($branch -eq 'feat/gcs-research-cybershield-twin-ui') {
+    $manifestFile = Join-Path $root 'build-logs\aerohelm-consolidated-release.json'
+    if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
+        throw 'Consolidated runtime not verified. Run scripts\Consolidate-AeroHelmWindows.ps1 -Stage Build -Apply, then -Stage Verify.'
+    }
+    $release = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
+    $gitCommit = (& git -C $root rev-parse HEAD).Trim()
+    $actualExe = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actualDll = (Get-FileHash -LiteralPath $compiled -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($release.schema -ne 'aerohelm.gcs.consolidation.v1' -or
+        $release.git_commit -ne $gitCommit -or
+        $release.executable_sha256 -ne $actualExe -or
+        $release.plugin_sha256 -ne $actualDll) {
+        throw 'Stale or modified Mission Planner/plugin binaries detected; refusing a misleading latest-version launch.'
+    }
+}
 if ($ManualTouch) {
     [Environment]::SetEnvironmentVariable('AEROHELM_TOUCH_STARTUP','0','Process')
 } else {
