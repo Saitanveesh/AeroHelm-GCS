@@ -69,6 +69,8 @@ function Assert-PluginLayout {
     }
 }
 $commit=Assert-Git
+# Every release path runs the same nine-panel and toolbar static audit.
+& (Join-Path $PSScriptRoot 'Audit-AeroHelmModules.ps1')
 Write-Host "AeroHelm source: $expectedBranch @ $($commit.Substring(0,12))"
 Write-Host "Runtime: $runtime"
 Write-Host "Native EXE SHA-256: $(Hash $exe)"
