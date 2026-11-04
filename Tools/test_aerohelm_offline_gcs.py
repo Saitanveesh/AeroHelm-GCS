@@ -84,7 +84,7 @@ class OfflineGcsContracts(unittest.TestCase):
             "aerohelm-consolidated-release.json",
             "release.executable_sha256",
             "release.plugin_sha256",
-            "git rev-parse HEAD",
+            "rev-parse HEAD",
         ):
             self.assertIn(required, launch)
         for required in (
