@@ -82,6 +82,11 @@ if(Test-Path -LiteralPath $plugins -PathType Container){
     Write-Host 'Runtime AeroHelm plugin files:'
     $items | Format-Table -AutoSize | Out-Host
 }
+# Report a conflicting external Python bridge without shutting it down.
+$listener=@(Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 5760 -State Listen -ErrorAction SilentlyContinue)
+if($listener.Count -gt 0){
+    Write-Warning "127.0.0.1:5760 is already occupied (PID $($listener[0].OwningProcess)). Close the legacy Python bridge before launching the new internal GCS bridge."
+}
 if($Stage -eq 'Inspect'){
     Write-Host 'INSPECT ONLY: no compilation, file deletion, git fetch, merge or deployment occurred.'
     Write-Host 'Next: close Mission Planner, update to the reviewed head via git pull --ff-only, then run -Stage Build -Apply.'
@@ -111,6 +116,15 @@ if(Get-Process MissionPlanner -ErrorAction SilentlyContinue){
 if(-not (Test-Path -LiteralPath $exe -PathType Leaf)){
     throw 'No existing Mission Planner runtime. Run the reviewed build script manually first.'
 }
+# Full-runtime backup can be large: refuse to start if the drive cannot
+# hold at least one verified copy plus a safety buffer.
+$runtimeBytes=(Get-ChildItem -LiteralPath $runtime -Recurse -File -ErrorAction Stop |
+    Measure-Object -Property Length -Sum).Sum
+$driveLetter=[System.IO.Path]::GetPathRoot($runtime).TrimEnd('\').TrimEnd(':')
+$drive=Get-PSDrive -Name $driveLetter -ErrorAction Stop
+if($drive.Free -lt ([double]$runtimeBytes * 1.15 + 250MB)){
+    throw 'Not enough free disk space to snapshot the complete old GCS runtime safely.'
+}
 New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
 $stamp=(Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
 $backup=Join-Path $logRoot ('release-backups\' + $stamp)
@@ -124,6 +138,7 @@ if((Hash (Join-Path $snapshot 'MissionPlanner.exe')) -ne $oldHash){
 # Any failure after backup restores the whole former runtime (not just plugin).
 try{
     $build=Join-Path $PSScriptRoot 'Build-Integrated-AeroHelm.ps1'
+    $global:LASTEXITCODE=0
     if($WithBranding){
         & $build
     } else {
