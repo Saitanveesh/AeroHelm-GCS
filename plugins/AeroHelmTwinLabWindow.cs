@@ -89,7 +89,17 @@ namespace AeroHelm.GcsCloud
                     results.Text="Reference file must be JSON, 20 bytes to 128 KiB.";
                     return;
                 }
-                content=File.ReadAllText(file.FullName);
+                try {
+                    content=File.ReadAllText(file.FullName);
+                }
+                catch(IOException ex) {
+                    results.Text="Cannot read reference file: "+ex.GetType().Name;
+                    return;
+                }
+                catch(UnauthorizedAccessException) {
+                    results.Text="Permission denied reading reference file.";
+                    return;
+                }
                 location.Text="Selected: "+file.Name+" (reference accuracy NOT verified)";
             }
             object payload;
