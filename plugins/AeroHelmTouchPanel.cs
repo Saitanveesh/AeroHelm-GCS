@@ -22,6 +22,7 @@ namespace AeroHelm.GcsCloud
         private readonly Label linkStatus = new Label();
         private readonly Button refreshStatus = new Button();
         private readonly Label liveBridgeStatus = new Label();
+        private readonly ToolTip bridgeDiagnosticsTip = new ToolTip();
         private readonly System.Windows.Forms.Timer bridgeStatusTimer =
             new System.Windows.Forms.Timer();
         private readonly System.Windows.Forms.Timer cloudHealthTimer =
@@ -87,14 +88,17 @@ namespace AeroHelm.GcsCloud
             liveBridgeStatus.Height = 32;
             liveBridgeStatus.TextAlign = Drawing.ContentAlignment.MiddleCenter;
             liveBridgeStatus.AutoEllipsis = true;
+            liveBridgeStatus.Padding = new Padding(14,0,14,0);
             liveBridgeStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
             liveBridgeStatus.Font = new Drawing.Font("Segoe UI", 9f);
             bridgeStatusTimer.Interval = 2000;
             bridgeStatusTimer.Tick += (s,e) => {
                 var bridge = AeroHelmCloudPlugin.ActiveNativeBridge;
                 liveBridgeStatus.Text = bridge == null ?
-                    "LOCAL TCP / EXTERNAL OR DISABLED — NO PHYSICAL FLIGHT AUTHORITY" :
-                    bridge.Summary + "  |  READ ONLY";
+                    "LOCAL TCP / EXTERNAL OR DISABLED — READ ONLY" :
+                    bridge.CompactSummary + "  |  READ ONLY";
+                bridgeDiagnosticsTip.SetToolTip(liveBridgeStatus,
+                    bridge == null ? "Use LINK for cloud diagnostics." : bridge.Summary);
             };
             bridgeStatusTimer.Start();
             // Keep stale data stale: refresh the cloud's read-only observations
@@ -103,18 +107,19 @@ namespace AeroHelm.GcsCloud
             cloudHealthTimer.Tick += async (s,e) => await RefreshCloudStatusAsync();
 
             var linkBar = new TableLayoutPanel {
-                Dock = DockStyle.Bottom, Height = 48, ColumnCount = 2,
+                Dock = DockStyle.Bottom, Height = 56, ColumnCount = 2,
                 BackColor = Drawing.Color.FromArgb(14,14,14),
                 Padding = new Padding(16,4,16,4)
             };
-            linkBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,76));
-            linkBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,24));
+            linkBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,72));
+            linkBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,28));
             linkStatus.Dock = DockStyle.Fill;
             linkStatus.Text = "CLOUD STATUS / UNKNOWN — no verified telemetry";
             linkStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
             linkStatus.Font = new Drawing.Font("Segoe UI Semibold",10f,Drawing.FontStyle.Bold);
             linkStatus.TextAlign = Drawing.ContentAlignment.MiddleLeft;
             linkStatus.AutoEllipsis = true;
+            linkStatus.Padding = new Padding(12,0,8,0);
             refreshStatus.Text = "REFRESH LINK";
             refreshStatus.Dock = DockStyle.Fill;
             refreshStatus.FlatStyle = FlatStyle.Flat;
@@ -163,6 +168,7 @@ namespace AeroHelm.GcsCloud
                 cloudHealthTimer.Stop();
                 bridgeStatusTimer.Dispose();
                 cloudHealthTimer.Dispose();
+                bridgeDiagnosticsTip.Dispose();
             };
         }
 
@@ -220,34 +226,30 @@ namespace AeroHelm.GcsCloud
                 {
                     if (heartbeatLive == false)
                     {
-                        linkStatus.Text = "CLOUD / NO LIVE HEARTBEAT — " + aircraft +
-                            "  |  CHECK PI UART / FC POWER / STREAM";
+                        linkStatus.Text = "CLOUD / NO LIVE HEARTBEAT — " + aircraft;
                         linkStatus.ForeColor = Drawing.Color.FromArgb(244,177,150);
                     }
                     else if (attitudeLive == false)
                     {
-                        linkStatus.Text = "CLOUD / ATTITUDE STREAM MISSING — " + aircraft +
-                            "  |  NATIVE HORIZON CANNOT UPDATE";
+                        linkStatus.Text = "CLOUD / ATTITUDE MISSING — " + aircraft;
                         linkStatus.ForeColor = Drawing.Color.FromArgb(244,177,150);
                     }
                     else if (heartbeatLive == true && attitudeLive == true)
                     {
-                        linkStatus.Text = "CLOUD / HEARTBEAT + ATTITUDE OBSERVED — " +
-                            aircraft + "  |  " + age +
-                            " ms  |  CHECK PHYSICAL HUD MOVEMENT";
+                        linkStatus.Text = "CLOUD / REAL HB + ATTITUDE — " +
+                            aircraft + "  |  " + age + " ms";
                         linkStatus.ForeColor = Drawing.Color.FromArgb(197,231,197);
                     }
                     else
                     {
-                        linkStatus.Text = "CLOUD / FRAMES PRESENT, HUD UNVERIFIED — " +
-                            aircraft + "  |  LEGACY BACKEND";
+                        linkStatus.Text = "CLOUD / FRAMES FRESH, HUD UNVERIFIED — " +
+                            aircraft + "  |  LEGACY SERVER";
                         linkStatus.ForeColor = Drawing.Color.FromArgb(244,210,161);
                     }
                 }
                 else
                 {
-                    linkStatus.Text = "CLOUD / STALE OR DISCONNECTED — " + aircraft +
-                        "  |  DO NOT RELY ON OLD TELEMETRY";
+                    linkStatus.Text = "CLOUD / STALE OR DISCONNECTED — " + aircraft;
                     linkStatus.ForeColor = Drawing.Color.FromArgb(244,177,150);
                 }
             }
@@ -263,8 +265,9 @@ namespace AeroHelm.GcsCloud
             }
             finally
             {
-                if (!IsDisposed && !Disposing && AeroHelmCloudPlugin.ActiveNativeBridge != null)
-                    linkStatus.Text += "  |  " + AeroHelmCloudPlugin.ActiveNativeBridge.Summary;
+                // Never append native bridge diagnostics to the cloud headline:
+                // these are independent links, displayed on distinct status
+                // lines. Full bridge detail is available in the tooltip/LINK.
                 refreshingStatus = false;
                 if (!IsDisposed && !Disposing) refreshStatus.Enabled = true;
             }
