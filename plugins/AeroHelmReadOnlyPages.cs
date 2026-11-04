@@ -108,6 +108,9 @@ namespace AeroHelm.GcsCloud
                 bar.Controls.Add(vehicleId);
             }
 
+            // Research availability is a server capability, not evidence of
+            // an installed physics twin, Kerberos realm or flight authorization.
+            ActionButton(bar,"Cloud capabilities", "capabilities");
             if (section == "FLEET")
             {
                 ActionButton(bar,"Refresh fleet", "fleet");
@@ -367,6 +370,7 @@ namespace AeroHelm.GcsCloud
                 switch (operation)
                 {
                     case "fleet": route = "api/v2/fleet"; break;
+                    case "capabilities": route = "api/v3/research/capabilities"; break;
                     case "researchFleet": route = "api/v3/research/fleet"; break;
                     case "integrity": route = "api/v3/research/evidence-integrity"; break;
                     case "digitalShadow": route = "api/v3/vehicles/" + CheckedAircraftId() + "/digital-shadow"; break;
@@ -423,7 +427,8 @@ namespace AeroHelm.GcsCloud
                 });
                 if (IsDisposed || Disposing) return;
                 var parsed = AsObject(json.DeserializeObject(response));
-                if (operation == "researchFleet" || operation == "integrity" ||
+                if (operation == "capabilities" ||
+                    operation == "researchFleet" || operation == "integrity" ||
                     operation == "digitalShadow" || operation == "cyberShadow" ||
                     operation == "evidence" || operation == "visionEvents")
                     RenderResearch(operation,parsed);
@@ -445,10 +450,18 @@ namespace AeroHelm.GcsCloud
                 if (http == null)
                     detail.Text = "Unable to retrieve " + operation + ": " + ex.Message;
                 else if (http.StatusCode == System.Net.HttpStatusCode.NotFound)
-                    detail.Text = "The requested read-only API or aircraft was not found (HTTP 404)." +
+                    detail.Text = "Read-only cloud capability/aircraft not found (HTTP 404)." +
                         Environment.NewLine +
-                        "Check Oracle backend version: this page needs AeroHelm v2 endpoints. " +
-                        "The deployed M1 telemetry API does not provide every GCS module.";
+                        (operation == "capabilities" || operation == "researchFleet" ||
+                         operation == "integrity" || operation == "digitalShadow" ||
+                         operation == "cyberShadow" || operation == "visionEvents" ||
+                         operation == "evidence" ?
+                         "Research V3 is not deployed or enabled on this Oracle server. " +
+                         "A digital shadow/twin lab cannot become operational from GCS code alone." :
+                         "This action requires AeroHelm v2 endpoints not provided by M1.") +
+                        Environment.NewLine +
+                        "Kerberos requires a provisioned KDC, SPNEGO gateway and identity policy. " +
+                        "No Kerberos authentication is active in this GCS.";
                 else if (http.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
                          http.StatusCode == System.Net.HttpStatusCode.Forbidden)
                     detail.Text = "Cloud authentication/permission failed (HTTP " +
@@ -482,6 +495,7 @@ namespace AeroHelm.GcsCloud
                     table.Rows.Add(entry.Key,Display(entry.Value));
             }
             detail.Text = "RESEARCH EXPERIMENTAL: " + operation +
+                Environment.NewLine + "Kerberos integration: NOT PROVISIONED (requires KDC/gateway)." +
                 Environment.NewLine + "No physical flight-control authority." +
                 Environment.NewLine + "Missing or stale samples are not proof of safety." +
                 Environment.NewLine + "A short-horizon constant-velocity digital shadow is NOT" +
