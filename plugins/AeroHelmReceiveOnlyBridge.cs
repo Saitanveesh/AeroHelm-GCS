@@ -50,7 +50,8 @@ namespace AeroHelm.GcsCloud
                 bool liveAtt = attTicks > 0 &&
                     (now-new DateTime(attTicks,DateTimeKind.Utc)).TotalSeconds < 5;
                 long decoded = Interlocked.Read(ref validAttitudeSamples);
-                string angles = decoded == 0 ? "roll/pitch UNKNOWN" :
+                string angles = !liveAtt || decoded == 0 ?
+                    "roll/pitch STALE OR UNKNOWN" :
                     "roll " + (Interlocked.Read(ref lastRollCentideg)/100.0).ToString(
                         "F1",System.Globalization.CultureInfo.InvariantCulture) +
                     " deg / pitch " + (Interlocked.Read(ref lastPitchCentideg)/100.0).ToString(
@@ -266,6 +267,9 @@ namespace AeroHelm.GcsCloud
             }
             if (frame[0] == 0xFD && size >= 12)
             {
+                // MAVLink2 incompatibility flags other than signing cannot be
+                // interpreted safely by this pass-through viewer.
+                if ((frame[2] & ~0x01) != 0) return false;
                 int signature = (frame[2] & 0x01) == 0 ? 0 : 13;
                 if (size != frame[1] + 12 + signature) return false;
                 messageId = frame[7] | (frame[8] << 8) | (frame[9] << 16);
