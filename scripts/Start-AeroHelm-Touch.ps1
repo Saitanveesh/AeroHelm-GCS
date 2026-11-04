@@ -4,6 +4,7 @@ param(
     [switch]$ManualTouch,
     [switch]$ReadOnlyCloudHUD,
     [switch]$NoInternalBridge,
+    [switch]$NoAutoTcp,
     [switch]$ShowNativeToolbar
 )
 $ErrorActionPreference = 'Stop'
@@ -47,6 +48,10 @@ if ($ManualTouch) {
 # In-process single-login receive-only MAVLink bridge by default.
 [Environment]::SetEnvironmentVariable('AEROHELM_INTERNAL_TCP_BRIDGE',
     $(if ($NoInternalBridge) { '0' } else { '1' }), 'Process')
+# Clicking FLIGHT connects the verified native loopback receiver, without
+# IP/port dialogs. It never bypasses Mission Planner's heartbeat gate.
+[Environment]::SetEnvironmentVariable('AEROHELM_AUTO_NATIVE_TCP',
+    $(if ($NoAutoTcp -or $NoInternalBridge) { '0' } else { '1' }), 'Process')
 if (-not $env:AEROHELM_CLOUD_URL) {
     [Environment]::SetEnvironmentVariable('AEROHELM_CLOUD_URL',
         'https://aerohelm-vcn.tailf3ab6a.ts.net', 'Process')
