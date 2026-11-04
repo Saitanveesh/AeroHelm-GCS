@@ -72,6 +72,8 @@ Require-Text $twinLab 'api/v3/research/physics-lab/evaluate' 'Six-DOF physics AP
 Require-Text $pages 'new AeroHelmPhysicsLabWindow()' 'ANALYTICS must expose the offline physics lab.'
 Require-Text $pages 'Cloud capabilities' 'Operator must be able to check backend V3 deployment state.'
 Require-Text $pages 'Kerberos integration: NOT PROVISIONED' 'Do not claim Kerberos exists without a KDC.'
+Require-Text $pages 'Kerberos readiness' 'SECURITY must expose actual KDC/SPNEGO deployment readiness.'
+Require-Text $pages 'table.Rows.Add("Kerberos KDC/realm", "NOT PROVISIONED")' 'Kerberos must fail closed until infrastructure exists.'
 Require-Text $workspace 'api/v1/mavlink/attitude' 'LINK must fetch authenticated real attitude preview from M1.'
 Require-Text $latestLauncher 'merge --ff-only' 'Latest GCS updater must not force-reset tracked code.'
 Require-Text $latestLauncher 'StopVerifiedLegacyBridge' 'Port recovery must require explicit verified-bridge opt-in.'
