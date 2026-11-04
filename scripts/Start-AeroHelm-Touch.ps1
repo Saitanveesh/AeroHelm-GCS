@@ -51,6 +51,22 @@ if ($branch -eq 'feat/gcs-research-cybershield-twin-ui') {
         throw 'Stale or modified Mission Planner/plugin binaries detected; refusing a misleading latest-version launch.'
     }
 }
+# The native WebSocket-to-TCP adapter requires an exclusive loopback port.
+# Fail BEFORE launching Mission Planner when the old Python bridge is still
+# running; the operator can reuse it explicitly via the session launcher
+# -UseLegacyPythonBridge. Never kill or overwrite an unknown process.
+if (-not $NoInternalBridge) {
+    $listeners = @(Get-NetTCPConnection -LocalPort 5760 -State Listen -ErrorAction SilentlyContinue)
+    if ($listeners.Count -gt 0) {
+        $ownerId = $listeners[0].OwningProcess
+        $owner = Get-CimInstance Win32_Process -Filter "ProcessId = $ownerId" -ErrorAction SilentlyContinue
+        $isLegacy = $owner -and $owner.CommandLine -match 'aerohelm_tcp_bridge[.]py'
+        if ($isLegacy) {
+            throw "Existing AeroHelm Python bridge occupies TCP 5760 (PID $ownerId). Close its own terminal with Ctrl+C before launching native mode, or explicitly run Start-AeroHelm-Session.ps1 -UseLegacyPythonBridge to reuse it."
+        }
+        throw "TCP 5760 occupied by another process (PID $ownerId). Inspect Get-CimInstance Win32_Process -Filter 'ProcessId = $ownerId'; do not terminate an unidentified process."
+    }
+}
 if ($ManualTouch) {
     [Environment]::SetEnvironmentVariable('AEROHELM_TOUCH_STARTUP','0','Process')
 } else {
