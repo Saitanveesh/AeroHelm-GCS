@@ -148,6 +148,17 @@ namespace AeroHelm.GcsCloud
                 ActionButton(bar,"Digital shadow", "digitalShadow");
                 ActionButton(bar,"Evidence replay", "evidence");
                 ActionButton(bar,"Camera events", "visionEvents");
+                var twinLab=new Button {
+                    Text="Twin calibration lab",Width=200,Height=40,
+                    FlatStyle=FlatStyle.Flat,BackColor=Surface,ForeColor=Ink,
+                    Margin=new Padding(3,0,8,0),UseVisualStyleBackColor=false
+                };
+                twinLab.FlatAppearance.BorderSize=0;
+                twinLab.Click+=(s,e)=> {
+                    using(var window=new AeroHelmTwinLabWindow())
+                        window.ShowDialog(this);
+                };
+                bar.Controls.Add(twinLab);
                 SetColumns("Metric", "Reported value");
             }
             var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0,5,0,4) };
