@@ -98,6 +98,32 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertNotIn("git clean", release)
         self.assertNotIn("git reset", release)
 
+    def test_cloud_and_local_link_banners_are_independent_and_bounded(self):
+        home = source("plugins/AeroHelmTouchPanel.cs")
+        bridge = source("plugins/AeroHelmReceiveOnlyBridge.cs")
+        self.assertIn("bridge.CompactSummary", home)
+        self.assertIn("bridgeDiagnosticsTip.SetToolTip", home)
+        self.assertIn("bridgeDiagnosticsTip.Dispose();", home)
+        self.assertIn("Dock = DockStyle.Bottom, Height = 56", home)
+        self.assertIn("CLOUD / FRAMES FRESH, HUD UNVERIFIED", home)
+        self.assertIn("LEGACY SERVER", home)
+        self.assertIn("PORT 5760 OCCUPIED", bridge)
+        self.assertIn("internal string CompactSummary", bridge)
+        self.assertNotIn("linkStatus.Text += ", home)
+        self.assertNotIn("bridge.Summary + \"  |  READ ONLY\"", home)
+        self.assertIn("READ ONLY", home)
+
+    def test_no_native_bridge_launch_with_existing_local_listener(self):
+        launcher = source("scripts/Start-AeroHelm-Touch.ps1")
+        session = source("scripts/Start-AeroHelm-Session.ps1")
+        self.assertIn("if (-not $NoInternalBridge)", launcher)
+        self.assertIn("Get-NetTCPConnection -LocalPort 5760 -State Listen", launcher)
+        self.assertIn("aerohelm_tcp_bridge[.]py", launcher)
+        self.assertIn("Start-AeroHelm-Session.ps1 -UseLegacyPythonBridge", launcher)
+        self.assertIn("if ($listener.Count -gt 0 -and -not $SkipBridge)", session)
+        self.assertIn("Refusing to reuse it.", session)
+        self.assertNotIn("Stop-Process", launcher)
+
     def test_login_modal_cannot_be_hidden_by_topmost_splash(self):
         program = source("Program.cs")
         gate = source("AeroHelmStartupGate.cs")
