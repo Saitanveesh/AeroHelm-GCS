@@ -128,7 +128,7 @@ class OfflineGcsContracts(unittest.TestCase):
         link = source("plugins/AeroHelmWorkspace.cs")
         self.assertIn('OperationsApi.Request("GET","api/v1/mavlink/attitude")', link)
         self.assertIn("AeroHelmCloudOrigin", link)
-        self.assertIn("ATTITUDE preview", link)
+        self.assertIn("Observed ATTITUDE: ", link)
         self.assertIn("STALE/MISSING — NO LIVE ATTITUDE", link)
         self.assertIn("HUD HEARTBEAT NOT VERIFIED", link)
         self.assertIn("GCS viewers: ", link)
