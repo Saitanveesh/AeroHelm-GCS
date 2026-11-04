@@ -37,7 +37,8 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmTouchPanel()
         {
-            Text = "AeroHelm — Windows Control Workspace (0.2.0 RC)";
+            Text = "AeroHelm — Windows Control Workspace (0.2.0 RC / " +
+                AeroHelmReleaseIdentity.BuildId + ")";
             Width = 1100;
             Height = 800;
             MinimumSize = new Drawing.Size(640, 540);
@@ -584,12 +585,43 @@ namespace AeroHelm.GcsCloud
         }
     }
 
+    internal static class AeroHelmReleaseIdentity
+    {
+        // The fingerprint comes from the ACTUAL installed DLL, not a branch
+        // name or hardcoded UI label. It lets the operator confirm that the
+        // latest plugin really loaded after replacing an old Mission Planner
+        // release. No credentials or aircraft identifiers are exposed.
+        internal static readonly string BuildId =
+            typeof(AeroHelmCloudPlugin).Assembly.ManifestModule.ModuleVersionId
+                .ToString("N").Substring(0,12);
+        internal static string PluginSha256Prefix
+        {
+            get
+            {
+                try
+                {
+                    string path=typeof(AeroHelmCloudPlugin).Assembly.Location;
+                    using(var input=System.IO.File.OpenRead(path))
+                    using(var digest=System.Security.Cryptography.SHA256.Create())
+                    {
+                        byte[] bytes=digest.ComputeHash(input);
+                        return BitConverter.ToString(bytes,0,8).Replace("-","")
+                            .ToLowerInvariant();
+                    }
+                }
+                catch(System.IO.IOException){ return "UNAVAILABLE"; }
+                catch(UnauthorizedAccessException){ return "UNAVAILABLE"; }
+            }
+        }
+    }
+
     // Windows-only settings hub. Does not expose bearer tokens or alter
     // aircraft configuration through the cloud.
     internal sealed class AeroHelmTouchSettingsWindow : Form
     {
         private readonly Label session = new Label();
         private readonly Label origin = new Label();
+        private readonly Label build = new Label();
 
         public AeroHelmTouchSettingsWindow()
         {
@@ -608,7 +640,7 @@ namespace AeroHelm.GcsCloud
                 ColumnCount = 1, RowCount = 4
             };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute,65));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute,100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute,148));
             root.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute,66));
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
@@ -636,10 +668,11 @@ namespace AeroHelm.GcsCloud
 
             var info = new TableLayoutPanel { Dock=DockStyle.Fill,
                 BackColor=Drawing.Color.FromArgb(33,33,33),
-                ColumnCount=1,RowCount=2,Padding=new Padding(15,8,15,8) };
-            info.RowStyles.Add(new RowStyle(SizeType.Percent,50));
-            info.RowStyles.Add(new RowStyle(SizeType.Percent,50));
-            foreach(var label in new[]{session,origin})
+                ColumnCount=1,RowCount=3,Padding=new Padding(15,8,15,8) };
+            info.RowStyles.Add(new RowStyle(SizeType.Percent,33));
+            info.RowStyles.Add(new RowStyle(SizeType.Percent,33));
+            info.RowStyles.Add(new RowStyle(SizeType.Percent,34));
+            foreach(var label in new[]{session,origin,build})
             {
                 label.Dock=DockStyle.Fill;
                 label.ForeColor=Drawing.Color.FromArgb(228,228,228);
@@ -697,6 +730,9 @@ namespace AeroHelm.GcsCloud
                 configured=AeroHelmWorkspaceSettings.CloudOrigin();
             origin.Text="Cloud origin: "+configured+
                 "  (operator tokens are never shown)";
+            build.Text="Loaded compiled AeroHelm plugin: "+AeroHelmReleaseIdentity.BuildId+
+                " | DLL SHA-256: "+AeroHelmReleaseIdentity.PluginSha256Prefix;
+            build.AccessibleName="AeroHelm installed plugin binary fingerprint";
         }
 
         private static void Add(FlowLayoutPanel host,string caption,Action action)
