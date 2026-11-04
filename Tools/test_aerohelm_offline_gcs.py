@@ -98,6 +98,22 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertNotIn("git clean", release)
         self.assertNotIn("git reset", release)
 
+    def test_login_modal_cannot_be_hidden_by_topmost_splash(self):
+        program = source("Program.cs")
+        gate = source("AeroHelmStartupGate.cs")
+        splash = source("Splash.Designer.cs")
+        self.assertIn("this.TopMost = true;", splash)
+        login_start = program.index("if (AeroHelmStartupGate.ShouldRequire(Program.args))")
+        login_end = program.index("Application.Run(new MainV2());", login_start)
+        sequence = program[login_start:login_end]
+        self.assertLess(sequence.index("Splash.Hide()"),
+                        sequence.index("AeroHelmStartupGate.Authenticate()"))
+        self.assertLess(sequence.index("AeroHelmStartupGate.Authenticate()"),
+                        sequence.index("Splash.Show()"))
+        self.assertIn("Splash.TopMost = false;", sequence)
+        self.assertIn("password.Focus();", gate)
+        self.assertIn("ShowDialog()==DialogResult.OK", gate)
+
     def test_wip_windows_build_is_not_implicitly_deployed(self):
         build = source("scripts/Build-Integrated-AeroHelm.ps1")
         self.assertIn("AeroHelmMavlinkBridgeTests.csproj", build)
