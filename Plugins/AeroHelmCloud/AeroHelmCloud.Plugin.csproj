@@ -18,6 +18,7 @@
     <Compile Include="..\..\plugins\AeroHelmTouchPanel.cs" Link="AeroHelmTouchPanel.cs" />
     <Compile Include="..\..\plugins\AeroHelmReadOnlyPages.cs" Link="AeroHelmReadOnlyPages.cs" />
     <Compile Include="..\..\plugins\AeroHelmTwinLabWindow.cs" Link="AeroHelmTwinLabWindow.cs" />
+    <Compile Include="..\..\plugins\AeroHelmFleetLabWindow.cs" Link="AeroHelmFleetLabWindow.cs" />
     <ProjectReference Include="..\..\MissionPlanner.csproj" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Drawing">
