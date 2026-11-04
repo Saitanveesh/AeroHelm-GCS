@@ -17,14 +17,10 @@ if ($Port -ne 5760) {
     Write-Warning "Mission Planner TCP host/port must match your Python bridge port $Port."
 }
 if ($CachedParameters) {
-    $env:AEROHELM_CLOUD_READONLY = "0" # Native GCS may request parameters.
-    Write-Host "M2: native read-only parameter synchronization ENABLED." -ForegroundColor Cyan
-    Write-Host "Use ONLY with verified cached-parameter bridge (Start-AeroHelm-M2ReadOnly.ps1)."
-    Write-Host "All GCS parameter writes, missions and flight commands are blocked upstream."
-} else {
-    $env:AEROHELM_CLOUD_READONLY = "1" # M1: skip blocked GCS params.
-    Write-Host "M1: passive live Flight Data, parameter sync skipped." -ForegroundColor Cyan
+    throw '-CachedParameters is not supported in the unified cloud receive-only release. Use the M2 verified offline cache separately; no cloud TCP parameter request is permitted.'
 }
+$env:AEROHELM_CLOUD_READONLY = "1"
+Write-Host 'AeroHelm receive-only Flight Data: native parameter sync is suppressed.' -ForegroundColor Cyan
 Start-Process -FilePath $exe
 Write-Host "In AeroHelm: choose TCP -> host 127.0.0.1 -> port $Port."
 Write-Host "The CLOUD registry's view session is not a native MAVLink TCP connection."
