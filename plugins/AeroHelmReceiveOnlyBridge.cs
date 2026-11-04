@@ -72,7 +72,7 @@ namespace AeroHelm.GcsCloud
                 if (cancellation == null)
                 {
                     if (state.StartsWith("PORT 5760", StringComparison.Ordinal))
-                        return "LOCAL TCP / PORT 5760 OCCUPIED — CLOSE OLD BRIDGE";
+                        return "LOCAL TCP / PORT 5760 OCCUPIED — CHECK LISTENER";
                     return "LOCAL TCP / " + state;
                 }
                 long hbTicks = Interlocked.Read(ref lastHeartbeatUtcTicks);
