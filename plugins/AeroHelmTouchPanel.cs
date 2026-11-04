@@ -29,6 +29,9 @@ namespace AeroHelm.GcsCloud
             new System.Windows.Forms.Timer();
         private bool opening;
         private bool refreshingStatus;
+        private bool? cloudHeartbeatLive;
+        private bool? cloudAttitudeLive;
+        private DateTime cloudStatusCheckedUtc = DateTime.MinValue;
 
         private static readonly string[] Names = {
             "FLIGHT", "PLAN", "VISION",
@@ -180,6 +183,9 @@ namespace AeroHelm.GcsCloud
             if (refreshingStatus || IsDisposed || Disposing) return;
             refreshingStatus = true;
             refreshStatus.Enabled = false;
+            cloudHeartbeatLive = null;
+            cloudAttitudeLive = null;
+            cloudStatusCheckedUtc = DateTime.MinValue;
             linkStatus.Text = "CLOUD STATUS / CHECKING — NO FLIGHT AUTHORITY";
             linkStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
             try
@@ -221,6 +227,9 @@ namespace AeroHelm.GcsCloud
                 if (result.TryGetValue("attitude_stream_active",out attValue)
                     && attValue is bool)
                     attitudeLive = (bool)attValue;
+                cloudHeartbeatLive = fresh && connected ? heartbeatLive : (bool?)false;
+                cloudAttitudeLive = fresh && connected ? attitudeLive : (bool?)false;
+                cloudStatusCheckedUtc = DateTime.UtcNow;
 
                 if (fresh && connected)
                 {
@@ -282,6 +291,37 @@ namespace AeroHelm.GcsCloud
                 switch (selected)
                 {
                     case "FLIGHT":
+                        // Fail BEFORE native Mission Planner starts a heartbeat
+                        // timeout if the backend has definitive contrary data.
+                        // On an older backend these values remain UNKNOWN, so
+                        // the native heartbeat gate still makes the decision.
+                        if (string.Equals(Environment.GetEnvironmentVariable(
+                                "AEROHELM_AUTO_NATIVE_TCP"),"1",
+                                StringComparison.Ordinal))
+                        {
+                            var native = AeroHelmCloudPlugin.ActiveNativeBridge;
+                            if (native == null || !native.IsListening)
+                            {
+                                MessageBox.Show(this,
+                                    "The authenticated local read-only TCP bridge is not ready. "+
+                                    "Check LINK or free TCP 5760 before trying FLIGHT.",
+                                    "AeroHelm — local bridge unavailable",
+                                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                                return;
+                            }
+                            if (cloudHeartbeatLive == false &&
+                                (DateTime.UtcNow-cloudStatusCheckedUtc).TotalSeconds < 8)
+                            {
+                                MessageBox.Show(this,
+                                    "Oracle reports NO real Pixhawk HEARTBEAT. "+
+                                    "Native Mission Planner cannot establish a trustworthy HUD "+
+                                    "from generic cloud frames. Open LINK and verify Pi/FC "+
+                                    "heartbeat counters. No messages will be fabricated.",
+                                    "AeroHelm — heartbeat missing",
+                                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                                return;
+                            }
+                        }
                         OpenNative(main => {
                             main.MenuFlightData.PerformClick();
                             // One-click private native HUD: NO repeated TCP/IP prompts.
