@@ -74,6 +74,14 @@ $msbuild = Find-FrameworkMSBuild -ExplicitPath $MSBuildPath
 if (Get-Process -Name MissionPlanner -ErrorAction SilentlyContinue) {
     throw "MissionPlanner.exe is running. Close it before rebuilding so plugin DLLs can be copied."
 }
+# Fast guard before expensive Visual Studio MSBuild. Past release snapshots
+# under build-logs contained duplicate Plugins/*.cs. Never compile those.
+if ($Target -eq "Solution") {
+    $mainProject = [IO.File]::ReadAllText((Join-Path $repoRoot "MissionPlanner.csproj"))
+    if (-not $mainProject.Contains('Compile Remove="build-logs\**"')) {
+        throw 'Unsafe GCS project: backup plugin source files may be recompiled. Update MissionPlanner.csproj before building.'
+    }
+}
 $project = if ($Target -eq "Plugin") {
     Join-Path $repoRoot "Plugins\AeroHelmCloud\AeroHelmCloud.Plugin.csproj"
 } else {
