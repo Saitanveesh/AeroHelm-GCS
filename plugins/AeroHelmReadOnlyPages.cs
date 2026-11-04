@@ -113,6 +113,17 @@ namespace AeroHelm.GcsCloud
                 ActionButton(bar,"Refresh fleet", "fleet");
                 ActionButton(bar,"Aircraft alerts", "alerts");
                 ActionButton(bar,"Shadow fleet", "researchFleet");
+                var scheduler=new Button {
+                    Text="Fleet scheduler lab",Width=190,Height=40,
+                    FlatStyle=FlatStyle.Flat,BackColor=Surface,ForeColor=Ink,
+                    Margin=new Padding(3,0,8,0),UseVisualStyleBackColor=false
+                };
+                scheduler.FlatAppearance.BorderSize=0;
+                scheduler.Click+=(s,e)=> {
+                    using(var window=new AeroHelmFleetLabWindow())
+                        window.ShowDialog(this);
+                };
+                bar.Controls.Add(scheduler);
                 SetColumns("Aircraft", "Link", "Sample age (s)", "Mode",
                            "Armed", "Battery (%)", "GNSS sats", "Risk flags");
             }
