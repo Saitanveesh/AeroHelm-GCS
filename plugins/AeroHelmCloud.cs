@@ -50,7 +50,9 @@ namespace AeroHelm.GcsCloud
             _button = new ToolStripButton("CLOUD");
             _button.Name = "AeroHelmCloudButton";
             _button.ToolTipText = "AeroHelm Cloud: login, aircraft registry and view sessions (no flight commands)";
-            _button.DisplayStyle = ToolStripItemDisplayStyle.Text;
+            _button.Image = AeroHelmIconPainter.Make("CLOUD", 20);
+            _button.ImageScaling = ToolStripItemImageScaling.None;
+            _button.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
             _button.ForeColor = FrameworkDrawing::System.Drawing.Color.White;
             _button.Margin = new Padding(5, 0, 5, 0);
             _button.AutoSize = true;
@@ -78,7 +80,7 @@ namespace AeroHelm.GcsCloud
             menu.Items.Insert(at++, _survey);
 
             _vision = NewToolbarButton("VISION", "Private onboard camera viewer");
-            _vision.Image = CameraIcon();
+            _vision.Image = AeroHelmIconPainter.Make("VISION",20);
             _vision.ImageScaling = ToolStripItemImageScaling.None;
             _vision.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
             _vision.Click += delegate
@@ -130,11 +132,12 @@ namespace AeroHelm.GcsCloud
             // may still need for diagnosis, SITL and maintenance.
             _simulationWasVisible = main.MenuSimulation.Visible;
             _helpWasVisible = main.MenuHelp.Visible;
-            // A GCS must keep its recovery/diagnostic navigation available.
-            // Compact toolbar hiding is opt-in only; the default preserves
-            // upstream HELP and Simulation for maintenance and debugging.
-            if (string.Equals(Environment.GetEnvironmentVariable(
-                    "AEROHELM_REDUCED_TOOLBAR"), "1", StringComparison.Ordinal))
+            // AeroHelm GCS hides the upstream HELP and SIMULATION tiles in its
+            // default operator profile, as requested. They remain present in
+            // the native offline maintenance/recovery executable, not deleted.
+            // Only an explicit maintenance override may restore their buttons.
+            if (!string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_REDUCED_TOOLBAR"), "0", StringComparison.Ordinal))
             {
                 main.MenuSimulation.Visible = false;
                 main.MenuHelp.Visible = false;
@@ -186,7 +189,9 @@ namespace AeroHelm.GcsCloud
             {
                 Name = "AeroHelm" + label + "Button",
                 ToolTipText = tip,
-                DisplayStyle = ToolStripItemDisplayStyle.Text,
+                Image = AeroHelmIconPainter.Make(label,20),
+                ImageScaling = ToolStripItemImageScaling.None,
+                DisplayStyle = ToolStripItemDisplayStyle.ImageAndText,
                 ForeColor = FrameworkDrawing::System.Drawing.Color.White,
                 Margin = new Padding(4, 0, 4, 0),
                 AutoSize = true
