@@ -28,7 +28,7 @@ if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close other Mission Planner windows before launching AeroHelm Touch.'
 }
 $branch = (& git -C $root branch --show-current).Trim()
-if ($branch -notin @('feat/aerohelm-touch-console', 'feat/aerohelm-windows-integration', 'feat/aerohelm-windows-pages-v1', 'feat/aerohelm-windows-readiness-v2', 'feat/aerohelm-windows-release-candidate', 'feat/aerohelm-combined-preflight')) {
+if ($branch -notin @('feat/aerohelm-touch-console', 'feat/gcs-unified-login-readonly-bridge', 'feat/gcs-research-cybershield-twin-ui', 'feat/aerohelm-windows-integration', 'feat/aerohelm-windows-pages-v1', 'feat/aerohelm-windows-readiness-v2', 'feat/aerohelm-windows-release-candidate', 'feat/aerohelm-combined-preflight')) {
     throw "Touch launcher requires the reviewed Windows integration branch (found $branch)."
 }
 if ($ManualTouch) {
