@@ -105,6 +105,12 @@ Require-Text $integratedBuild 'AeroHelmMavlinkBridgeTests.csproj' 'Native bridge
 Require-Text $integratedBuild 'feat/gcs-research-cybershield-twin-ui' 'Build launcher must accept the reviewed research branch.'
 Require-Text $launcher 'feat/gcs-research-cybershield-twin-ui' 'Touch launcher must accept the research branch.'
 Require-Text $launcher 'AEROHELM_AUTO_NATIVE_TCP' 'FLIGHT should connect its local bridge without prompting.'
+Require-Text $launcher 'Get-NetTCPConnection -LocalPort 5760 -State Listen' 'Fail fast when the old Python bridge blocks the embedded loopback receiver.'
+Require-Text $nativeBridge 'internal string CompactSummary' 'Touch HOME must use a short, truthful local bridge headline.'
+Require-Text $touch 'bridge.CompactSummary' 'HOME must not show the full verbose bridge diagnostics by default.'
+Require-Text $touch 'bridgeDiagnosticsTip.SetToolTip' 'Full native bridge diagnostics must remain accessible by hover.'
+Require-Text $touch 'Dock = DockStyle.Bottom, Height = 56' 'Compact cloud status bar height must fit touch UX.'
+if ($touch.Contains('linkStatus.Text += ')) { throw 'HOME cloud status must not append duplicate local TCP diagnostics.' }
 Require-Text $mainNative 'Host = "127.0.0.1", Port = "5760"' 'Native Mission Planner TCP should bind local bridge without prompting.'
 Require-Text $mainNative 'getparams = false;' 'Any read-only cloud TCP caller must skip parameter requests.'
 Require-Text $touch 'AeroHelmReleaseIdentity.BuildId' 'Touch title must expose the compiled plugin identity.'
