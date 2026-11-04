@@ -37,6 +37,9 @@ on:
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
+      - "scripts/Consolidate-AeroHelmWindows.ps1"
+      - "scripts/Audit-AeroHelmModules.ps1"
+      - "scripts/Start-AeroHelm-NativeCloud.ps1"
       - "MainV2.cs"
       - "Plugins/AeroHelmCloud/**"
       - ".github/workflows/aerohelm-cloud-plugin.yml"
@@ -62,6 +65,9 @@ on:
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
+      - "scripts/Consolidate-AeroHelmWindows.ps1"
+      - "scripts/Audit-AeroHelmModules.ps1"
+      - "scripts/Start-AeroHelm-NativeCloud.ps1"
       - "MainV2.cs"
       - ".github/workflows/aerohelm-cloud-plugin.yml"
   workflow_dispatch:
@@ -75,6 +81,9 @@ jobs:
       - name: Verify native Windows page source contracts (no aircraft)
         shell: pwsh
         run: ./scripts/Test-AeroHelmWindowsPages.ps1
+      - name: Audit all nine GCS modules without aircraft
+        shell: pwsh
+        run: ./scripts/Audit-AeroHelmModules.ps1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
