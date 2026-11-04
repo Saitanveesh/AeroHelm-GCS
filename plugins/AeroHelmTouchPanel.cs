@@ -30,7 +30,6 @@ namespace AeroHelm.GcsCloud
         private bool opening;
         private bool refreshingStatus;
         private bool? cloudHeartbeatLive;
-        private bool? cloudAttitudeLive;
         private DateTime cloudStatusCheckedUtc = DateTime.MinValue;
 
         private static readonly string[] Names = {
@@ -184,7 +183,6 @@ namespace AeroHelm.GcsCloud
             refreshingStatus = true;
             refreshStatus.Enabled = false;
             cloudHeartbeatLive = null;
-            cloudAttitudeLive = null;
             cloudStatusCheckedUtc = DateTime.MinValue;
             linkStatus.Text = "CLOUD STATUS / CHECKING — NO FLIGHT AUTHORITY";
             linkStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
@@ -228,7 +226,6 @@ namespace AeroHelm.GcsCloud
                     && attValue is bool)
                     attitudeLive = (bool)attValue;
                 cloudHeartbeatLive = fresh && connected ? heartbeatLive : (bool?)false;
-                cloudAttitudeLive = fresh && connected ? attitudeLive : (bool?)false;
                 cloudStatusCheckedUtc = DateTime.UtcNow;
 
                 if (fresh && connected)
