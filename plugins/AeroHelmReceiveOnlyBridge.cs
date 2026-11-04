@@ -24,6 +24,11 @@ namespace AeroHelm.GcsCloud
         private long heartbeats;
         private long attitudes;
         private long lastFrameUtcTicks;
+        private long lastHeartbeatUtcTicks;
+        private long lastAttitudeUtcTicks;
+        private long lastRollCentideg;
+        private long lastPitchCentideg;
+        private long validAttitudeSamples;
 
         internal string Summary
         {
@@ -37,8 +42,23 @@ namespace AeroHelm.GcsCloud
                 string age = lastTicks == 0 ? "never" :
                     Math.Max(0, (int)(DateTime.UtcNow - new DateTime(
                         lastTicks, DateTimeKind.Utc)).TotalSeconds) + "s ago";
+                var now = DateTime.UtcNow;
+                long hbTicks = Interlocked.Read(ref lastHeartbeatUtcTicks);
+                long attTicks = Interlocked.Read(ref lastAttitudeUtcTicks);
+                bool liveHb = hbTicks > 0 &&
+                    (now-new DateTime(hbTicks,DateTimeKind.Utc)).TotalSeconds < 5;
+                bool liveAtt = attTicks > 0 &&
+                    (now-new DateTime(attTicks,DateTimeKind.Utc)).TotalSeconds < 5;
+                long decoded = Interlocked.Read(ref validAttitudeSamples);
+                string angles = decoded == 0 ? "roll/pitch UNKNOWN" :
+                    "roll " + (Interlocked.Read(ref lastRollCentideg)/100.0).ToString(
+                        "F1",System.Globalization.CultureInfo.InvariantCulture) +
+                    " deg / pitch " + (Interlocked.Read(ref lastPitchCentideg)/100.0).ToString(
+                        "F1",System.Globalization.CultureInfo.InvariantCulture) + " deg";
                 return "LOCAL TCP / " + status + " | frames " + count +
-                    " | HEARTBEAT " + hb + " | ATTITUDE " + att + " | last " + age;
+                    " | HB " + hb + (liveHb ? " LIVE" : " STALE/MISSING") +
+                    " | ATT " + att + (liveAtt ? " LIVE" : " STALE/MISSING") +
+                    " | " + angles + " | last frame " + age;
             }
         }
 
@@ -177,9 +197,39 @@ namespace AeroHelm.GcsCloud
                             continue; // Refuse malformed/unknown message envelopes.
                         await client.GetStream().WriteAsync(packet, 0, length, linked.Token);
                         Interlocked.Increment(ref frames);
-                        if (messageId == 0) Interlocked.Increment(ref heartbeats);
-                        if (messageId == 30) Interlocked.Increment(ref attitudes);
-                        Interlocked.Exchange(ref lastFrameUtcTicks, DateTime.UtcNow.Ticks);
+                        long receivedTicks = DateTime.UtcNow.Ticks;
+                        if (messageId == 0)
+                        {
+                            Interlocked.Increment(ref heartbeats);
+                            Interlocked.Exchange(ref lastHeartbeatUtcTicks, receivedTicks);
+                        }
+                        if (messageId == 30)
+                        {
+                            Interlocked.Increment(ref attitudes);
+                            Interlocked.Exchange(ref lastAttitudeUtcTicks, receivedTicks);
+                            // MAVLink ATTITUDE payload: time_boot_ms + roll/pitch
+                            // IEEE754 radians, at offsets +4 and +8. These are
+                            // measured FC frames, never invented orientations.
+                            int offset = packet[0] == 0xFE ? 6 : 10;
+                            if (packet[1] >= 12 && BitConverter.IsLittleEndian)
+                            {
+                                float roll = BitConverter.ToSingle(packet,offset+4);
+                                float pitch = BitConverter.ToSingle(packet,offset+8);
+                                double rollDeg = roll*180.0/Math.PI;
+                                double pitchDeg = pitch*180.0/Math.PI;
+                                if (!float.IsNaN(roll) && !float.IsInfinity(roll) &&
+                                    !float.IsNaN(pitch) && !float.IsInfinity(pitch) &&
+                                    Math.Abs(rollDeg) <= 180 && Math.Abs(pitchDeg) <= 90)
+                                {
+                                    Interlocked.Exchange(ref lastRollCentideg,
+                                        (long)Math.Round(rollDeg*100));
+                                    Interlocked.Exchange(ref lastPitchCentideg,
+                                        (long)Math.Round(pitchDeg*100));
+                                    Interlocked.Increment(ref validAttitudeSamples);
+                                }
+                            }
+                        }
+                        Interlocked.Exchange(ref lastFrameUtcTicks, receivedTicks);
                         state = "RECEIVING READ-ONLY MAVLINK";
                     }
                 }
