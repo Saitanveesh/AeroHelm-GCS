@@ -95,7 +95,7 @@ namespace AeroHelm.GcsCloud
                 WrapContents = false, AutoScroll = true, Padding = new Padding(0,5,0,0)
             };
             layout.Controls.Add(bar,0,1);
-            if (section == "ANALYTICS" || section == "FLEET")
+            if (section == "ANALYTICS" || section == "FLEET" || section == "SECURITY")
             {
                 bar.Controls.Add(new Label {
                     Text = "Aircraft ID", Height = 42, Width = 84,
@@ -112,6 +112,7 @@ namespace AeroHelm.GcsCloud
             {
                 ActionButton(bar,"Refresh fleet", "fleet");
                 ActionButton(bar,"Aircraft alerts", "alerts");
+                ActionButton(bar,"Shadow fleet", "researchFleet");
                 SetColumns("Aircraft", "Link", "Sample age (s)", "Mode",
                            "Armed", "Battery (%)", "GNSS sats", "Risk flags");
             }
@@ -119,6 +120,8 @@ namespace AeroHelm.GcsCloud
             {
                 ActionButton(bar,"Security posture", "posture");
                 ActionButton(bar,"Recent audit", "audit");
+                ActionButton(bar,"CyberShield", "cyberShadow");
+                ActionButton(bar,"Evidence integrity", "integrity");
                 SetColumns("Setting", "Reported value");
             }
             else
@@ -142,6 +145,9 @@ namespace AeroHelm.GcsCloud
                 ActionButton(bar,"Flight report", "report");
                 ActionButton(bar,"Recent telemetry", "history");
                 ActionButton(bar,"Offline archive", "archive");
+                ActionButton(bar,"Digital shadow", "digitalShadow");
+                ActionButton(bar,"Evidence replay", "evidence");
+                ActionButton(bar,"Camera events", "visionEvents");
                 SetColumns("Metric", "Reported value");
             }
             var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0,5,0,4) };
@@ -199,6 +205,12 @@ namespace AeroHelm.GcsCloud
             state.Text = "UNKNOWN  |  Press Refresh; never interpret an absent sample as a safe aircraft.";
             layout.Controls.Add(state,0,4);
 
+            var configuredAircraft =
+                Environment.GetEnvironmentVariable("AEROHELM_VEHICLE_ID");
+            if (!string.IsNullOrEmpty(configuredAircraft) &&
+                Regex.IsMatch(configuredAircraft,@"\A[A-Za-z0-9_-]{3,64}\z",
+                    RegexOptions.CultureInvariant))
+                vehicleId.Text = configuredAircraft; // Identifier only; not proof of live link.
             KeyDown += (s,e) => {
                 if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; }
             };
@@ -333,6 +345,12 @@ namespace AeroHelm.GcsCloud
                 switch (operation)
                 {
                     case "fleet": route = "api/v2/fleet"; break;
+                    case "researchFleet": route = "api/v3/research/fleet"; break;
+                    case "integrity": route = "api/v3/research/evidence-integrity"; break;
+                    case "digitalShadow": route = "api/v3/vehicles/" + CheckedAircraftId() + "/digital-shadow"; break;
+                    case "cyberShadow": route = "api/v3/vehicles/" + CheckedAircraftId() + "/cyber-events"; break;
+                    case "evidence": route = "api/v3/vehicles/" + CheckedAircraftId() + "/evidence?limit=100"; break;
+                    case "visionEvents": route = "api/v3/vehicles/" + CheckedAircraftId() + "/vision-events"; break;
                     case "discover": route = "api/v2/fleet"; break;
                     case "alerts": route = "api/v2/vehicles/" + CheckedAircraftId() + "/alerts"; break;
                     case "posture": route = "api/v2/security/posture"; break;
@@ -383,7 +401,12 @@ namespace AeroHelm.GcsCloud
                 });
                 if (IsDisposed || Disposing) return;
                 var parsed = AsObject(json.DeserializeObject(response));
-                Render(operation,parsed);
+                if (operation == "researchFleet" || operation == "integrity" ||
+                    operation == "digitalShadow" || operation == "cyberShadow" ||
+                    operation == "evidence" || operation == "visionEvents")
+                    RenderResearch(operation,parsed);
+                else
+                    Render(operation,parsed);
                 state.Text = "OBSERVED  " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'",
                     CultureInfo.InvariantCulture) +
                     (usedM1Registry ?
@@ -421,6 +444,27 @@ namespace AeroHelm.GcsCloud
                 if (!IsDisposed && !Disposing)
                     foreach (var button in actions) button.Enabled = true;
             }
+        }
+
+
+        // Research V3 is an experimental observational service. Do not
+        // present a digital shadow as a certified physical dynamics twin.
+        private void RenderResearch(string operation, Dictionary<string,object> result)
+        {
+            SetColumns("Attribute","Reported value");
+            foreach (var entry in result)
+            {
+                if (entry.Value is object[] || entry.Value is Dictionary<string,object>)
+                    table.Rows.Add(entry.Key,"Open structured evidence below");
+                else
+                    table.Rows.Add(entry.Key,Display(entry.Value));
+            }
+            detail.Text = "RESEARCH EXPERIMENTAL: " + operation +
+                Environment.NewLine + "No physical flight-control authority." +
+                Environment.NewLine + "Missing or stale samples are not proof of safety." +
+                Environment.NewLine + "A short-horizon constant-velocity digital shadow is NOT" +
+                " a validated aircraft physics model." +
+                Environment.NewLine + Environment.NewLine + json.Serialize(result);
         }
 
         private void Render(string operation, Dictionary<string,object> result)
