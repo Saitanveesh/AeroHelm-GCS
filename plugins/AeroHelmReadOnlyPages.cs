@@ -133,6 +133,7 @@ namespace AeroHelm.GcsCloud
             else if (section == "SECURITY")
             {
                 ActionButton(bar,"Security posture", "posture");
+                ActionButton(bar,"Kerberos readiness", "kerberos");
                 ActionButton(bar,"Recent audit", "audit");
                 ActionButton(bar,"CyberShield", "cyberShadow");
                 ActionButton(bar,"Evidence integrity", "integrity");
@@ -375,6 +376,30 @@ namespace AeroHelm.GcsCloud
         private async Task LoadAsync(string operation)
         {
             if (busy || IsDisposed || Disposing) return;
+            if (operation == "kerberos")
+            {
+                // This is an explicit integration gate, NOT a simulated login,
+                // fake Kerberos ticket or claim of installed KDC protection.
+                SetColumns("Security layer", "Deployment state");
+                table.Rows.Add("Tailscale private HTTPS", "Current transport boundary; verify tailnet ACLs");
+                table.Rows.Add("Operator JWT", "Current application identity; short-lived session");
+                table.Rows.Add("Kerberos KDC/realm", "NOT PROVISIONED");
+                table.Rows.Add("SPNEGO service principal and keytab", "NOT PROVISIONED");
+                table.Rows.Add("Trusted gateway / actor-role mapping", "NOT PROVISIONED");
+                table.Rows.Add("Replay/clock / key rotation", "NOT VERIFIED");
+                table.Rows.Add("MAVLink2 FC signing", "NOT VERIFIED");
+                detail.Text = "KERBEROS NOT ACTIVE — no realm, trusted gateway or keytab has been configured." +
+                    Environment.NewLine +
+                    "The GCS uses operator JWT over private Tailscale HTTPS; these are not Kerberos tickets." +
+                    Environment.NewLine +
+                    "KDC, SPNEGO authentication, explicit role mapping, replay protection, rotation and" +
+                    " tested fail-closed denial are required before enabling a Kerberos-backed gateway." +
+                    Environment.NewLine +
+                    "No cloud flight-control authority is provided.";
+                state.Text = "NOT CONFIGURED  |  Architectural readiness only; no token or ticket created.";
+                state.ForeColor = Drawing.Color.FromArgb(244,210,161);
+                return;
+            }
             string route;
             try
             {
