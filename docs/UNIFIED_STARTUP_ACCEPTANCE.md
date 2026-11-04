@@ -14,10 +14,13 @@ Do not deploy unvalidated files to the powered-down Pi or Oracle.
    in memory only. Cancellation exits the application.
 5. Mission Planner opens the full-screen 3x3 TOUCH panel. Help and Simulation
    toolbar buttons are hidden *in this launcher profile* (not deleted).
-6. The GCS itself listens on loopback TCP 127.0.0.1:5760 for a native
-   Mission Planner TCP connection and forwards authenticated cloud MAVLink
-   bytes. Select TCP/127.0.0.1/5760 in the native Flight Data connection
-   control. This is **read-only; every outbound GCS byte is discarded**.
+6. The GCS itself listens on loopback TCP 127.0.0.1:5760 and forwards
+   authenticated cloud MAVLink bytes. Click the FLIGHT touch tile to request
+   the native connection automatically; no IP/port prompts in this profile.
+   Native Mission Planner still REQUIRES actual Pixhawk heartbeat packets
+   and skips parameter retrieval on this strictly read-only M1 path.
+   If the heartbeat is absent, the HUD must not report successful connection.
+   **Every outbound GCS byte is discarded**.
 7. Clicking VISION preloads the existing private Pi camera URL and opens
    the browser viewer. Camera video is separate from telemetry and is not
    transported via Oracle.
@@ -71,3 +74,11 @@ Do not replace the known working build until new native compilation succeeds.
 This change makes launch/setup more predictable. It does **not** authorize
 autonomous physical flight, supervised calibration, parameter mutation,
 firmware change, telemetry rate override, or a remote MAVLink command channel.
+
+The operator toolbar hides HELP and SIMULATION by default and provides native
+vector icons for each AeroHelm module. These upstream controls remain in the
+offline native maintenance executable rather than being deleted.
+
+The Pi M1 uplink and Oracle hub now have passive heartbeat/attitude counters
+in merged development code; they are not automatically deployed to the user's
+running Pi or Oracle. The backend must be staged/bench-verified separately.
