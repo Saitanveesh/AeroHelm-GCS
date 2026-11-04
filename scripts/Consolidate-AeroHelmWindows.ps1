@@ -62,10 +62,14 @@ function Assert-PluginLayout {
     if(Test-Path -LiteralPath (Join-Path $plugins 'AeroHelmCloud.cs') -PathType Leaf){
         throw 'Duplicate interpreted AeroHelmCloud.cs is still present in runtime.'
     }
+    # The consolidated plugin contains all custom AeroHelm modules.
+    # Unknown secondary AeroHelm DLLs may create duplicate UI/hooks.
+    # Never silently delete them: stop with a precise file inventory.
     $conflicts=@(Get-ChildItem -LiteralPath $plugins -File -ErrorAction Stop |
-        Where-Object {$_.Name -in @('AeroHelmCloud.dll','AeroHelm.Cloud.Plugin.dll')})
+        Where-Object { $_.Name -like 'AeroHelm*.dll' -and
+            $_.Name -ne 'AeroHelm.Cloud.Plugin.Validation.dll' })
     if($conflicts.Count -gt 0){
-        throw "Conflicting legacy DLL remains: $($conflicts.Name -join ', ')"
+        throw "Extra AeroHelm DLL(s) require explicit review, do not auto-delete: $($conflicts.Name -join ', ')"
     }
 }
 $commit=Assert-Git
