@@ -101,18 +101,24 @@ Write-Host "Target: $project"
 Write-Host "Build log: $logPath"
 Write-Host "Serial build enabled to reduce concurrent plugin DLL copy conflicts."
 
+# Record full diagnostic output on disk, not hundreds of duplicate lines
+# in the operator's console. Build failures get a bounded first-error summary.
+$consoleLog = Join-Path $logFolder ("aerohelm-" + $Target.ToLowerInvariant() + "-console.log")
 Push-Location $repoRoot
 try {
-    & $msbuild $project /restore /m:1 /nr:false /p:Configuration=Release /verbosity:minimal /nologo "/flp:LogFile=$logPath;Verbosity=normal" /clp:ErrorsOnly
+    & $msbuild $project /restore /m:1 /nr:false /p:Configuration=Release /verbosity:minimal /nologo "/flp:LogFile=$logPath;Verbosity=normal" /clp:ErrorsOnly *> $consoleLog
     $code = $LASTEXITCODE
 } finally {
     Pop-Location
 }
 if ($code -ne 0) {
-    Write-Host "Build failed. Errors from $logPath :" -ForegroundColor Red
-    if (Test-Path -LiteralPath $logPath) {
-        Get-Content -LiteralPath $logPath | Select-String " : error " | Select-Object -Last 30
+    Write-Host "Build failed. First 12 errors; complete log: $logPath" -ForegroundColor Red
+    if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+        $errors = @(Select-String -LiteralPath $logPath -Pattern ': error (CS[0-9]+|MSB[0-9]+)' |
+            Select-Object -First 12)
+        foreach ($entry in $errors) { Write-Host $entry.Line }
     }
+    Write-Host "MSBuild console output: $consoleLog"
     exit $code
 }
 Write-Host "Build succeeded. Review warnings in $logPath before releasing AeroHelm-GCS." -ForegroundColor Green
