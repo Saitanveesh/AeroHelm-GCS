@@ -549,13 +549,71 @@ namespace AeroHelm.GcsCloud
                     timer.Restart();
                     var mavlink = Read(origin, "api/v1/mavlink/health");
                     timer.Stop();
-                    return new { health, mavlink, apiMs, linkMs=timer.ElapsedMilliseconds };
+                    var linkMs = timer.ElapsedMilliseconds;
+                    // Actual ATTITUDE is sensitive per-aircraft detail: use
+                    // the authenticated, receive-only GCS API, NOT the public
+                    // /health endpoint. The operator may inspect a different
+                    // origin in LINK, so never send a JWT to that arbitrary URL.
+                    string attitude = null;
+                    string attitudeNote = "AUTHENTICATED PREVIEW UNAVAILABLE";
+                    if (!string.IsNullOrWhiteSpace(MissionPlanner.Program.AeroHelmCloudOrigin) &&
+                        string.Equals(origin.GetLeftPart(UriPartial.Authority),
+                            MissionPlanner.Program.AeroHelmCloudOrigin,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        try {
+                            attitude = OperationsApi.Request("GET","api/v1/mavlink/attitude");
+                            attitudeNote = "OK";
+                        }
+                        catch (WebException ex) {
+                            var http = ex.Response as HttpWebResponse;
+                            attitudeNote = http != null && http.StatusCode == HttpStatusCode.NotFound ?
+                                "ORACLE M1 UPDATE REQUIRED" :
+                                http != null && (http.StatusCode == HttpStatusCode.Unauthorized ||
+                                                 http.StatusCode == HttpStatusCode.Forbidden) ?
+                                "SIGN IN AGAIN" : "CLOUD PREVIEW UNAVAILABLE";
+                            if(http != null) http.Dispose();
+                        }
+                        catch (InvalidOperationException) {
+                            attitudeNote = "SIGN IN AGAIN";
+                        }
+                    }
+                    return new { health, mavlink, apiMs, linkMs,
+                                 attitude, attitudeNote };
                 });
                 var json = new JavaScriptSerializer();
                 var h = json.Deserialize<Dictionary<string, object>>(result.health);
                 var m = json.Deserialize<Dictionary<string, object>>(result.mavlink);
                 if (IsDisposed || Disposing) return;
                 AeroHelmWorkspaceSettings.Save("cloud-url", origin.GetLeftPart(UriPartial.Authority));
+                // A missing/old server endpoint is a known unverified state.
+                // Roll/pitch are never inferred from generic frame counters.
+                string attitudePreview = result.attitudeNote;
+                if (result.attitude != null)
+                {
+                    var observation = json.Deserialize<Dictionary<string,object>>(
+                        result.attitude);
+                    object angleFresh;
+                    bool validAngle = observation.TryGetValue("fresh",out angleFresh) &&
+                                      angleFresh is bool && (bool)angleFresh;
+                    if (validAngle && observation.ContainsKey("roll_deg") &&
+                        observation.ContainsKey("pitch_deg"))
+                        attitudePreview = "REAL roll " +
+                            Convert.ToString(observation["roll_deg"],
+                                CultureInfo.InvariantCulture) +
+                            " deg / pitch " +
+                            Convert.ToString(observation["pitch_deg"],
+                                CultureInfo.InvariantCulture) +
+                            " deg | age " +
+                            Convert.ToString(observation["sample_age_ms"],
+                                CultureInfo.InvariantCulture) + " ms";
+                    else
+                        attitudePreview = "STALE/MISSING — NO LIVE ATTITUDE";
+                    object nativeReady;
+                    if (!observation.TryGetValue("native_hud_ready",out nativeReady) ||
+                        !(nativeReady is bool && (bool)nativeReady))
+                        attitudePreview += " | HUD HEARTBEAT NOT VERIFIED";
+                }
                 bool fresh = m.ContainsKey("fresh") && m["fresh"] is bool && (bool)m["fresh"];
                 object hbReady,attReady;
                 bool? realHeartbeat = null;
@@ -586,7 +644,10 @@ namespace AeroHelm.GcsCloud
                     "Pi device connected: " + Convert.ToString(m["device_online"]) + Environment.NewLine +
                     "Fresh MAVLink: " + Convert.ToString(m["fresh"]) + Environment.NewLine +
                     "Total frames: " + Convert.ToString(m["frames_received"]) + Environment.NewLine +
-                    "GCS viewers: " + Convert.ToString(m["viewers"]) + Environment.NewLine +
+                    "GCS viewers: " + Convert.ToString(m["viewers"]) +
+                    (Convert.ToString(m["viewers"],CultureInfo.InvariantCulture) == "0" ?
+                        " (none attached; click FLIGHT)" : "") + Environment.NewLine +
+                    "Observed ATTITUDE: " + attitudePreview + Environment.NewLine +
                     "API HTTP response: " + result.apiMs.ToString(CultureInfo.InvariantCulture) + " ms" + Environment.NewLine +
                     "Link endpoint response: " + result.linkMs.ToString(CultureInfo.InvariantCulture) + " ms" + Environment.NewLine +
                     "Frame rate (5s): " + Convert.ToString(m.ContainsKey("frame_rate_5s") ? m["frame_rate_5s"] : "server update required") + Environment.NewLine +
