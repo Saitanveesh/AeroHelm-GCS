@@ -173,6 +173,17 @@ namespace AeroHelm.GcsCloud
                         window.ShowDialog(this);
                 };
                 bar.Controls.Add(twinLab);
+                var physicsLab=new Button {
+                    Text="Six-DOF physics lab",Width=186,Height=40,
+                    FlatStyle=FlatStyle.Flat,BackColor=Surface,ForeColor=Ink,
+                    Margin=new Padding(3,0,8,0),UseVisualStyleBackColor=false
+                };
+                physicsLab.FlatAppearance.BorderSize=0;
+                physicsLab.Click+=(s,e)=> {
+                    using(var window=new AeroHelmPhysicsLabWindow())
+                        window.ShowDialog(this);
+                };
+                bar.Controls.Add(physicsLab);
                 SetColumns("Metric", "Reported value");
             }
             var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0,5,0,4) };
