@@ -77,6 +77,27 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("TCP 5760 is in use", session)
         self.assertIn("UseLegacyPythonBridge", session)
 
+    def test_release_never_silently_uses_stale_exe_or_legacy_plugins(self):
+        launch = source("scripts/Start-AeroHelm-Touch.ps1")
+        release = source("scripts/Consolidate-AeroHelmWindows.ps1")
+        for required in (
+            "aerohelm-consolidated-release.json",
+            "release.executable_sha256",
+            "release.plugin_sha256",
+            "git rev-parse HEAD",
+        ):
+            self.assertIn(required, launch)
+        for required in (
+            "Copy-Runtime $runtime $snapshot $false",
+            "Copy-Runtime $snapshot $runtime $true",
+            "if(-not $Apply)",
+            "Get-FileHash",
+            "Assert-PluginLayout",
+        ):
+            self.assertIn(required, release)
+        self.assertNotIn("git clean", release)
+        self.assertNotIn("git reset", release)
+
     def test_wip_windows_build_is_not_implicitly_deployed(self):
         build = source("scripts/Build-Integrated-AeroHelm.ps1")
         self.assertIn("AeroHelmMavlinkBridgeTests.csproj", build)
