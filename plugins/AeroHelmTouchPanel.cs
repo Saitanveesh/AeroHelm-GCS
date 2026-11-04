@@ -220,7 +220,35 @@ namespace AeroHelm.GcsCloud
                 switch (selected)
                 {
                     case "FLIGHT":
-                        OpenNative(main => main.MenuFlightData.PerformClick());
+                        OpenNative(main => {
+                            main.MenuFlightData.PerformClick();
+                            // One-click private native HUD: NO repeated TCP/IP prompts.
+                            // Normal MAVLink heartbeat checks still run, and all
+                            // outbound GCS packets are discarded by the bridge.
+                            var bridge = AeroHelmCloudPlugin.ActiveNativeBridge;
+                            if (bridge != null && bridge.IsListening &&
+                                string.Equals(Environment.GetEnvironmentVariable(
+                                    "AEROHELM_AUTO_NATIVE_TCP"),"1",
+                                    StringComparison.Ordinal) &&
+                                !MainV2.comPort.BaseStream.IsOpen)
+                            {
+                                try
+                                {
+                                    main.doConnect(MainV2.comPort,"TCP","57600",
+                                                   false,false);
+                                }
+                                catch (Exception ex)
+                                {
+                                    MessageBox.Show(main,
+                                        "Native read-only TCP connection failed. " +
+                                        "Verify a real Pixhawk HEARTBEAT is arriving " +
+                                        "before treating Flight Data as live." +
+                                        Environment.NewLine+ex.Message,
+                                        "AeroHelm — live HUD not verified",
+                                        MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                                }
+                            }
+                        });
                         break;
                     case "PLAN":
                         OpenNative(main => main.MenuFlightPlanner.PerformClick());
