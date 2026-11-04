@@ -133,7 +133,12 @@ if($drive.Free -lt ([double]$runtimeBytes * 1.15 + 250MB)){
 }
 New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
 $stamp=(Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
-$backup=Join-Path $logRoot ('release-backups\' + $stamp)
+# Full runtime snapshots must live OUTSIDE the SDK-style source tree.
+# The old design placed runtime/Plugins/*.cs under build-logs, where the
+# project's default Compile glob compiled them as duplicate classes.
+# Existing historical backups in build-logs are preserved; csproj excludes them.
+$backupRoot=Join-Path (Split-Path -Parent $root) 'AeroHelm-GCS-release-backups'
+$backup=Join-Path $backupRoot $stamp
 $snapshot=Join-Path $backup 'runtime'
 $oldHash=Hash $exe
 Write-Host "Backing up the COMPLETE old runtime to $snapshot"
