@@ -8,6 +8,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 # static contains() checks missed it completely.
 $productionScripts = @(
     'scripts/Start-AeroHelm-Session.ps1',
+    'scripts/Start-AeroHelm-DirectBackup.ps1',
     'scripts/Start-AeroHelm-Touch.ps1',
     'scripts/Update-AeroHelmLatest.ps1',
     'scripts/Repair-AeroHelmWindows.ps1',
@@ -48,6 +49,8 @@ function Require-Text([string]$content, [string]$needle, [string]$reason) {
 }
 $touch = Read-Source 'plugins/AeroHelmTouchPanel.cs'
 $paths = Read-Source 'plugins/AeroHelmLinkSelector.cs'
+$observedAttitude = Read-Source 'plugins/AeroHelmCloudAttitudeWindow.cs'
+$directBackup = Read-Source 'scripts/Start-AeroHelm-DirectBackup.ps1'
 $pages = Read-Source 'plugins/AeroHelmReadOnlyPages.cs'
 $twinLab = Read-Source 'plugins/AeroHelmTwinLabWindow.cs'
 $latestLauncher = Read-Source 'scripts/Update-AeroHelmLatest.ps1'
@@ -179,6 +182,14 @@ Require-Text $paths 'NO AUTO-FAILOVER' 'Flight authority must never switch autom
 Require-Text $paths 'api/v1/mavlink/paths' 'PATHS must show actual authenticated cloud link evidence.'
 Require-Text $cloud 'NewToolbarButton("PATHS"' 'The independent connection module must be visible in toolbar.'
 Require-Text $project 'AeroHelmLinkSelector.cs' 'PATHS source must be compiled into plugin.'
+Require-Text $project 'AeroHelmCloudAttitudeWindow.cs' 'Real-only cloud attitude viewer must compile into plugin.'
+Require-Text $observedAttitude 'api/v1/mavlink/attitude' 'Cloud attitude must be read from JWT-protected real packet endpoint.'
+Require-Text $observedAttitude 'canvas.Stale()' 'Cloud attitude must fail closed when stale or unreachable.'
+Require-Text $paths 'AeroHelmLinkPath.CloudAttitudePreview' 'PATHS must expose real-only cloud attitude view.'
+Require-Text $directBackup 'AcknowledgePilotAuthority' 'Offline native radio backup requires explicit pilot opt-in.'
+Require-Text $directBackup '-NoInternalBridge' 'Pilot backup must disable cloud native bridge.'
+Require-Text $directBackup '-NoAutoTcp' 'Pilot backup must not auto-bind the cloud transport.'
+Require-Text $launcher 'LocalDirectBackup' 'Native direct backup must bypass cloud sign-in only when explicitly selected.'
 Require-Text $cloud 'AeroHelmIconPainter.Make(label,20)' 'AeroHelm toolbar needs per-module vector icons.'
 Require-Text $cloud 'main.MenuSimulation.Visible = false' 'Hide Simulation toolbar in default GCS profile.'
 Require-Text $cloud 'main.MenuHelp.Visible = false' 'Hide Help toolbar in default GCS profile.'
