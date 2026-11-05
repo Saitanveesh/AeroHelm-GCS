@@ -110,7 +110,9 @@ if (-not $env:AEROHELM_VISION_AUTO_OPEN) {
 Write-Host 'Starting native Windows AeroHelm GCS touch panel.'
 Write-Host 'FLIGHT and PLAN navigate within Mission Planner. The other tiles open AeroHelm modules.'
 Write-Host 'Cloud command authority does not change. No automatic arming or mission execution.'
-Write-Host 'Authenticate once at startup. The touch panel opens after successful login.'
+if (-not $LocalDirectBackup) {
+    Write-Host 'Authenticate once at startup. The touch panel opens after successful login.'
+}
 Write-Host 'Native TCP uses 127.0.0.1:5760 and discards all outbound commands.'
 if ($ManualTouch) { Write-Host 'Manual mode: click TOUCH in Mission Planner.' }
 if ($LocalDirectBackup) {
