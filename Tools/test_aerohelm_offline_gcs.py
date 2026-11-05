@@ -123,7 +123,7 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("Get-NetTCPConnection -LocalPort 5760 -State Listen", launcher)
         self.assertIn("aerohelm_tcp_bridge[.]py", launcher)
         self.assertIn("Start-AeroHelm-Session.ps1 -UseLegacyPythonBridge", launcher)
-        self.assertIn("if ($listener.Count -gt 0 -and -not $SkipBridge)", session)
+        self.assertIn("if ($listeners.Count -gt 0 -and -not $SkipBridge)", session)
         self.assertIn("Refusing to reuse it.", session)
         self.assertNotIn("Stop-Process", launcher)
 
@@ -154,8 +154,8 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("[switch]$StopVerifiedLegacyBridge", session)
         self.assertIn("if ($StopVerifiedLegacyBridge", session)
         self.assertIn("Get-CimInstance Win32_Process", session)
-        self.assertIn("aerohelm_tcp_bridge[.]py", session)
-        self.assertIn("Stop-Process -Id $ownerId -ErrorAction Stop", session)
+        self.assertIn("scripts\\aerohelm_tcp_bridge.py", session)
+        self.assertIn("Stop-Process -Id $listenerPid -ErrorAction Stop", session)
         self.assertIn("Refusing to reuse it.", session)
 
     def test_six_dof_physics_is_research_only_and_visible_from_analytics(self):
