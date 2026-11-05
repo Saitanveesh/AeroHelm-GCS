@@ -25,8 +25,8 @@ namespace AeroHelm.GcsCloud
         {
             Selection = AeroHelmLinkPath.Cancel;
             Text = "AeroHelm PATHS — select flight-data link";
-            Width = 810; Height = 520;
-            MinimumSize = new Drawing.Size(620, 460);
+            Width = 850; Height = 660;
+            MinimumSize = new Drawing.Size(680, 570);
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.Dpi;
             BackColor = Drawing.Color.FromArgb(9,9,9);
