@@ -398,6 +398,44 @@ namespace AeroHelm.GcsCloud
                     "No cloud flight-control authority is provided.";
                 state.Text = "NOT CONFIGURED  |  Architectural readiness only; no token or ticket created.";
                 state.ForeColor = Drawing.Color.FromArgb(244,210,161);
+                try
+                {
+                    // Configuration discovery is authenticated; it cannot
+                    // authenticate the Windows client or prove the KDC works.
+                    var payload=await Task.Run(()=>OperationsApi.Request(
+                        "GET","api/v1/security/capabilities"));
+                    if(IsDisposed||Disposing)return;
+                    var fields=json.Deserialize<Dictionary<string,object>>(payload);
+                    object requested,ready,kdc;
+                    bool configured=fields.TryGetValue("kerberos_sso_requested",out requested) &&
+                        requested is bool && (bool)requested;
+                    bool verifier=fields.TryGetValue("kerberos_assertion_verifier_ready",out ready) &&
+                        ready is bool && (bool)ready;
+                    bool tested=fields.TryGetValue("kerberos_kdc_and_spnego_verified",out kdc) &&
+                        kdc is bool && (bool)kdc;
+                    table.Rows[2].Cells[1].Value=tested ?
+                        "EXTERNALLY VERIFIED — CHECK OPERATOR POLICY" :
+                        "NOT VERIFIED";
+                    table.Rows[4].Cells[1].Value=verifier ?
+                        "ONE-TIME ASSERTION VERIFIER CONFIGURED" : "NOT PROVISIONED";
+                    state.Text=configured && verifier ?
+                        "GATEWAY ASSERTION VERIFIER CONFIGURED; KDC/SSO ACCEPTANCE STILL REQUIRED" :
+                        "KERBEROS NOT ACTIVE — PASSWORD JWT LOGIN AVAILABLE";
+                    detail.Text+="\r\nCloud reports: assertion verifier "+
+                        (verifier?"configured":"not configured")+
+                        ". This is not proof of a reachable KDC, valid keytab or SPNEGO login.";
+                }
+                catch(WebException)
+                {
+                    if(!IsDisposed&&!Disposing)
+                        detail.Text+="\r\nCloud M1 security capability endpoint unavailable; "+
+                            "server deployment not confirmed.";
+                }
+                catch(InvalidOperationException)
+                {
+                    if(!IsDisposed&&!Disposing)
+                        detail.Text+="\r\nOperator session unavailable for security capabilities.";
+                }
                 return;
             }
             string route;
