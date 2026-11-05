@@ -23,7 +23,7 @@ foreach ($relative in $productionScripts) {
     $parseErrors = $null
     [System.Management.Automation.Language.Parser]::ParseFile(
         $candidate, [ref]$tokens, [ref]$parseErrors) | Out-Null
-    if (@($parseErrors).Count -gt 0) {
+    if ($null -ne $parseErrors -and $parseErrors.Count -gt 0) {
         $first = $parseErrors[0]
         throw "PowerShell SYNTAX FAILED in $relative at line $($first.Extent.StartLineNumber): $($first.Message)"
     }
@@ -32,7 +32,7 @@ foreach ($relative in $productionScripts) {
 # the middle of a quoted string. ParseFile alone cannot catch every validly
 # quoted but semantically duplicated source.
 $sessionText = [IO.File]::ReadAllText((Join-Path $root 'scripts/Start-AeroHelm-Session.ps1'))
-if (($sessionText.Split([string[]]@('AEROHELM_VISION_AUTO_OPEN'), [StringSplitOptions]::None).Length - 1) -ne 1) {
+if ([regex]::Matches($sessionText, 'AEROHELM_VISION_AUTO_OPEN').Count -ne 1) {
     throw 'Session launcher must configure AEROHELM_VISION_AUTO_OPEN exactly once.'
 }
 
