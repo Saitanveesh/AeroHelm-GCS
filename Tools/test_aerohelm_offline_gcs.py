@@ -218,6 +218,22 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn('case "PATHS":',home)
         self.assertIn('No radio connection, command, or flight-mode change',selector)
 
+    def test_observed_cloud_attitude_and_offline_direct_backup(self):
+        cloud = source("plugins/AeroHelmCloudAttitudeWindow.cs")
+        paths = source("plugins/AeroHelmLinkSelector.cs")
+        project = source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
+        backup = source("scripts/Start-AeroHelm-DirectBackup.ps1")
+        touch = source("scripts/Start-AeroHelm-Touch.ps1")
+        self.assertIn("api/v1/mavlink/attitude", cloud)
+        self.assertIn("canvas.Stale()", cloud)
+        self.assertIn("float.IsNaN(roll)", cloud)
+        self.assertIn("CloudAttitudePreview", paths)
+        self.assertIn("AeroHelmCloudAttitudeWindow.cs", project)
+        self.assertIn("AcknowledgePilotAuthority", backup)
+        self.assertIn("-NoInternalBridge", backup)
+        self.assertIn("-NoAutoTcp", backup)
+        self.assertIn("--local-maintenance", touch)
+
     def test_enterprise_sso_is_opt_in_and_pinned_to_exact_origin(self):
         gate=source("AeroHelmStartupGate.cs")
         self.assertIn('"AEROHELM_KERBEROS_UI_ENABLED"',gate)
