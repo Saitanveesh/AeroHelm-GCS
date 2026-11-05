@@ -529,6 +529,14 @@ namespace AeroHelm.GcsCloud
                         g.DrawRoundedRectangleCompat(pen,5,3,14,5,1);
                         g.DrawRoundedRectangleCompat(pen,4,10,16,5,1);
                         g.DrawRoundedRectangleCompat(pen,3,17,18,5,1);break;
+                    case "PATHS":
+                        // Two explicitly separate links, no auto-failover.
+                        g.DrawEllipse(pen,2,3,7,7);
+                        g.DrawEllipse(pen,15,14,7,7);
+                        g.DrawLine(pen,7,8,17,17);
+                        g.DrawLine(pen,17,17,13,17);
+                        g.DrawLine(pen,17,17,17,13);
+                        break;
                     case "LINK":
                         g.DrawEllipse(pen,9,2,6,6);
                         g.DrawEllipse(pen,1,17,6,6);
