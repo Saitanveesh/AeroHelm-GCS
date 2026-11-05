@@ -2,6 +2,39 @@
 # credentials required. These are NOT replacements for MSBuild or hardware tests.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+# Parse ACTUAL PowerShell launcher files before checking string contracts or
+# starting the expensive native build. An earlier copy/paste source corruption
+# produced three duplicated environment blocks and unterminated regex quotes;
+# static contains() checks missed it completely.
+$productionScripts = @(
+    'scripts/Start-AeroHelm-Session.ps1',
+    'scripts/Start-AeroHelm-Touch.ps1',
+    'scripts/Update-AeroHelmLatest.ps1',
+    'scripts/Repair-AeroHelmWindows.ps1',
+    'scripts/Consolidate-AeroHelmWindows.ps1',
+    'scripts/Build-Integrated-AeroHelm.ps1'
+)
+foreach ($relative in $productionScripts) {
+    $candidate = Join-Path $root $relative
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        throw "Required PowerShell launcher not found: $relative"
+    }
+    $tokens = $null
+    $parseErrors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile(
+        $candidate, [ref]$tokens, [ref]$parseErrors) | Out-Null
+    if (@($parseErrors).Count -gt 0) {
+        $first = $parseErrors[0]
+        throw "PowerShell SYNTAX FAILED in $relative at line $($first.Extent.StartLineNumber): $($first.Message)"
+    }
+}
+# Structural guard against accidentally pasting a second launcher block into
+# the middle of a quoted string. ParseFile alone cannot catch every validly
+# quoted but semantically duplicated source.
+$sessionText = [IO.File]::ReadAllText((Join-Path $root 'scripts/Start-AeroHelm-Session.ps1'))
+if (($sessionText.Split([string[]]@('AEROHELM_VISION_AUTO_OPEN'), [StringSplitOptions]::None).Length - 1) -ne 1) {
+    throw 'Session launcher must configure AEROHELM_VISION_AUTO_OPEN exactly once.'
+}
 
 function Read-Source([string]$path) {
     $full = Join-Path $root $path
