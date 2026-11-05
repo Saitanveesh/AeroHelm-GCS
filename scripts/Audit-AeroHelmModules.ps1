@@ -8,7 +8,7 @@ $toolbar=Get-Content -LiteralPath (Join-Path $root 'plugins\AeroHelmCloud.cs') -
 $project=Get-Content -LiteralPath (Join-Path $root 'Plugins\AeroHelmCloud\AeroHelmCloud.Plugin.csproj') -Raw
 
 $bindings=@(
-    @{name='FLIGHT'; token='main.MenuFlightData.PerformClick()'; source='MainV2.cs'; purpose='Native Mission Planner read-only flight view'},
+    @{name='FLIGHT'; token='new AeroHelmLinkSelector()'; source='plugins\AeroHelmLinkSelector.cs'; purpose='Explicit cloud or pilot COM telemetry path'},
     @{name='PLAN'; token='main.MenuFlightPlanner.PerformClick()'; source='MainV2.cs'; purpose='Native Mission Planner mission drafting'},
     @{name='VISION'; token='new AeroHelmVisionWindow()'; source='plugins\AeroHelmWorkspace.cs'; purpose='Private camera viewer'},
     @{name='OPS'; token='new AeroHelmOpsWindow()'; source='plugins\AeroHelmOperations.cs'; purpose='Bench and mission planning UI'},
@@ -34,7 +34,7 @@ foreach($entry in $bindings){
         purpose=$entry.purpose
     }
 }
-$toolbarEntries=@('CLOUD','SURVEY','VISION','LINK','OPS','INTEL','TOUCH')
+$toolbarEntries=@('CLOUD','SURVEY','VISION','LINK','OPS','INTEL','TOUCH','PATHS')
 $toolbarMissing=@()
 foreach($item in $toolbarEntries){
     if($item -eq 'CLOUD'){
