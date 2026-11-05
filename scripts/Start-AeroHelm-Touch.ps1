@@ -5,9 +5,13 @@ param(
     [switch]$ReadOnlyCloudHUD,
     [switch]$NoInternalBridge,
     [switch]$NoAutoTcp,
-    [switch]$ShowNativeToolbar
+    [switch]$ShowNativeToolbar,
+    [switch]$LocalDirectBackup
 )
 $ErrorActionPreference = 'Stop'
+if($LocalDirectBackup -and (-not $NoInternalBridge -or -not $NoAutoTcp)) {
+    throw 'Offline DIRECT requires -NoInternalBridge and -NoAutoTcp; cloud path cannot be silently enabled.'
+}
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $exe = Join-Path $root 'bin\Release\net461\MissionPlanner.exe'
 if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
@@ -75,7 +79,8 @@ if ($ManualTouch) {
 # Requiring operator login before native Mission Planner and TOUCH is the
 # default here regardless of product branding. Offline maintenance remains
 # available via the explicit native --local-maintenance recovery option.
-[Environment]::SetEnvironmentVariable('AEROHELM_REQUIRE_LOGIN','1','Process')
+[Environment]::SetEnvironmentVariable('AEROHELM_REQUIRE_LOGIN',
+    $(if($LocalDirectBackup){'0'}else{'1'}),'Process')
 # Hide the nonessential HELP and SIMULATION toolbar blocks in touch mode.
 # Their upstream functionality is preserved for maintenance/recovery.
 [Environment]::SetEnvironmentVariable('AEROHELM_REDUCED_TOOLBAR',
@@ -108,4 +113,10 @@ Write-Host 'Cloud command authority does not change. No automatic arming or miss
 Write-Host 'Authenticate once at startup. The touch panel opens after successful login.'
 Write-Host 'Native TCP uses 127.0.0.1:5760 and discards all outbound commands.'
 if ($ManualTouch) { Write-Host 'Manual mode: click TOUCH in Mission Planner.' }
-Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe)
+if ($LocalDirectBackup) {
+    Write-Host 'OFFLINE DIRECT BACKUP: no cloud login, cloud TCP bridge or automatic connection.'
+    Write-Host 'Native local COM/telemetry radio may carry real vehicle command authority; pilot must choose deliberately.'
+    Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) -ArgumentList '--local-maintenance'
+} else {
+    Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe)
+}
