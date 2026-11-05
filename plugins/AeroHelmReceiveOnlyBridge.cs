@@ -96,11 +96,11 @@ namespace AeroHelm.GcsCloud
 
         internal bool Start()
         {
-            if (cancellation != null) return false;
+            if (cancellation != null) return true; // Already listening; idempotent retry.
             if (string.IsNullOrEmpty(Program.AeroHelmOperatorToken) ||
                 DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc)
             {
-                state = "LOGIN REQUIRED";
+                state = "LOGIN REQUIRED; SIGN IN BEFORE CLOUD VIEW";
                 return false;
             }
             try
