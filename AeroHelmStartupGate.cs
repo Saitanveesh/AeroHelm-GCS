@@ -208,6 +208,20 @@ namespace MissionPlanner
             try
             {
                 string address=CheckedCloudOrigin().GetLeftPart(UriPartial.Authority);
+                // Unlike a password login, Windows Negotiate may present a
+                // domain credential/TGT. It MUST be pinned to a separately
+                // administrator-approved exact HTTPS origin, never any *.ts.net.
+                string trusted=Environment.GetEnvironmentVariable(
+                    "AEROHELM_KERBEROS_SSO_ORIGIN") ?? "";
+                Uri approved;
+                if(!Uri.TryCreate(trusted,UriKind.Absolute,out approved) ||
+                   approved.Scheme!=Uri.UriSchemeHttps ||
+                   !string.Equals(address,approved.GetLeftPart(UriPartial.Authority),
+                       StringComparison.OrdinalIgnoreCase) ||
+                   approved.AbsolutePath!="/" || approved.UserInfo!="" ||
+                   approved.Query!="" || approved.Fragment!="")
+                    throw new InvalidOperationException(
+                        "Kerberos SSO origin is not administrator-approved.");
                 string reply=await Task.Run(()=>NegotiateRequest(address));
                 if(!IsDisposed)AcceptToken(reply,address);
             }
