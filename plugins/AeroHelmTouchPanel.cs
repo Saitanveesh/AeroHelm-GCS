@@ -40,7 +40,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmTouchPanel()
         {
-            Text = "AeroHelm — Windows Control Workspace (0.2.0 RC / " +
+            Text = "AeroHelm — Windows Control Workspace (0.3.0 RC1 PATHS / " +
                 AeroHelmReleaseIdentity.BuildId + ")";
             Width = 1100;
             Height = 800;
