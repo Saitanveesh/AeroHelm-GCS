@@ -17,7 +17,7 @@ $logRoot=Join-Path $root 'build-logs'
 $manifestPath=Join-Path $logRoot 'aerohelm-consolidated-release.json'
 $expectedBranch='feat/gcs-research-cybershield-twin-ui'
 $modules=@('FLIGHT','PLAN','VISION','OPS','SECURITY','FLEET','LINK','ANALYTICS','SETTINGS')
-$toolbar=@('CLOUD','SURVEY','VISION','LINK','OPS','INTEL','TOUCH')
+$toolbar=@('CLOUD','SURVEY','VISION','LINK','OPS','INTEL','TOUCH','PATHS')
 
 function Hash([string]$path) {
     if(-not (Test-Path -LiteralPath $path -PathType Leaf)){return $null}
@@ -80,7 +80,7 @@ Write-Host "Runtime: $runtime"
 Write-Host "Native EXE SHA-256: $(Hash $exe)"
 Write-Host "Compiled plugin SHA-256: $(Hash $plugin)"
 Write-Host "Nine panels: $($modules -join ', ')"
-Write-Host "Seven AeroHelm toolbar modules: $($toolbar -join ', ')"
+Write-Host "Eight AeroHelm toolbar modules: $($toolbar -join ', ')"
 if(Test-Path -LiteralPath $plugins -PathType Container){
     $items=@(Get-ChildItem -LiteralPath $plugins -File |
         Where-Object {$_.Name -like 'AeroHelm*'} |
