@@ -200,6 +200,35 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertNotIn("git clean -fdx", update)
         self.assertNotIn("Stop-Process", update)
 
+    def test_paths_cloud_retry_and_local_radio_are_separate(self):
+        home=source("plugins/AeroHelmTouchPanel.cs")
+        selector=source("plugins/AeroHelmLinkSelector.cs")
+        toolbar=source("plugins/AeroHelmCloud.cs")
+        project=source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
+        self.assertIn('new AeroHelmLinkSelector()',home)
+        self.assertIn('AeroHelmLinkPath.PilotDirect',selector)
+        self.assertIn('bridge.Start()',selector)
+        self.assertIn('main.doConnect(MainV2.comPort,"TCP","57600"',selector)
+        self.assertIn('AeroHelmLinkNavigation.Open(',home)
+        self.assertIn('OperationsApi.Request("GET","api/v1/mavlink/paths")',selector)
+        self.assertIn('NO AUTO-FAILOVER',selector)
+        self.assertIn('new AeroHelmLinkSelector()',toolbar)
+        self.assertIn('NewToolbarButton("PATHS"',toolbar)
+        self.assertIn('AeroHelmLinkSelector.cs',project)
+        self.assertIn('case "PATHS":',home)
+        self.assertIn('No radio connection, command, or flight-mode change',selector)
+
+    def test_enterprise_sso_is_opt_in_and_pinned_to_exact_origin(self):
+        gate=source("AeroHelmStartupGate.cs")
+        self.assertIn('"AEROHELM_KERBEROS_UI_ENABLED"',gate)
+        self.assertIn('"AEROHELM_KERBEROS_SSO_ORIGIN"',gate)
+        self.assertIn('cache.Add(url,"Negotiate"',gate)
+        self.assertIn('req.AllowAutoRedirect=false;',gate)
+        self.assertIn('kerberos.Visible=',gate)
+        self.assertIn('Kerberos SSO unavailable.',gate)
+        self.assertIn('private async Task Login()',gate)
+        self.assertNotIn('cache.Add(url,"Basic"',gate)
+
     def test_login_modal_cannot_be_hidden_by_topmost_splash(self):
         program = source("Program.cs")
         gate = source("AeroHelmStartupGate.cs")
