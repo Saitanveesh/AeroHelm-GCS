@@ -149,6 +149,20 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("no token or ticket created", pages)
         self.assertIn("requires a provisioned KDC, SPNEGO gateway", pages)
 
+    def test_session_launcher_has_one_unbroken_port_and_login_flow(self):
+        session = source("scripts/Start-AeroHelm-Session.ps1")
+        self.assertEqual(session.count("AEROHELM_VISION_AUTO_OPEN"), 1)
+        self.assertEqual(session.count("AEROHELM_CLOUD_URL"), 1)
+        self.assertEqual(session.count("$touchArgs = @("), 1)
+        self.assertEqual(session.count("Start-Process -FilePath $python.Source"), 1)
+        self.assertEqual(session.count("Stop-Process -Id $listenerPid"), 1)
+        self.assertEqual(session.count("Get-NetTCPConnection -LocalPort 5760"), 2)
+        self.assertIn("$expectedScriptPath = [regex]::Escape($legacyFile)", session)
+        self.assertIn("The owner of TCP 5760 changed", session)
+        checks = source("scripts/Test-AeroHelmWindowsPages.ps1")
+        self.assertIn("[System.Management.Automation.Language.Parser]::ParseFile(", checks)
+        self.assertIn("PowerShell SYNTAX FAILED", checks)
+
     def test_explicit_verified_bridge_stop_is_not_an_unguarded_process_kill(self):
         session = source("scripts/Start-AeroHelm-Session.ps1")
         self.assertIn("[switch]$StopVerifiedLegacyBridge", session)
