@@ -14,7 +14,7 @@ using MissionPlanner;
 
 namespace AeroHelm.GcsCloud
 {
-    internal enum AeroHelmLinkPath { Cancel, CloudReadOnly, PilotDirect }
+    internal enum AeroHelmLinkPath { Cancel, CloudReadOnly, PilotDirect, CloudAttitudePreview }
 
     internal sealed class AeroHelmLinkSelector : Form
     {
@@ -33,12 +33,13 @@ namespace AeroHelm.GcsCloud
             ForeColor = Drawing.Color.White;
             Font = new Drawing.Font("Segoe UI", 11f);
             var layout = new TableLayoutPanel {
-                Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6,
+                Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7,
                 Padding = new Padding(22), BackColor = BackColor
             };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 85));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 114));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 114));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
@@ -65,18 +66,24 @@ namespace AeroHelm.GcsCloud
                 "This selection does NOT connect or arm automatically.");
             direct.Click += (sender,args)=>Select(AeroHelmLinkPath.PilotDirect);
             layout.Controls.Add(direct,0,2);
+            var preview=Action(
+                "CLOUD ATTITUDE — real-only visual monitor",
+                "Independent observation panel for actual cloud ATTITUDE data. "+
+                "It does NOT connect Mission Planner, generate fake readings or control the aircraft.");
+            preview.Click+=(sender,args)=>Select(AeroHelmLinkPath.CloudAttitudePreview);
+            layout.Controls.Add(preview,0,3);
             layout.Controls.Add(new Label {
                 Dock=DockStyle.Fill,
                 ForeColor=Drawing.Color.FromArgb(205,187,153),
                 Text="NO AUTO-FAILOVER: cloud loss only raises an alert. " +
                      "The pilot deliberately selects the independent local radio/USB path. " +
                      "Never treat network reconnection as permission to transmit commands."
-            },0,3);
+            },0,4);
             cloudEvidence.Dock=DockStyle.Fill;
             cloudEvidence.Text="Cloud link assessment: checking authenticated path...";
             cloudEvidence.ForeColor=Drawing.Color.FromArgb(205,205,205);
             cloudEvidence.AutoEllipsis=true;
-            layout.Controls.Add(cloudEvidence,0,4);
+            layout.Controls.Add(cloudEvidence,0,5);
             Shown+=async(sender,args)=>await RefreshEvidenceAsync();
             var cancel=new Button {
                 Text="CANCEL",Dock=DockStyle.Right,Width=160,Height=44,
@@ -84,7 +91,7 @@ namespace AeroHelm.GcsCloud
                 FlatStyle=FlatStyle.Flat,
                 ForeColor=ForeColor,BackColor=Drawing.Color.FromArgb(43,43,43)
             };
-            layout.Controls.Add(cancel,0,5);
+            layout.Controls.Add(cancel,0,6);
             CancelButton=cancel;
         }
 
@@ -157,6 +164,12 @@ namespace AeroHelm.GcsCloud
         {
             if (main == null || main.IsDisposed || selected == AeroHelmLinkPath.Cancel)
                 return false;
+            if (selected == AeroHelmLinkPath.CloudAttitudePreview)
+            {
+                using(var window=new AeroHelmCloudAttitudeWindow())
+                    window.ShowDialog(main);
+                return true;
+            }
             if (selected == AeroHelmLinkPath.PilotDirect)
             {
                 main.MenuFlightData.PerformClick();
