@@ -30,6 +30,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _ops;
         private ToolStripButton _intel;
         private ToolStripButton _touch;
+        private ToolStripButton _paths;
         internal static AeroHelmReceiveOnlyBridge ActiveNativeBridge;
         private EventHandler _touchStartupShown;
         private bool _simulationWasVisible;
@@ -126,6 +127,21 @@ namespace AeroHelm.GcsCloud
                     panel.ShowDialog(MainV2.instance);
             };
             menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _touch);
+
+            // Independent connection module. Explicit operator choice:
+            // CLOUD is receive-only; DIRECT exposes native COM/radio controls.
+            _paths=NewToolbarButton("PATHS",
+                "Choose cloud viewer or native pilot telemetry-radio backup");
+            _paths.Click+=delegate
+            {
+                using(var picker=new AeroHelmLinkSelector())
+                {
+                    if(picker.ShowDialog(MainV2.instance)==DialogResult.OK)
+                        AeroHelmLinkNavigation.Open(MainV2.instance,
+                            picker.Selection,null);
+                }
+            };
+            menu.Items.Insert(menu.Items.IndexOf(_touch) + 1, _paths);
 
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
@@ -242,12 +258,13 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_ops);
                     main.MainMenu.Items.Remove(_intel);
                     main.MainMenu.Items.Remove(_touch);
+                    main.MainMenu.Items.Remove(_paths);
                 }
                 // Every toolbar item owns its native bitmap. Release all
                 // symbols when the plugin is unloaded; do not leak WinForms
                 // GDI handles across repeated plugin lifecycle tests.
                 foreach(var item in new ToolStripButton[]{
-                    _button,_survey,_vision,_link,_ops,_intel,_touch
+                    _button,_survey,_vision,_link,_ops,_intel,_touch,_paths
                 })
                 {
                     if(item.Image!=null)
@@ -265,6 +282,7 @@ namespace AeroHelm.GcsCloud
                 _ops = null;
                 _intel = null;
                 _touch = null;
+                _paths = null;
             }
             return true;
         }
