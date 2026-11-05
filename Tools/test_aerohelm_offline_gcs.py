@@ -46,7 +46,12 @@ class OfflineGcsContracts(unittest.TestCase):
 
     def test_hud_uses_real_flight_data_and_fails_closed_when_stale(self):
         home = source("plugins/AeroHelmTouchPanel.cs")
-        self.assertIn('main.doConnect(MainV2.comPort,"TCP","57600"', home)
+        self.assertIn('AeroHelmLinkNavigation.Open(', home)
+        navigator = source("plugins/AeroHelmLinkSelector.cs")
+        self.assertIn('main.doConnect(MainV2.comPort,"TCP","57600"', navigator)
+        self.assertIn('AeroHelmLinkPath.PilotDirect', navigator)
+        self.assertIn('bridge.Start()', navigator)
+        self.assertIn('NO AUTO-FAILOVER', navigator)
         self.assertIn("RefreshCloudStatusAsync", home)
         self.assertIn("native_hud_heartbeat_ready", home)
         self.assertIn("cloudHeartbeatLive == false", home)
@@ -61,12 +66,12 @@ class OfflineGcsContracts(unittest.TestCase):
         art = source("plugins/AeroHelmTouchPanel.cs")
         self.assertIn("AeroHelmIconPainter.Make(label,20)", toolbar)
         for icon in ("CLOUD", "SURVEY", "VISION", "LINK",
-                     "OPS", "INTEL", "TOUCH"):
+                     "OPS", "INTEL", "TOUCH", "PATHS"):
             if icon in ("CLOUD", "VISION"):
                 self.assertIn(f'AeroHelmIconPainter.Make("{icon}"', toolbar)
             else:
                 self.assertIn(f'NewToolbarButton("{icon}"', toolbar)
-        for icon in ("CLOUD", "SURVEY", "INTEL", "TOUCH"):
+        for icon in ("CLOUD", "SURVEY", "INTEL", "TOUCH", "PATHS"):
             self.assertIn(f'case "{icon}":', art)
         self.assertIn("main.MenuSimulation.Visible = false", toolbar)
         self.assertIn("main.MenuHelp.Visible = false", toolbar)
