@@ -6,6 +6,7 @@ extern alias FrameworkDrawing;
 using Drawing = FrameworkDrawing::System.Drawing;
 using System;
 using System.Windows.Forms;
+using MissionPlanner;
 
 namespace AeroHelm.GcsCloud
 {
@@ -99,4 +100,102 @@ namespace AeroHelm.GcsCloud
             Close();
         }
     }
+
+    // Central native connection point used by both the PATHS toolbar and
+    // TOUCH/FLIGHT. This does NOT take ownership of the Pixhawk serial link.
+    internal static class AeroHelmLinkNavigation
+    {
+        internal static bool Open(MainV2 main, AeroHelmLinkPath selected, bool? cloudHeartbeatLive)
+        {
+            if (main == null || main.IsDisposed || selected == AeroHelmLinkPath.Cancel)
+                return false;
+            if (selected == AeroHelmLinkPath.PilotDirect)
+            {
+                main.MenuFlightData.PerformClick();
+                MessageBox.Show(main,
+                    "PILOT BACKUP: select the physical telemetry radio or USB COM "+
+                    "port and the correct baud rate using Mission Planner's "+
+                    "native port selector. Then CONNECT deliberately. "+
+                    "No radio connection, command, or flight-mode change was "+
+                    "performed automatically. Never use this as an automatic "+
+                    "failover or bypass the flight controller's failsafes.",
+                    "AeroHelm — direct pilot backup",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return true;
+            }
+
+            if (!string.Equals(Environment.GetEnvironmentVariable(
+                "AEROHELM_CLOUD_READONLY"),"1",StringComparison.Ordinal))
+            {
+                MessageBox.Show(main,"Cloud flight-data viewing requires the "+
+                    "receive-only session profile; restart via the verified "+
+                    "AeroHelm launcher.", "AeroHelm cloud blocked",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return false;
+            }
+            var bridge=AeroHelmCloudPlugin.ActiveNativeBridge;
+            if (bridge==null)
+            {
+                MessageBox.Show(main,"The AeroHelm native receiver plugin is "+
+                    "not loaded. Cloud HUD cannot be started. Direct pilot "+
+                    "telemetry remains available through Mission Planner.",
+                    "AeroHelm cloud plugin missing",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return false;
+            }
+            if (!bridge.IsListening && !bridge.Start())
+            {
+                MessageBox.Show(main,"Cannot start the loopback receiver."+
+                    Environment.NewLine+bridge.Summary+
+                    Environment.NewLine+"Inspect TCP 5760 and sign-in state. "+
+                    "No unknown process will be terminated.",
+                    "AeroHelm cloud path unavailable",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return false;
+            }
+            if(cloudHeartbeatLive==false)
+            {
+                MessageBox.Show(main,
+                    "Cloud reports no fresh real Pixhawk HEARTBEAT. "+
+                    "Generic frame counts cannot initialize Mission Planner. "+
+                    "Use LINK diagnostics or direct physical telemetry radio. "+
+                    "No fake HEARTBEAT will be emitted.",
+                    "AeroHelm — missing real heartbeat",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return false;
+            }
+            // Never switch an already active native link without the pilot's
+            // explicit disconnect; a direct radio may carry command authority.
+            if(MainV2.comPort.BaseStream.IsOpen)
+            {
+                main.MenuFlightData.PerformClick();
+                MessageBox.Show(main,
+                    "A native connection is already open. Disconnect it "+
+                    "deliberately before selecting a different path. "+
+                    "AeroHelm will not change control authority automatically.",
+                    "AeroHelm — active native connection",
+                    MessageBoxButtons.OK,MessageBoxIcon.Information);
+                return false;
+            }
+
+            main.MenuFlightData.PerformClick();
+            try
+            {
+                main.doConnect(MainV2.comPort,"TCP","57600",false,false);
+                return true;
+            }
+            catch(Exception ex)
+            {
+                MessageBox.Show(main,
+                    "Cloud viewer could not establish a real HEARTBEAT. "+
+                    "Inspect LINK and upstream ATTITUDE counters; no "+
+                    "autopilot control or stream-rate request was made."+
+                    Environment.NewLine+ex.Message,
+                    "AeroHelm — cloud HUD not verified",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return false;
+            }
+        }
+    }
+
 }
