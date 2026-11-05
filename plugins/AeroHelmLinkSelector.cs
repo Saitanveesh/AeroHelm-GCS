@@ -5,6 +5,10 @@
 extern alias FrameworkDrawing;
 using Drawing = FrameworkDrawing::System.Drawing;
 using System;
+using System.Net;
+using System.Threading.Tasks;
+using System.Web.Script.Serialization;
+using System.Collections.Generic;
 using System.Windows.Forms;
 using MissionPlanner;
 
@@ -15,6 +19,7 @@ namespace AeroHelm.GcsCloud
     internal sealed class AeroHelmLinkSelector : Form
     {
         internal AeroHelmLinkPath Selection { get; private set; }
+        private readonly Label cloudEvidence = new Label();
 
         internal AeroHelmLinkSelector()
         {
@@ -28,13 +33,14 @@ namespace AeroHelm.GcsCloud
             ForeColor = Drawing.Color.White;
             Font = new Drawing.Font("Segoe UI", 11f);
             var layout = new TableLayoutPanel {
-                Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5,
+                Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6,
                 Padding = new Padding(22), BackColor = BackColor
             };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 85));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 114));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 114));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
             Controls.Add(layout);
             layout.Controls.Add(new Label {
@@ -66,14 +72,56 @@ namespace AeroHelm.GcsCloud
                      "The pilot deliberately selects the independent local radio/USB path. " +
                      "Never treat network reconnection as permission to transmit commands."
             },0,3);
+            cloudEvidence.Dock=DockStyle.Fill;
+            cloudEvidence.Text="Cloud link assessment: checking authenticated path...";
+            cloudEvidence.ForeColor=Drawing.Color.FromArgb(205,205,205);
+            cloudEvidence.AutoEllipsis=true;
+            layout.Controls.Add(cloudEvidence,0,4);
+            Shown+=async(sender,args)=>await RefreshEvidenceAsync();
             var cancel=new Button {
                 Text="CANCEL",Dock=DockStyle.Right,Width=160,Height=44,
                 DialogResult=DialogResult.Cancel,
                 FlatStyle=FlatStyle.Flat,
                 ForeColor=ForeColor,BackColor=Drawing.Color.FromArgb(43,43,43)
             };
-            layout.Controls.Add(cancel,0,4);
+            layout.Controls.Add(cancel,0,5);
             CancelButton=cancel;
+        }
+
+        private async Task RefreshEvidenceAsync()
+        {
+            try
+            {
+                string data=await Task.Run(()=>
+                    OperationsApi.Request("GET","api/v1/mavlink/paths"));
+                if(IsDisposed||Disposing)return;
+                var json=new JavaScriptSerializer();
+                var record=json.Deserialize<Dictionary<string,object>>(data);
+                var paths=record["paths"] as object[];
+                if(paths==null || paths.Length<2)
+                    throw new InvalidOperationException("Incomplete cloud link assessment");
+                var cloud=paths[0] as Dictionary<string,object>;
+                if(cloud==null)
+                    throw new InvalidOperationException("Invalid cloud link status");
+                cloudEvidence.Text="CLOUD / "+Convert.ToString(cloud["status"])+
+                    " | GCS viewers "+Convert.ToString(cloud["viewer_count"])+
+                    "     •     DIRECT / independent; not observable by Oracle";
+            }
+            catch(WebException ex)
+            {
+                if(IsDisposed||Disposing)return;
+                var response=ex.Response as HttpWebResponse;
+                cloudEvidence.Text=response!=null &&
+                    response.StatusCode==HttpStatusCode.NotFound ?
+                    "CLOUD / legacy Oracle API — upgrade path monitoring separately" :
+                    "CLOUD / path check unavailable — use LINK diagnostics";
+                if(response!=null)response.Dispose();
+            }
+            catch(Exception)
+            {
+                if(!IsDisposed&&!Disposing)
+                    cloudEvidence.Text="CLOUD / path state unknown — direct backup is independent";
+            }
         }
 
         private static Button Action(string title, string details)
