@@ -47,6 +47,7 @@ function Require-Text([string]$content, [string]$needle, [string]$reason) {
     if (-not $content.Contains($needle)) { throw $reason }
 }
 $touch = Read-Source 'plugins/AeroHelmTouchPanel.cs'
+$paths = Read-Source 'plugins/AeroHelmLinkSelector.cs'
 $pages = Read-Source 'plugins/AeroHelmReadOnlyPages.cs'
 $twinLab = Read-Source 'plugins/AeroHelmTwinLabWindow.cs'
 $latestLauncher = Read-Source 'scripts/Update-AeroHelmLatest.ps1'
@@ -167,7 +168,12 @@ Require-Text $moduleAudit 'SOURCE WIRED' 'All nine-panel source audit is missing
 Require-Text $legacyNativeLauncher 'throw ''-CachedParameters is not supported' 'Legacy cloud parameter sync bypass must fail closed.'
 Require-Text $mainNative 'if (aeroHelmReadOnlyTcp)' 'TCP connection itself must enforce read-only routing policy.'
 Require-Text $mainNative 'string.Equals(portname, "TCP", StringComparison.OrdinalIgnoreCase)' 'Read-only policy must not alter native serial/radio parameter downloads.'
-Require-Text $touch 'main.doConnect(MainV2.comPort,"TCP","57600"' 'Touch FLIGHT must reach native verified MAVLink receive path.'
+Require-Text $touch 'AeroHelmLinkNavigation.Open(' 'Touch FLIGHT must delegate to explicit dual-link module.'
+Require-Text $paths 'main.doConnect(MainV2.comPort,"TCP","57600"' 'Cloud PATHS must reach native verified MAVLink receive path.'
+Require-Text $paths 'PilotDirect' 'PILOT radio backup must remain independently selectable.'
+Require-Text $paths 'bridge.Start()' 'A failed initial local cloud bridge must be retryable.'
+Require-Text $paths 'NO AUTO-FAILOVER' 'Flight authority must never switch automatically.'
+Require-Text $project 'AeroHelmLinkSelector.cs' 'PATHS source must be compiled into plugin.'
 Require-Text $cloud 'AeroHelmIconPainter.Make(label,20)' 'AeroHelm toolbar needs per-module vector icons.'
 Require-Text $cloud 'main.MenuSimulation.Visible = false' 'Hide Simulation toolbar in default GCS profile.'
 Require-Text $cloud 'main.MenuHelp.Visible = false' 'Hide Help toolbar in default GCS profile.'
