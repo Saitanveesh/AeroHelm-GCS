@@ -46,6 +46,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 $commit=(& git -C $root rev-parse HEAD).Trim()
 Write-Host "Latest reviewed branch at $($commit.Substring(0,12))."
+# Critical preflight: parse every production PowerShell launcher using the
+# real Windows PowerShell AST parser BEFORE expensive MSBuild or file changes.
+# Earlier copied/unterminated launcher blocks passed substring checks and
+# prevented the already verified EXE from opening.
+$contracts = Join-Path $PSScriptRoot 'Test-AeroHelmWindowsPages.ps1'
+& powershell -NoProfile -ExecutionPolicy Bypass -File $contracts
+if ($LASTEXITCODE -ne 0) {
+    throw 'Updated PowerShell launchers failed syntax/source-contract checks. Build not started.'
+}
 # Execution uses a fresh script process so the just-updated build/test logic
 # is loaded from disk, never stale function definitions in this updater.
 & powershell -NoProfile -ExecutionPolicy Bypass -File $repair -Apply
