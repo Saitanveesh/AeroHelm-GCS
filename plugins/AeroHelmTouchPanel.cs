@@ -288,66 +288,21 @@ namespace AeroHelm.GcsCloud
                 switch (selected)
                 {
                     case "FLIGHT":
-                        // Fail BEFORE native Mission Planner starts a heartbeat
-                        // timeout if the backend has definitive contrary data.
-                        // On an older backend these values remain UNKNOWN, so
-                        // the native heartbeat gate still makes the decision.
-                        if (string.Equals(Environment.GetEnvironmentVariable(
-                                "AEROHELM_AUTO_NATIVE_TCP"),"1",
-                                StringComparison.Ordinal))
+                        // Separate advisory cloud viewing from the pilot's
+                        // independent local telemetry/radio connection.
+                        // Neither source can seize control of the other.
+                        AeroHelmLinkPath chosen;
+                        using(var picker=new AeroHelmLinkSelector())
                         {
-                            var native = AeroHelmCloudPlugin.ActiveNativeBridge;
-                            if (native == null || !native.IsListening)
-                            {
-                                MessageBox.Show(this,
-                                    "The authenticated local read-only TCP bridge is not ready. "+
-                                    "Check LINK or free TCP 5760 before trying FLIGHT.",
-                                    "AeroHelm — local bridge unavailable",
-                                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                            if(picker.ShowDialog(this)!=DialogResult.OK)
                                 return;
-                            }
-                            if (cloudHeartbeatLive == false &&
-                                (DateTime.UtcNow-cloudStatusCheckedUtc).TotalSeconds < 8)
-                            {
-                                MessageBox.Show(this,
-                                    "Oracle reports NO real Pixhawk HEARTBEAT. "+
-                                    "Native Mission Planner cannot establish a trustworthy HUD "+
-                                    "from generic cloud frames. Open LINK and verify Pi/FC "+
-                                    "heartbeat counters. No messages will be fabricated.",
-                                    "AeroHelm — heartbeat missing",
-                                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
-                                return;
-                            }
+                            chosen=picker.Selection;
                         }
-                        OpenNative(main => {
-                            main.MenuFlightData.PerformClick();
-                            // One-click private native HUD: NO repeated TCP/IP prompts.
-                            // Normal MAVLink heartbeat checks still run, and all
-                            // outbound GCS packets are discarded by the bridge.
-                            var bridge = AeroHelmCloudPlugin.ActiveNativeBridge;
-                            if (bridge != null && bridge.IsListening &&
-                                string.Equals(Environment.GetEnvironmentVariable(
-                                    "AEROHELM_AUTO_NATIVE_TCP"),"1",
-                                    StringComparison.Ordinal) &&
-                                !MainV2.comPort.BaseStream.IsOpen)
-                            {
-                                try
-                                {
-                                    main.doConnect(MainV2.comPort,"TCP","57600",
-                                                   false,false);
-                                }
-                                catch (Exception ex)
-                                {
-                                    MessageBox.Show(main,
-                                        "Native read-only TCP connection failed. " +
-                                        "Verify a real Pixhawk HEARTBEAT is arriving " +
-                                        "before treating Flight Data as live." +
-                                        Environment.NewLine+ex.Message,
-                                        "AeroHelm — live HUD not verified",
-                                        MessageBoxButtons.OK,MessageBoxIcon.Warning);
-                                }
-                            }
-                        });
+                        bool? heartbeat = cloudHeartbeatLive;
+                        if ((DateTime.UtcNow-cloudStatusCheckedUtc).TotalSeconds >= 8)
+                            heartbeat = null; // No stale readiness decisions.
+                        OpenNative(main=>AeroHelmLinkNavigation.Open(
+                            main,chosen,heartbeat));
                         break;
                     case "PLAN":
                         OpenNative(main => main.MenuFlightPlanner.PerformClick());
