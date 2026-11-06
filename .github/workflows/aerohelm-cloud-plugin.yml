@@ -10,6 +10,7 @@ on:
       - feat/aerohelm-touch-console
       - feat/gcs-unified-login-readonly-bridge
       - feat/gcs-research-cybershield-twin-ui
+      - feat/aerohelm-cloud-link-quality-v1
       - feat/aerohelm-windows-integration
       - feat/aerohelm-windows-pages-v1
       - feat/aerohelm-windows-readiness-v2
@@ -17,6 +18,7 @@ on:
     paths:
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmReceiveOnlyBridge.cs"
+      - "plugins/AeroHelmLinkQuality.cs"
       - "plugins/AeroHelmPilotDirectWindow.cs"
       - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmLinkSelector.cs"
@@ -60,6 +62,7 @@ on:
       - "scripts/Test-AeroHelmPluginRoundtrip.ps1"
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmReceiveOnlyBridge.cs"
+      - "plugins/AeroHelmLinkQuality.cs"
       - "plugins/AeroHelmPilotDirectWindow.cs"
       - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmLinkSelector.cs"
@@ -165,7 +168,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
-      - name: Native receive-only bridge envelope regression
+      - name: Native receive-only bridge CRC, freshness and outage regression
         run: dotnet run --project Tools/AeroHelmMavlinkBridgeTests/AeroHelmMavlinkBridgeTests.csproj --configuration Release
 
   survey-draft-tests:
