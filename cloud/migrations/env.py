@@ -11,8 +11,14 @@ from cloud.app.models import Base
 config = context.config
 target_metadata = Base.metadata
 url = os.environ.get("AEROHELM_DATABASE_URL", "")
+url_file = os.environ.get("AEROHELM_DATABASE_URL_FILE", "")
+if url and url_file:
+    raise RuntimeError("Supply one database URL source, not both")
+if url_file:
+    from pathlib import Path
+    url = Path(url_file).read_text(encoding="utf8").strip()
 if not url:
-    raise RuntimeError("AEROHELM_DATABASE_URL is required for migration")
+    raise RuntimeError("Database URL or secret file is required for migration")
 
 
 def run_migrations_offline():
