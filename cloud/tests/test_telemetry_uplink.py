@@ -55,3 +55,47 @@ def test_sidecar_rejects_untrusted_origins_and_command_fields():
     with pytest.raises(ValueError):
         ObservationUplink(base_url="https://token@private.invalid",
                           token_supplier=lambda:"some-long-token-for-test")
+
+
+def test_ambiguous_delivery_invalidates_session_instead_of_replaying():
+    import pytest
+    app = create_app(config())
+    with TestClient(app) as client:
+        assert register(client, "SIM-A").status_code == 201
+
+        class DropsResponse:
+            def __init__(self, actual):
+                self.actual = actual
+                self.once = True
+
+            def post(self, path, **kwargs):
+                delivered = self.actual.post(path, **kwargs)
+                if self.once and path == "/api/v1/device/telemetry":
+                    self.once = False
+                    # Server committed, but caller never received its receipt.
+                    raise httpx.ReadTimeout("response lost")
+                return delivered
+
+            def close(self):
+                pass
+
+        uplink = ObservationUplink(
+            base_url="https://private.example.invalid",
+            token_supplier=lambda: token_for("SIM-A"),
+        )
+        uplink.client.close()
+        uplink.client = DropsResponse(client)
+        first_epoch = uplink.begin_session()
+        with pytest.raises(httpx.ReadTimeout):
+            uplink.send_latest(observation())
+        assert uplink.epoch is None
+        with pytest.raises(ValueError, match="No established"):
+            uplink.send_latest(observation())
+        next_epoch = uplink.begin_session()
+        assert next_epoch > first_epoch
+        assert uplink.send_latest(observation()) == 1
+        state = client.get("/api/v1/vehicles/SIM-A/telemetry",
+                           headers=jwt_header()).json()
+        assert state["session_epoch"] == next_epoch
+        assert state["last_sequence"] == 1
+        uplink.close()
