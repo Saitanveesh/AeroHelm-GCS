@@ -18,6 +18,26 @@ def source(name: str) -> str:
 
 
 class GcsTouchUxContracts(unittest.TestCase):
+    def test_clean_update_only_on_reviewed_release_branch(self):
+        updater = source("scripts/Update-AeroHelmLatest.ps1")
+        integrated = source("scripts/Build-Integrated-AeroHelm.ps1")
+        consolidated = source("scripts/Consolidate-AeroHelmWindows.ps1")
+        touch = source("scripts/Start-AeroHelm-Touch.ps1")
+        cleaner = source("scripts/Cleanup-AeroHelmGenerated.ps1")
+        reviewed = "feat/gcs-touch-ux-readonly-fleet-r1"
+        for content in (updater, integrated, consolidated, touch, cleaner):
+            self.assertIn(reviewed, content)
+        self.assertIn("merge --ff-only", updater)
+        self.assertIn("Copy-Runtime $runtime $snapshot $false", consolidated)
+        self.assertIn("Copy-Runtime $snapshot $runtime $true", consolidated)
+        self.assertIn("if(-not $Apply)", cleaner)
+        self.assertIn("git -C $root ls-files --cached", cleaner)
+        self.assertIn("-Stage Verify", cleaner)
+        self.assertIn("Get-Process MissionPlanner", cleaner)
+        self.assertNotIn("git clean -fdx", cleaner)
+        self.assertNotIn("git reset --hard", updater)
+        self.assertNotIn("AeroHelm-GCS-release-backups", cleaner)
+
     def test_nine_existing_workspaces_remain_touch_accessible(self):
         text = source("plugins/AeroHelmTouchPanel.cs")
         for name in (
