@@ -10,7 +10,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$branch='feat/gcs-touch-ux-readonly-fleet-r1'
+$branch='feat/vihanga-vedika-toolbar-ops-intel-phase3'
 $inspect=Join-Path $PSScriptRoot 'Consolidate-AeroHelmWindows.ps1'
 $repair=Join-Path $PSScriptRoot 'Repair-AeroHelmWindows.ps1'
 $session=Join-Path $PSScriptRoot 'Start-AeroHelm-Session.ps1'
