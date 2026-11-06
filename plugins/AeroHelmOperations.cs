@@ -67,7 +67,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmOpsWindow()
         {
-            Text="AeroHelm OPS — Autonomous simulation and supervised maintenance";
+            Text=VihangaVedikaProduct.Name+" — Operations";
             StartPosition=FormStartPosition.CenterParent;
             Width=860;Height=730;
             MinimumSize=new Drawing.Size(740,620);
@@ -75,8 +75,9 @@ namespace AeroHelm.GcsCloud
             var simulation=new TabPage("AUTONOMY — SIMULATION ONLY");
             var maintenance=new TabPage("MAINTENANCE — PHYSICAL APPROVAL");
             var policy=new TabPage("CAPABILITIES — READ ONLY");
-            tabs.TabPages.Add(simulation);tabs.TabPages.Add(maintenance);
-            tabs.TabPages.Add(policy);
+            var cloudR2=new TabPage("VIRTUAL FLEET / SITL");
+            tabs.TabPages.Add(simulation);tabs.TabPages.Add(cloudR2);
+            tabs.TabPages.Add(maintenance);tabs.TabPages.Add(policy);
             Controls.Add(tabs);
             status.Dock=DockStyle.Bottom;status.Height=140;status.Multiline=true;
             status.ScrollBars=ScrollBars.Vertical;status.ReadOnly=true;
@@ -123,7 +124,7 @@ namespace AeroHelm.GcsCloud
             refresh.Click+=async(s,e)=>await RefreshMission();
             sim.Controls.Add(refresh);
             sim.Controls.Add(new Label{Width=680,Height=55,
-                Text="AeroHelm production Oracle VM has simulation OFF. Use a dedicated SITL/simulation API instance. " +
+                Text="The legacy simulation API may be unavailable. Use the Virtual Fleet / SITL tab " +
                      "Neither these controls nor the waypoint draft can command a real Pixhawk."});
 
             var maint=new FlowLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(12),
@@ -150,6 +151,41 @@ namespace AeroHelm.GcsCloud
                 Text="After requesting, the local Pi operator must run:\n" +
                     "agent/.venv/bin/python -m agent.supervised_calibration <request-uuid>\n" +
                     "The remote API alone cannot approve the physical calibration."});
+
+            var r2Panel=new FlowLayoutPanel {
+                Dock=DockStyle.Fill,Padding=new Padding(16),AutoScroll=true,
+                FlowDirection=FlowDirection.TopDown,WrapContents=false
+            };
+            cloudR2.Controls.Add(r2Panel);
+            r2Panel.Controls.Add(new Label {
+                Width=680,Height=70,
+                Text="Cloud R2 supports approved, lease-fenced virtual fleet jobs. " +
+                     "A second operator must approve a plan. Physical aircraft dispatch is disabled."
+            });
+            var openR2=new Button {Text="Open virtual fleet operations",Width=300,Height=46};
+            openR2.Click+=(s,e)=>{
+                using(var window=new VihangaVirtualOpsWindow())window.ShowDialog(this);
+            };
+            r2Panel.Controls.Add(openR2);
+            var openSitl=new Button {Text="Open native Mission Planner SITL",Width=300,Height=46};
+            openSitl.Click+=(s,e)=>{
+                var main=MissionPlanner.MainV2.instance;
+                if(main==null||main.IsDisposed)
+                {
+                    status.Text="Native simulator window unavailable.";
+                    return;
+                }
+                Close();
+                main.MenuSimulation.Visible=true;
+                main.MenuSimulation.PerformClick();
+            };
+            r2Panel.Controls.Add(openSitl);
+            r2Panel.Controls.Add(new Label {
+                Width=680,Height=85,
+                Text="The cloud virtual task queue and Mission Planner SITL are separate " +
+                     "systems. Completing virtual jobs does not prove a vehicle flew a route. " +
+                     "Verify the simulator independently before any hardware acceptance."
+            });
 
             // Read-only policy overview is suitable for checking the cloud
             // before any later Pi/hardware acceptance. Never grants a lease.
@@ -189,7 +225,7 @@ namespace AeroHelm.GcsCloud
 
             foreach(var panel in new[]{sim,maint,policyPage})
             {
-                var home=new Button {Text="← HOME / CLOSE OPS",Width=300,Height=42};
+                var home=new Button {Text="CLOSE OPERATIONS",Width=300,Height=42};
                 home.Click+=(s,e)=>Close();
                 panel.Controls.Add(home);
                 panel.Controls.SetChildIndex(home,0);
