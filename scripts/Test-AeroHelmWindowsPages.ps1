@@ -123,6 +123,12 @@ Require-Text $pages 'Kerberos integration: NOT PROVISIONED' 'Do not claim Kerber
 Require-Text $pages 'Kerberos readiness' 'SECURITY must expose actual KDC/SPNEGO deployment readiness.'
 Require-Text $pages 'table.Rows.Add("Kerberos KDC/realm", "NOT PROVISIONED")' 'Kerberos must fail closed until infrastructure exists.'
 Require-Text $workspace 'api/v1/mavlink/attitude' 'LINK must fetch authenticated real attitude preview from M1.'
+Require-Text $workspace 'ProbeDuplexAsync("ping")' 'LINK must expose authenticated Pi diagnostic ping.'
+Require-Text $workspace 'ProbeDuplexAsync("uplink_status")' 'LINK must expose bounded Pi uplink counters.'
+Require-Text $workspace 'RequireAuthenticatedOrigin()' 'Duplex must never forward a JWT to arbitrary LINK origin.'
+Require-Text $workspace 'api/v1/network/requests' 'Duplex requires authenticated request/ack contracts.'
+Require-Text $workspace 'Flight commands remain blocked.' 'Diagnostic path must not claim aircraft control.'
+
 Require-Text $latestLauncher 'merge --ff-only' 'Latest GCS updater must not force-reset tracked code.'
 Require-Text $latestLauncher 'StopVerifiedLegacyBridge' 'Port recovery must require explicit verified-bridge opt-in.'
 Require-Text $twinLab 'No calibration is applied to Pixhawk.' 'Twin model must never be deployed to aircraft.'
