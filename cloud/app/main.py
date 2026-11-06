@@ -81,7 +81,7 @@ class AckIn(BaseModel):
 
 class TelemetryObservation(BaseModel):
     """Normalized observation only; no raw MAVLink, firmware or command fields."""
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     epoch: int = Field(ge=1, le=2147483647)
     sequence: int = Field(ge=1, le=2147483647)
     latitude: float | None = Field(default=None, ge=-90, le=90)
