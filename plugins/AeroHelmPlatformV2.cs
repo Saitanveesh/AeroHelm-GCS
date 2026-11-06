@@ -28,10 +28,11 @@ namespace AeroHelm.GcsCloud
         private readonly Label banner=new Label();
         private string lastMissionHash;
         private bool running;
+        private string latestCloudReport;
 
         public AeroHelmIntelWindow(string initialTab = "FLEET")
         {
-            Text="AeroHelm INTEL — Mission assurance and fleet intelligence";
+            Text=VihangaVedikaProduct.Name+" — Fleet Intelligence and Configuration Review";
             StartPosition=FormStartPosition.CenterParent;
             Width=920;Height=740;MinimumSize=new Drawing.Size(750,550);
             var header=new FlowLayoutPanel{Dock=DockStyle.Top,Height=42,Padding=new Padding(8)};
@@ -46,12 +47,14 @@ namespace AeroHelm.GcsCloud
             var param=new TabPage("PARAMETERS");
             var hist=new TabPage("HISTORY");
             var security=new TabPage("SECURITY");
-            tabs.TabPages.AddRange(new[]{fleet,mission,param,hist,security});
+            var cloudR2=new TabPage("CLOUD R2 / REPORTS");
+            tabs.TabPages.AddRange(new[]{fleet,cloudR2,mission,param,hist,security});
             // Touch launcher opens the requested domain directly rather
             // than forcing an additional tab-selection gesture.
             switch ((initialTab ?? "FLEET").ToUpperInvariant())
             {
                 case "SECURITY": tabs.SelectedTab = security; break;
+                case "CLOUD": tabs.SelectedTab = cloudR2; break;
                 case "ANALYTICS": tabs.SelectedTab = hist; break;
                 case "PLAN": tabs.SelectedTab = mission; break;
                 case "PARAMETERS": tabs.SelectedTab = param; break;
@@ -74,13 +77,46 @@ namespace AeroHelm.GcsCloud
             var fleetPanel=Panel();
             fleet.Controls.Add(fleetPanel);
             fleetPanel.Controls.Add(ActionButton("Refresh fleet status",
-                async()=>await Run(()=>OperationsApi.Request("GET","api/v2/fleet"),
-                                     "Fleet health")));
+                async()=>await Run(()=>ReadFleetStatus(),"Fleet status")));
             fleetPanel.Controls.Add(ActionButton("Aircraft risk flags",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/vehicles/"+Id()+"/alerts"),"Aircraft alerts")));
-            fleetPanel.Controls.Add(new Label{Text="Fleet lists real telemetry only. Unavailable telemetry stays UNKNOWN.",
+            fleetPanel.Controls.Add(new Label{Text="Virtual telemetry is simulated; device reports are unverified. Missing samples remain STALE.",
                 AutoSize=true,ForeColor=Drawing.Color.DarkRed});
+
+            var cloudPanel=Panel();cloudR2.Controls.Add(cloudPanel);
+            cloudPanel.Controls.Add(new Label {
+                Text="Cloud summaries are computed by the server. " +
+                     "Physical aircraft control is disabled.",
+                Width=700,Height=50
+            });
+            cloudPanel.Controls.Add(ActionButton("Cloud fleet metrics",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                     "api/v1/fleet/metrics"),"Fleet metrics")));
+            cloudPanel.Controls.Add(ActionButton("Recent cloud missions",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                     "api/v1/missions?limit=50"),"Mission ledger")));
+            cloudPanel.Controls.Add(ActionButton("Cloud capabilities",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                     "api/v1/capabilities"),"Cloud capabilities")));
+            cloudPanel.Controls.Add(ActionButton("Recent audit events",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                     "api/v1/events?limit=50"),"Audit events")));
+            cloudPanel.Controls.Add(ActionButton("Submit fleet health report",
+                async()=>await SubmitCloudReport("fleet_health")));
+            cloudPanel.Controls.Add(ActionButton("Submit mission portfolio report",
+                async()=>await SubmitCloudReport("mission_portfolio")));
+            cloudPanel.Controls.Add(ActionButton("Refresh submitted report",
+                async()=>await RefreshCloudReport()));
+            cloudPanel.Controls.Add(ActionButton("Ground station settings",()=>{
+                using(var window=new VihangaVedikaSettingsWindow())
+                    window.ShowDialog(this);
+            }));
+            cloudPanel.Controls.Add(new Label {
+                Text="A pending report means the compute worker has not finished. " +
+                     "No local fleet aggregation or remote vehicle commands are performed.",
+                Width=700,Height=60
+            });
 
             var missionPanel=Panel();mission.Controls.Add(missionPanel);
             missionPanel.Controls.Add(new Label{Text="Enter mission waypoints: latitude,longitude — one line per waypoint (minimum 2)",
@@ -167,7 +203,8 @@ namespace AeroHelm.GcsCloud
 
         private static Button ActionButton(string label,Action action)
         {
-            var button=new Button{Text=label,AutoSize=true,MinimumSize=new Drawing.Size(265,28)};
+            var button=new Button{Text=label,AutoSize=true,
+                MinimumSize=new Drawing.Size(285,44)};
             button.Click+=(s,e)=>action();
             return button;
         }
@@ -190,13 +227,108 @@ namespace AeroHelm.GcsCloud
             {
                 // OperationsApi ensures cloud login and token expiry.
                 var result=await Task.Run(job);
-                report.Text=title+"\r\n"+result;
+                report.Text=title+"\r\n"+(result.Length<=32000?
+                    result:result.Substring(0,32000)+"\r\n[output truncated]");
             }
             catch(Exception ex)
             {
                 report.Text=title+" failed: "+Explain(ex);
             }
             finally {running=false;}
+        }
+
+        private string ReadFleetStatus()
+        {
+            string body;
+            try { body=OperationsApi.Request("GET","api/v1/fleet/status"); }
+            catch(System.Net.WebException ex)
+            {
+                var response=ex.Response as System.Net.HttpWebResponse;
+                if(response==null || response.StatusCode!=System.Net.HttpStatusCode.NotFound)
+                    throw;
+                response.Dispose();
+                return "Legacy fleet endpoint: "+OperationsApi.Request("GET","api/v2/fleet");
+            }
+            if(body.Length>131072)throw new InvalidOperationException(
+                "Fleet report exceeds the configured response size limit.");
+            var source=json.Deserialize<Dictionary<string,object>>(body);
+            if(source==null || !source.ContainsKey("cloud_flight_authorized") ||
+               !(source["cloud_flight_authorized"] is bool) ||
+               (bool)source["cloud_flight_authorized"])
+                throw new InvalidOperationException(
+                    "Cloud response does not confirm observation-only status.");
+            var rows=source.ContainsKey("vehicles") ? source["vehicles"] as object[] : null;
+            if(rows==null || rows.Length>128)
+                throw new InvalidOperationException("Cloud fleet exceeds the 128-vehicle limit.");
+            var text=new StringBuilder();
+            text.AppendLine("Fleet observations — not flight-clearance evidence");
+            text.AppendLine("Vehicle         Type       Link       Age     Mode");
+            foreach(var item in rows)
+            {
+                var v=item as Dictionary<string,object>;
+                if(v==null)continue;
+                var telemetry=v.ContainsKey("telemetry") ?
+                    v["telemetry"] as Dictionary<string,object> : null;
+                var observation=telemetry!=null && telemetry.ContainsKey("observation") ?
+                    telemetry["observation"] as Dictionary<string,object> : null;
+                double age;
+                bool validAge=telemetry!=null && telemetry.ContainsKey("age_s") &&
+                    telemetry["age_s"]!=null &&
+                    double.TryParse(Convert.ToString(telemetry["age_s"],
+                        CultureInfo.InvariantCulture),NumberStyles.Float,
+                        CultureInfo.InvariantCulture,out age) &&
+                    !double.IsInfinity(age) && !double.IsNaN(age) &&
+                    age>=0 && age<=5;
+                bool fresh=validAge && telemetry.ContainsKey("fresh") &&
+                    telemetry["fresh"] is bool && (bool)telemetry["fresh"] &&
+                    telemetry.ContainsKey("session_epoch") &&
+                    telemetry["session_epoch"]!=null && observation!=null;
+                string kind=v.ContainsKey("kind") ? Convert.ToString(v["kind"]) : "UNKNOWN";
+                string id=v.ContainsKey("vehicle_id") ?
+                    Convert.ToString(v["vehicle_id"]) : "UNKNOWN";
+                if(id.Length>64)id=id.Substring(0,64);
+                string type=kind=="virtual"?"SIMULATED":"DEVICE-REPORTED";
+                string mode=fresh && observation.ContainsKey("mode") ?
+                    Convert.ToString(observation["mode"]) : "UNKNOWN";
+                text.AppendLine(id+" | "+type+" | "+(fresh?"FRESH":"STALE")+
+                    " | "+(fresh?age.ToString("F1",CultureInfo.InvariantCulture):"—")+
+                    " s | "+mode);
+            }
+            text.AppendLine("Physical flight authority: DISABLED");
+            return text.ToString();
+        }
+
+        private async Task SubmitCloudReport(string kind)
+        {
+            if(running)return;
+            running=true;
+            try
+            {
+                var response=await Task.Run(()=>OperationsApi.Request(
+                    "POST","api/v1/cloud-compute/jobs",
+                    new{request_id=Guid.NewGuid().ToString("N"),kind}));
+                var item=json.Deserialize<Dictionary<string,object>>(response);
+                object id;
+                if(item==null || !item.TryGetValue("job_id",out id) ||
+                   !Guid.TryParse(Convert.ToString(id),out _))
+                    throw new InvalidOperationException("Cloud returned an invalid report ID.");
+                latestCloudReport=Convert.ToString(id);
+                report.Text="Report queued: "+latestCloudReport+
+                    Environment.NewLine+"Refresh to retrieve the cloud-generated result.";
+            }
+            catch(Exception ex){report.Text="Cloud report unavailable: "+Explain(ex);}
+            finally{running=false;}
+        }
+
+        private async Task RefreshCloudReport()
+        {
+            if(string.IsNullOrEmpty(latestCloudReport))
+            {
+                report.Text="Submit a cloud report first.";return;
+            }
+            await Run(()=>OperationsApi.Request("GET",
+                "api/v1/cloud-compute/jobs/"+Uri.EscapeDataString(latestCloudReport)),
+                "Cloud report");
         }
 
         private static string Explain(Exception ex)
