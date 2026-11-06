@@ -13,7 +13,7 @@ import time
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session
 
-from .analytics import compute_one
+from .analytics import compute_one, prune_expired_reports
 from .config import Settings
 from .models import OutboxEvent
 
@@ -52,12 +52,18 @@ def run_forever(*, interval_seconds: float = 0.5) -> None:
             tenant=tenant, at=now(db), event_type=typ, aggregate_id=aggregate,
             body={"actor": actor, "mode": "READ_ONLY_ANALYTICS"}))
 
+    last_prune = 0.0
     try:
         while not terminate:
             worked = False
             try:
                 with Session(engine) as db:
                     with db.begin():
+                        # Ephemeral analytics are retained for one day, while
+                        # the append-only event outbox remains untouched.
+                        if time.monotonic() - last_prune >= 60:
+                            prune_expired_reports(db, now(db))
+                            last_prune = time.monotonic()
                         worked = compute_one(db, now, audit)
             except Exception as exc:
                 # Never log database URIs or sensitive payloads.
