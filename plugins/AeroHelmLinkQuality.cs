@@ -108,13 +108,14 @@ namespace AeroHelm.GcsCloud
                         a += attitudes[i];
                     }
                 }
+                long frameAge = AgeMs(tick, lastTick);
                 long hbAge = AgeMs(tick, lastHeartbeat);
                 long attAge = AgeMs(tick, lastAttitude);
                 return new AeroHelmQualitySnapshot(
                     hbAge >= 0 && hbAge <= 5000,
                     attAge >= 0 && attAge <= 5000,
                     f / (double)WindowSeconds, h / (double)WindowSeconds,
-                    a / (double)WindowSeconds, hbAge, attAge,
+                    a / (double)WindowSeconds, frameAge, hbAge, attAge,
                     attitudeGaps, largestAttitudeGapMs, rejectedEvidence);
             }
         }
@@ -133,6 +134,7 @@ namespace AeroHelm.GcsCloud
         internal readonly double FrameHz;
         internal readonly double HeartbeatHz;
         internal readonly double AttitudeHz;
+        internal readonly long FrameAgeMs;
         internal readonly long HeartbeatAgeMs;
         internal readonly long AttitudeAgeMs;
         internal readonly long AttitudeGapEvents;
@@ -141,7 +143,7 @@ namespace AeroHelm.GcsCloud
 
         internal AeroHelmQualitySnapshot(bool heartbeatFresh, bool attitudeFresh,
             double frameHz, double heartbeatHz, double attitudeHz,
-            long heartbeatAgeMs, long attitudeAgeMs, long attitudeGapEvents,
+            long frameAgeMs, long heartbeatAgeMs, long attitudeAgeMs, long attitudeGapEvents,
             long maxAttitudeGapMs, long rejectedEvidence)
         {
             HeartbeatFresh = heartbeatFresh;
@@ -149,6 +151,7 @@ namespace AeroHelm.GcsCloud
             FrameHz = frameHz;
             HeartbeatHz = heartbeatHz;
             AttitudeHz = attitudeHz;
+            FrameAgeMs = frameAgeMs;
             HeartbeatAgeMs = heartbeatAgeMs;
             AttitudeAgeMs = attitudeAgeMs;
             AttitudeGapEvents = attitudeGapEvents;
