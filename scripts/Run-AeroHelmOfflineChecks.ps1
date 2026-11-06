@@ -10,7 +10,7 @@ try {
         throw 'Python 3 is required for the offline source regression suite.'
     }
     Write-Host '[1/3] Checking read-only GCS startup, icons, flight and data contracts'
-    & $python.Source -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_aerohelm_build_globs Tools.test_aerohelm_touch_ux
+    & $python.Source -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_aerohelm_build_globs Tools.test_vihanga_toolbar
     if ($LASTEXITCODE -ne 0) { throw 'Offline GCS source contracts failed.' }
 
     if ($SkipDotNet) {
