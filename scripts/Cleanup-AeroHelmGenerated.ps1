@@ -5,7 +5,7 @@
 param([switch]$Apply)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$branch='feat/gcs-touch-ux-readonly-fleet-r1'
+$branch='feat/vihanga-vedika-toolbar-ops-intel-phase3'
 $branchNow=(& git -C $root branch --show-current).Trim()
 if($LASTEXITCODE -ne 0 -or $branchNow -ne $branch){
     throw "Cleanup requires reviewed branch $branch (found $branchNow)."
