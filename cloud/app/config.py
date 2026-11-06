@@ -21,6 +21,12 @@ class Settings:
         if mode not in {"production", "test"}:
             raise ValueError("Invalid AEROHELM_CLOUD_MODE")
         db = os.getenv("AEROHELM_DATABASE_URL", "")
+        secret_file = os.getenv("AEROHELM_DATABASE_URL_FILE", "")
+        if db and secret_file:
+            raise ValueError("Specify one database URL source, never both")
+        if secret_file:
+            from pathlib import Path
+            db = Path(secret_file).read_text(encoding="utf8").strip()
         if not db:
             raise ValueError("AEROHELM_DATABASE_URL is required")
         if mode == "production" and not db.startswith("postgresql+psycopg://"):
