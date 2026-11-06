@@ -13,6 +13,7 @@ $productionScripts = @(
     'scripts/Update-AeroHelmLatest.ps1',
     'scripts/Repair-AeroHelmWindows.ps1',
     'scripts/Consolidate-AeroHelmWindows.ps1',
+    'scripts/Cleanup-AeroHelmGenerated.ps1',
     'scripts/Build-Integrated-AeroHelm.ps1'
 )
 foreach ($relative in $productionScripts) {
