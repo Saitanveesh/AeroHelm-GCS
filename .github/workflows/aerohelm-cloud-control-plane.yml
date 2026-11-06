@@ -1,5 +1,6 @@
 name: AeroHelm Cloud Control Plane
 on:
+  workflow_dispatch:
   push:
     branches:
       - feat/cloud-fleet-control-plane-r1
@@ -36,6 +37,23 @@ jobs:
           if grep -REn 'mavutil|mavlink_connection|command_long_send|param_set_send|Serial\(' cloud/app; then
             echo "Forbidden aircraft IO primitive in cloud authority path"; exit 1
           fi
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build cloud-only container
+        run: docker build -f cloud/Dockerfile -t aerohelm-cloud:ci .
+      - name: Verify isolated cloud module imports
+        run: docker run --rm --entrypoint python aerohelm-cloud:ci -c "from cloud.app.main import create_app; from cloud.app.scheduler import run_forever; print('cloud image imports OK')"
+      - name: Validate example private Compose wiring
+        run: |
+          mkdir -p cloud/secrets
+          printf 'CI_ONLY_NOT_PRODUCTION\\n' > cloud/secrets/db_password.txt
+          printf 'postgresql+psycopg://aerohelm:CI_ONLY_NOT_PRODUCTION@database:5432/aerohelm\\n' > cloud/secrets/app_database_url.txt
+          cp cloud/.env.example cloud/.env
+          docker compose -f cloud/compose.yaml config --quiet
+          rm -rf cloud/secrets cloud/.env
   postgres:
     runs-on: ubuntu-latest
     timeout-minutes: 15
