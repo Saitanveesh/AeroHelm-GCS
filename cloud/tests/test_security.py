@@ -59,3 +59,22 @@ def test_device_cannot_claim_operator_or_own_other_tenant():
                                           "energy_wh":100,"reserve_fraction":.35,
                                           "energy_wh_per_km":20}
                            }).status_code == 403
+
+
+def test_production_fails_closed_without_explicit_trusted_host(monkeypatch):
+    import pytest
+    from cloud.app.config import Settings
+    production = Settings(
+        mode="production", database_url="postgresql+psycopg://ci:ci@localhost/ci",
+        issuer="https://issuer.example.invalid", audience="aerohelm-cloud",
+        jwks_url="https://issuer.example.invalid/jwks", test_secret=None,
+    )
+    monkeypatch.delenv("AEROHELM_ALLOWED_HOSTS", raising=False)
+    with pytest.raises(ValueError, match="trusted hosts"):
+        create_app(production)
+    monkeypatch.setenv("AEROHELM_ALLOWED_HOSTS", "*")
+    with pytest.raises(ValueError, match="trusted hosts"):
+        create_app(production)
+    monkeypatch.setenv("AEROHELM_ALLOWED_HOSTS", "aerohelm-private.example.invalid")
+    app = create_app(production)
+    assert app.title == "AeroHelm Cloud Fleet Control Plane"
