@@ -8,11 +8,8 @@ from fastapi.testclient import TestClient
 from cloud.app.main import create_app
 from cloud.tools.sim_edge import VirtualEdge
 from cloud.tests.test_control_plane import (
-    approve, config, draft, jwt_header, lease, login, make_two, spec,
+    TEST_SECRET, acquire, approve, config, draft, jwt_header, register, start,
 )
-
-# Aliases of the already tested signed token fixture, no live credentials.
-from cloud.tests.test_control_plane import acquire, register, start
 
 
 def test_two_virtual_devices_complete_multi_uav_workflow(monkeypatch):
@@ -25,7 +22,6 @@ def test_two_virtual_devices_complete_multi_uav_workflow(monkeypatch):
         assert acquire(client, "SIM-A").status_code == 200
         assert acquire(client, "SIM-B").status_code == 200
         assert start(client, mission).status_code == 202
-        from cloud.tests.test_control_plane import jwt_header, TEST_SECRET
         # The device never receives an operator JWT or a MAVLink stream.
         import jwt
         import time
