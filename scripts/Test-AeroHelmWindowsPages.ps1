@@ -185,6 +185,7 @@ Require-Text $generatedCleanup 'Get-Process MissionPlanner' 'Cleanup must not ru
 Require-Text $generatedCleanup 'Consolidate-AeroHelmWindows.ps1' 'Cleanup requires verified runtime.'
 Require-Text $generatedCleanup 'Remove-Item -LiteralPath $item.Path' 'Cleanup may delete only enumerated generated paths.'
 Require-Text $launcher 'feat/gcs-research-cybershield-twin-ui' 'Touch launcher must accept the research branch.'
+Require-Text $launcher 'feat/gcs-touch-ux-readonly-fleet-r1' 'Touch launcher must accept latest reviewed UI branch.'
 Require-Text $launcher 'AEROHELM_AUTO_NATIVE_TCP' 'FLIGHT should connect its local bridge without prompting.'
 Require-Text $launcher 'Get-NetTCPConnection -LocalPort 5760 -State Listen' 'Fail fast when the old Python bridge blocks the embedded loopback receiver.'
 Require-Text $nativeBridge 'internal string CompactSummary' 'Touch HOME must use a short, truthful local bridge headline.'
