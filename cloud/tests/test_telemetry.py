@@ -140,3 +140,19 @@ def test_reported_battery_and_gnss_risks_are_advisory_only():
         assert client.post("/api/v1/vehicles/PIX-01/lease",
                            headers=jwt_header(), json={
                                "duration_seconds":30}).status_code == 403
+
+
+def test_telemetry_epoch_exhaustion_fails_closed():
+    with TestClient(create_app(config())) as client:
+        register(client, "SIM-A")
+        first = client.post("/api/v1/device/telemetry/session",
+                            headers=dev("SIM-A"))
+        assert first.status_code == 200
+        with Session(client.app.state.engine) as session:
+            with session.begin():
+                state = session.scalar(select(TelemetryLatest))
+                state.epoch = 2147483647
+        assert client.post("/api/v1/device/telemetry/session",
+                           headers=dev("SIM-A")).status_code == 409
+        assert client.post("/api/v1/device/telemetry", headers=dev("SIM-A"),
+                           json=sample(2147483648, 1)).status_code == 422
