@@ -1,5 +1,6 @@
 # Reference private deployment. Requires reviewed reverse proxy TLS, OIDC, secrets,
 # backups and ingress policy. Does NOT expose app/DB on public host ports.
+# API can reach trusted IdP JWKS via edge; the database is internal-only.
 services:
   database:
     image: postgres:17
@@ -34,7 +35,7 @@ services:
     cap_drop: ["ALL"]
     read_only: true
     tmpfs: ["/tmp"]
-    networks: [private]
+    networks: [private, edge]
     # HTTPS terminator must be private/authenticated, with allowlisted forwarding.
   scheduler:
     build:
@@ -57,6 +58,9 @@ services:
 networks:
   private:
     internal: true
+  # Outbound OIDC JWKS HTTPS reachability and reviewed gateway attachment.
+  # Not published to a host port. DB and scheduler stay on internal only.
+  edge: {}
 volumes:
   aerohelm-postgres:
 secrets:
