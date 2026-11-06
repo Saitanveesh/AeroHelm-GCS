@@ -283,7 +283,6 @@ namespace AeroHelm.GcsCloud
                 _ops = null;
                 _intel = null;
                 _touch = null;
-                _paths = null;
             }
             return true;
         }
