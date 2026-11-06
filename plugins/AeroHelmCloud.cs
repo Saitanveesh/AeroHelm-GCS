@@ -30,18 +30,18 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _paths;
         private ToolStripButton _ops;
         private ToolStripButton _intel;
-        private ToolStripButton _touch;
+        private ToolStripButton _fleet;
         internal static AeroHelmReceiveOnlyBridge ActiveNativeBridge;
-        private EventHandler _touchStartupShown;
+        private string _previousTitle;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
         private readonly System.Windows.Forms.Timer _cloudLinkWatchdog =
             new System.Windows.Forms.Timer();
         private bool _cloudProbeBusy;
 
-        public override string Name { get { return "AeroHelm Cloud"; } }
-        public override string Version { get { return "0.3.0-rc1"; } }
-        public override string Author { get { return "AeroHelm Contributors"; } }
+        public override string Name { get { return VihangaVedikaProduct.FullName; } }
+        public override string Version { get { return "0.4.0-r3"; } }
+        public override string Author { get { return "Vihanga Vedika Contributors"; } }
 
         public override bool Init() { return true; }
 
@@ -53,7 +53,7 @@ namespace AeroHelm.GcsCloud
             // Place a distinct, text-only button immediately after HELP instead.
             _button = new ToolStripButton("CLOUD");
             _button.Name = "AeroHelmCloudButton";
-            _button.ToolTipText = "AeroHelm Cloud: login, aircraft registry and view sessions (no flight commands)";
+            _button.ToolTipText = "Vihanga Vedika: cloud sign-in and telemetry observation";
             _button.Image = AeroHelmIconPainter.Make("CLOUD", 20);
             _button.ImageScaling = ToolStripItemImageScaling.None;
             _button.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
@@ -67,6 +67,8 @@ namespace AeroHelm.GcsCloud
             };
 
             var main = MainV2.instance;
+            _previousTitle = main.Text;
+            main.Text = VihangaVedikaProduct.FullName + " — Mission Planner";
             var menu = main.MainMenu;
             var helpIndex = menu.Items.IndexOf(main.MenuHelp);
             menu.Items.Insert(helpIndex >= 0 ? helpIndex + 1 : 0, _button);
@@ -102,7 +104,14 @@ namespace AeroHelm.GcsCloud
             };
             menu.Items.Insert(at++, _link);
 
-            _ops = NewToolbarButton("OPS", "Simulation mission execution and supervised bench calibration");
+            _fleet = NewToolbarButton("FLEET", "Vehicle registry and telemetry observations; no flight commands");
+            _fleet.Click += delegate
+            {
+                using (var window = new AeroHelmIntelWindow("FLEET"))
+                    window.ShowDialog(MainV2.instance);
+            };
+            menu.Items.Insert(at++, _fleet);
+            _ops = NewToolbarButton("OPS", "Simulator work, SITL preparation and controlled maintenance");
             _ops.Click += delegate
             {
                 using (var window = new AeroHelmOpsWindow())
@@ -110,26 +119,13 @@ namespace AeroHelm.GcsCloud
             };
             menu.Items.Insert(at++, _ops);
 
-            _intel = NewToolbarButton("INTEL", "Fleet, mission assurance, parameter drift, history and security");
+            _intel = NewToolbarButton("INTEL", "Fleet, mission review, parameter snapshots, history and security");
             _intel.Click += delegate
             {
                 using (var window = new AeroHelmIntelWindow())
                     window.ShowDialog(MainV2.instance);
             };
             menu.Items.Insert(at++, _intel);
-
-            // Single touch-first entry point for nine actual workspaces.
-            // Existing classic buttons are retained as a fallback for
-            // mouse/keyboard operators and older Mission Planner workflows.
-            _touch = NewToolbarButton("TOUCH", "Open nine-module AeroHelm touch workspace");
-            _touch.Font = new FrameworkDrawing::System.Drawing.Font(
-                "Segoe UI Semibold", 10f, FrameworkDrawing::System.Drawing.FontStyle.Bold);
-            _touch.Click += delegate
-            {
-                using (var panel = new AeroHelmTouchPanel())
-                    panel.ShowDialog(MainV2.instance);
-            };
-            menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _touch);
 
             // Independent connection module. Explicit operator choice:
             // CLOUD is receive-only; DIRECT exposes native COM/radio controls.
@@ -144,9 +140,9 @@ namespace AeroHelm.GcsCloud
                             picker.Selection,null);
                 }
             };
-            menu.Items.Insert(menu.Items.IndexOf(_touch) + 1, _paths);
-            // This monitor stays active after the TOUCH window closes and the
-            // pilot opens native Flight Data. It NEVER connects to a radio,
+            menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _paths);
+            // This monitor remains available in native Flight Data; it
+            // never connects to a radio,
             // sends MAVLink or initiates failover. Its only output is a
             // persistent, nonmodal LINK/PATHS warning to the operator.
             _cloudLinkWatchdog.Interval=5000;
@@ -159,12 +155,10 @@ namespace AeroHelm.GcsCloud
             // may still need for diagnosis, SITL and maintenance.
             _simulationWasVisible = main.MenuSimulation.Visible;
             _helpWasVisible = main.MenuHelp.Visible;
-            // AeroHelm GCS hides the upstream HELP and SIMULATION tiles in its
-            // default operator profile, as requested. They remain present in
-            // the native offline maintenance/recovery executable, not deleted.
-            // Only an explicit maintenance override may restore their buttons.
-            if (!string.Equals(Environment.GetEnvironmentVariable(
-                    "AEROHELM_REDUCED_TOOLBAR"), "0", StringComparison.Ordinal))
+            // Keep Help and SITL accessible by default. Reduced toolbar
+            // mode is an explicit operator selection.
+            if (string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_REDUCED_TOOLBAR"), "1", StringComparison.Ordinal))
             {
                 main.MenuSimulation.Visible = false;
                 main.MenuHelp.Visible = false;
@@ -179,34 +173,8 @@ namespace AeroHelm.GcsCloud
                 ActiveNativeBridge.Start(); // Fail closed if login/port unavailable.
             }
 
-            // Dedicated Windows tablet/kiosk mode is opt-in. Native Mission
-            // Planner still starts normally first, including existing
-            // AeroHelm operator login and all radio/USB recovery paths.
-            if (string.Equals(Environment.GetEnvironmentVariable("AEROHELM_TOUCH_STARTUP"),
-                              "1", StringComparison.Ordinal))
-            {
-                Action openTouch = () =>
-                {
-                    if (main.IsDisposed) return;
-                    using (var panel = new AeroHelmTouchPanel())
-                        panel.ShowDialog(main);
-                };
-                if (main.Visible && main.IsHandleCreated)
-                {
-                    main.BeginInvoke(openTouch);
-                }
-                else
-                {
-                    _touchStartupShown = (sender, args) =>
-                    {
-                        main.Shown -= _touchStartupShown;
-                        _touchStartupShown = null;
-                        if (!main.IsDisposed && main.IsHandleCreated)
-                            main.BeginInvoke(openTouch);
-                    };
-                    main.Shown += _touchStartupShown;
-                }
-            }
+            // The native Flight Data screen remains the default workspace.
+            // No redundant launcher appears after authentication.
             return true;
         }
 
@@ -322,11 +290,7 @@ namespace AeroHelm.GcsCloud
                 var main = MainV2.instance;
                 if (main != null && !main.IsDisposed)
                 {
-                    if (_touchStartupShown != null)
-                    {
-                        main.Shown -= _touchStartupShown;
-                        _touchStartupShown = null;
-                    }
+                    main.Text = _previousTitle ?? main.Text;
                     main.MenuSimulation.Visible = _simulationWasVisible;
                     main.MenuHelp.Visible = _helpWasVisible;
                     main.MainMenu.Items.Remove(_button);
@@ -336,13 +300,13 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_paths);
                     main.MainMenu.Items.Remove(_ops);
                     main.MainMenu.Items.Remove(_intel);
-                    main.MainMenu.Items.Remove(_touch);
+                    main.MainMenu.Items.Remove(_fleet);
                 }
                 // Every toolbar item owns its native bitmap. Release all
                 // symbols when the plugin is unloaded; do not leak WinForms
                 // GDI handles across repeated plugin lifecycle tests.
                 foreach(var item in new ToolStripButton[]{
-                    _button,_survey,_vision,_link,_ops,_intel,_touch,_paths
+                    _button,_survey,_vision,_link,_fleet,_ops,_intel,_paths
                 })
                 {
                     if(item.Image!=null)
@@ -360,7 +324,7 @@ namespace AeroHelm.GcsCloud
                 _paths = null;
                 _ops = null;
                 _intel = null;
-                _touch = null;
+                _fleet = null;
             }
             return true;
         }
