@@ -24,6 +24,7 @@ navigation, airspace approval or safety-case acceptance.
 | `app/security.py` | Signed RS256 OIDC tokens in production; test-only HS256 prohibited in production |
 | `app/scheduler.py` | Database expiry sweeper; never automatically requeues an expired job |
 | `tools/sim_edge.py` | Workflow-only fake edge ACKs; no flight dynamics or FC access |
+| `tools/telemetry_uplink.py` | HTTPS normalized observation sidecar for existing Pi UART-owner; never replays stale samples |
 | `migrations/` | Alembic schema revision with explicit startup version pinning |
 | `compose.yaml` | Private reference PostgreSQL/API/scheduler environment, not Internet-facing |
 | `tests/` | Safety, tenant isolation, epoch fencing, state transitions, persistence and replay contracts |
@@ -108,7 +109,12 @@ capability, an expiry and the current vehicle lease epoch. A device ACK
 cannot be used as an FC execution acknowledgment.
 
 Telemetry sessions are independent: the server issues a monotonically
-increasing epoch per vehicle; client sequence must increase. Reconnect
+increasing epoch per vehicle; client sequence must increase.
+The provided `ObservationUplink` creates explicit cloud sessions, uses
+fresh device JWTs supplied by the caller, rejects unexpected fields and
+follows no HTTP redirects. It reads **already normalized samples only**
+from the existing Pi UART-owning software; there is no competing serial
+connection, MAVLink command forwarding, or offline telemetry replay. Reconnect
 clears the previous session's displayed observation, and the server
 marks telemetry stale after five seconds without new accepted samples.
 
