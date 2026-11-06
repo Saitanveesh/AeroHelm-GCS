@@ -52,7 +52,7 @@ foreach($relative in $relatives){
     }
     # Scan one level at a time. Never recurse THROUGH junctions or symlinks
     # even during the dry-run inspection (Windows PowerShell 5.1 safe).
-    $pending=New-Object 'System.Collections.Generic.Stack[string]'
+    $pending=New-Object System.Collections.Stack
     $pending.Push($full)
     [long]$size=0
     while($pending.Count -gt 0){
