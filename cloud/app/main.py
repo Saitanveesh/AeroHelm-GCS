@@ -95,6 +95,15 @@ class TelemetryObservation(BaseModel):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     cfg = settings or Settings.from_env()
+    # Enforce production invariants even when a caller constructs Settings
+    # directly; test helper injection must not weaken the deployed factory.
+    if cfg.mode == "production" and (
+            not cfg.database_url.startswith("postgresql+psycopg://") or
+            cfg.test_secret is not None or not cfg.jwks_url or
+            not cfg.issuer.startswith("https://")):
+        raise ValueError("Production cloud settings violate mandatory security boundaries")
+    if cfg.mode == "test" and (not cfg.test_secret or len(cfg.test_secret) < 32):
+        raise ValueError("Test mode requires an explicit test signing secret")
     if cfg.mode == "test" and cfg.database_url.startswith("sqlite") and ":memory:" in cfg.database_url:
         engine = create_engine(cfg.database_url, connect_args={"check_same_thread": False},
                                poolclass=StaticPool)
@@ -398,6 +407,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return {"vehicle_id": vehicle.name, "fresh": False,
                     "age_s": None, "session_epoch": state.epoch if state else None,
                     "observation": None, "advisory_risks": ["TELEMETRY_UNAVAILABLE"],
+                    "observation_source": ("VIRTUAL_SIMULATED" if vehicle.kind == "virtual"
+                                           else "DEVICE_REPORTED_UNVERIFIED"),
                     "flight_ready": False}
         age = max(0.0, now(db) - state.received_at)
         fresh = age <= 5.0
@@ -414,7 +425,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"vehicle_id": vehicle.name, "fresh": fresh,
                 "age_s": round(age, 3), "session_epoch": state.epoch,
                 "last_sequence": state.sequence, "observation": state.observation,
-                "advisory_risks": sorted(risks), "flight_ready": False}
+                "advisory_risks": sorted(risks),
+                "observation_source": ("VIRTUAL_SIMULATED" if vehicle.kind == "virtual"
+                                       else "DEVICE_REPORTED_UNVERIFIED"),
+                "flight_ready": False}
 
     @app.get("/api/v1/vehicles/{vehicle_id}/telemetry")
     def latest_telemetry(vehicle_id: str, p: Principal = Depends(identity),
