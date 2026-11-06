@@ -170,7 +170,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if job.status not in JOB_TERMINAL:
                 job.status = "LEASE_LOST" if final_state == "LEASE_LOST" else "CANCELLED_SIM"
                 job.updated_at = mission.updated_at
-        for name in mission.specification["vehicle_ids"]:
+        for name in sorted({assignment["vehicle_id"]
+                            for assignment in mission.specification["assignments"]}):
             row = scoped_vehicle(db, mission.tenant, name, lock=True)
             if row.active_mission == mission.id:
                 row.active_mission = None
@@ -253,6 +254,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 Vehicle.tenant == p.tenant, Vehicle.name == body.vehicle_id))
             if prior:
                 raise HTTPException(409, "Vehicle already registered")
+            if (body.kind == "virtual" and not
+                    body.vehicle_id.startswith(("SIM-", "AH-SIM-"))):
+                raise HTTPException(422, "Virtual vehicle requires a SIM- namespace")
             vehicle = Vehicle(id=str(uuid.uuid4()), tenant=p.tenant, name=body.vehicle_id,
                               kind=body.kind, profile=body.profile.model_dump(),
                               created_at=now(db))
@@ -409,7 +413,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if mission.status != "APPROVED_SIM":
                 raise HTTPException(409, "Mission not approved")
             ids = {}
-            for ident in sorted(mission.specification["vehicle_ids"]):
+            active_names = sorted({item["vehicle_id"]
+                                   for item in mission.specification["assignments"]})
+            for ident in active_names:
                 vehicle = scoped_vehicle(db, p.tenant, ident, lock=True)
                 lease = db.get(Lease, vehicle.id)
                 if (vehicle.kind != "virtual" or vehicle.active_mission or
@@ -466,6 +472,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .with_for_update(skip_locked=True)).all())
             if not candidates:
                 return {"job": None}
+            # One outstanding virtual work item per aircraft. Parallel work
+            # is allowed across different virtual vehicles, never within one.
+            occupied = db.scalar(select(Job.id).where(
+                Job.tenant == p.tenant, Job.vehicle_id == vehicle.id,
+                Job.status.in_(("CLAIMED_SIM", "ACCEPTED_SIM"))).limit(1))
+            if occupied is not None:
+                return {"job": None}
             job = candidates[0]
             if job.lease_epoch != lease.epoch:
                 raise HTTPException(409, "Stale authority epoch")
@@ -490,6 +503,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not virtual_dispatch:
             raise HTTPException(503, "Virtual dispatch feature gate is off")
         with db.begin():
+            # Establish mission/vehicle authority freshness before accepting
+            # any ACK; expiry never re-enqueues a previously claimed job.
+            sweep(db)
             job = db.scalar(select(Job).where(Job.id == str(job_id),
                 Job.tenant == p.tenant).with_for_update())
             if job is None:
@@ -509,7 +525,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raise HTTPException(409, "ACK event ID reused with different contents")
                 return {"job_id": job.id, "status": existing.phase,
                         "duplicate": True, "physical_command_authorized": False}
-            sweep(db)
             mission = scoped_mission(db, p.tenant, job.mission_id, lock=True)
             lease = db.get(Lease, vehicle.id)
             timestamp = now(db)
