@@ -252,8 +252,8 @@ namespace AeroHelm.GcsCloud
                             quality.RejectEvidence();
                             continue;
                         }
-                        quality.Observe(messageId);
                         await client.GetStream().WriteAsync(packet, 0, length, linked.Token);
+                        quality.Observe(messageId);
                         Interlocked.Increment(ref frames);
                         long receivedTicks = DateTime.UtcNow.Ticks;
                         if (messageId == 0)
@@ -344,6 +344,9 @@ namespace AeroHelm.GcsCloud
             if ((expectedId != 0 && expectedId != 30) ||
                 !ValidFrame(frame, size, out parsedId) || parsedId != expectedId)
                 return false;
+            // A zero-length synthetic HEARTBEAT is not an autopilot HB.
+            if (expectedId == 0 && frame[1] < 9) return false;
+            if (expectedId == 30 && frame[1] < 12) return false;
             int headerLength = frame[0] == 0xFE ? 6 : 10;
             int crcIndex = headerLength + frame[1];
             ushort checksum = 0xFFFF;
