@@ -29,6 +29,8 @@ namespace AeroHelm.GcsCloud
         private long lastRollCentideg;
         private long lastPitchCentideg;
         private long validAttitudeSamples;
+        private readonly AeroHelmLinkQuality quality = new AeroHelmLinkQuality();
+        private volatile bool cloudStreamOpen;
 
         internal string Summary
         {
@@ -45,10 +47,9 @@ namespace AeroHelm.GcsCloud
                 var now = DateTime.UtcNow;
                 long hbTicks = Interlocked.Read(ref lastHeartbeatUtcTicks);
                 long attTicks = Interlocked.Read(ref lastAttitudeUtcTicks);
-                bool liveHb = hbTicks > 0 &&
-                    (now-new DateTime(hbTicks,DateTimeKind.Utc)).TotalSeconds < 5;
-                bool liveAtt = attTicks > 0 &&
-                    (now-new DateTime(attTicks,DateTimeKind.Utc)).TotalSeconds < 5;
+                var metrics = quality.Snapshot();
+                bool liveHb = cloudStreamOpen && metrics.HeartbeatFresh;
+                bool liveAtt = cloudStreamOpen && metrics.AttitudeFresh;
                 long decoded = Interlocked.Read(ref validAttitudeSamples);
                 string angles = !liveAtt || decoded == 0 ?
                     "roll/pitch STALE OR UNKNOWN" :
@@ -59,7 +60,13 @@ namespace AeroHelm.GcsCloud
                 return "LOCAL TCP / " + status + " | frames " + count +
                     " | HB " + hb + (liveHb ? " LIVE" : " STALE/MISSING") +
                     " | ATT " + att + (liveAtt ? " LIVE" : " STALE/MISSING") +
-                    " | " + angles + " | last frame " + age;
+                    " | " + angles + " | last frame " + age +
+                    " | local 5s HB " + metrics.HeartbeatHz.ToString("F1",
+                        System.Globalization.CultureInfo.InvariantCulture) + "/s" +
+                    " ATT " + metrics.AttitudeHz.ToString("F1",
+                        System.Globalization.CultureInfo.InvariantCulture) + "/s" +
+                    " | ATT gaps >2.5s " + metrics.AttitudeGapEvents +
+                    " | invalid HB/ATT CRC " + metrics.RejectedEvidence;
             }
         }
 
@@ -80,10 +87,9 @@ namespace AeroHelm.GcsCloud
                 long hbTicks = Interlocked.Read(ref lastHeartbeatUtcTicks);
                 long attTicks = Interlocked.Read(ref lastAttitudeUtcTicks);
                 DateTime now = DateTime.UtcNow;
-                bool hbLive = hbTicks > 0 &&
-                    (now - new DateTime(hbTicks, DateTimeKind.Utc)).TotalSeconds < 5;
-                bool attLive = attTicks > 0 &&
-                    (now - new DateTime(attTicks, DateTimeKind.Utc)).TotalSeconds < 5;
+                var metrics = quality.Snapshot();
+                bool hbLive = cloudStreamOpen && metrics.HeartbeatFresh;
+                bool attLive = cloudStreamOpen && metrics.AttitudeFresh;
                 if (hbLive && attLive)
                     return "LOCAL TCP / REAL HEARTBEAT + ATTITUDE RECEIVED";
                 return "LOCAL TCP / " + state +
@@ -195,11 +201,19 @@ namespace AeroHelm.GcsCloud
                     return;
                 }
                 linked.CancelAfter(lifetime);
+                // A new WebSocket is a new observation session. Never carry
+                // previous-session freshness or angles into this one.
+                cloudStreamOpen = false;
+                quality.Reset();
+                Interlocked.Exchange(ref lastHeartbeatUtcTicks, 0);
+                Interlocked.Exchange(ref lastAttitudeUtcTicks, 0);
+                Interlocked.Exchange(ref validAttitudeSamples, 0);
                 ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
                 ws.Options.SetRequestHeader("Authorization",
                     "Bearer " + Program.AeroHelmOperatorToken);
                 state = "CONNECTING AUTHENTICATED CLOUD STREAM";
                 await ws.ConnectAsync(url, linked.Token);
+                cloudStreamOpen = true;
                 state = "CLOUD CONNECTED; WAITING FOR MAVLINK FRAMES";
 
                 // A separate read loop explicitly DROPS all bytes the native
@@ -229,6 +243,16 @@ namespace AeroHelm.GcsCloud
                         int messageId;
                         if (!ValidFrame(packet, length, out messageId))
                             continue; // Refuse malformed/unknown message envelopes.
+                        // The Pi checks all frame CRCs upstream. Independently
+                        // verify HB/ATT CRC before asserting HUD readiness:
+                        // a structurally valid or corrupted packet is NOT evidence.
+                        if ((messageId == 0 || messageId == 30) &&
+                            !HasValidTelemetryChecksum(packet, length, messageId))
+                        {
+                            quality.RejectEvidence();
+                            continue;
+                        }
+                        quality.Observe(messageId);
                         await client.GetStream().WriteAsync(packet, 0, length, linked.Token);
                         Interlocked.Increment(ref frames);
                         long receivedTicks = DateTime.UtcNow.Ticks;
@@ -257,6 +281,7 @@ namespace AeroHelm.GcsCloud
                 }
                 finally
                 {
+                    cloudStreamOpen = false;
                     linked.Cancel();
                     // The client stream is closed by the owning TCP client.
                     // DrainGcsAsync is cancellation-aware and has no send path.
@@ -309,6 +334,35 @@ namespace AeroHelm.GcsCloud
             return false;
         }
 
+        // The CRC validates frame integrity, NOT MAVLink2 signatures or
+        // operator/aircraft identity. Only types with known CRC extras are
+        // considered evidence of a live native HUD stream (0=50; 30=39).
+        internal static bool HasValidTelemetryChecksum(byte[] frame, int size,
+                                                        int expectedId)
+        {
+            int parsedId;
+            if ((expectedId != 0 && expectedId != 30) ||
+                !ValidFrame(frame, size, out parsedId) || parsedId != expectedId)
+                return false;
+            int headerLength = frame[0] == 0xFE ? 6 : 10;
+            int crcIndex = headerLength + frame[1];
+            ushort checksum = 0xFFFF;
+            for (int i = 1; i < crcIndex; i++)
+                checksum = AccumulateCrc(checksum, frame[i]);
+            checksum = AccumulateCrc(checksum,
+                expectedId == 0 ? (byte)50 : (byte)39);
+            ushort expected = (ushort)(frame[crcIndex] | (frame[crcIndex + 1] << 8));
+            return checksum == expected;
+        }
+
+        private static ushort AccumulateCrc(ushort crc, byte value)
+        {
+            byte temp = (byte)(value ^ (byte)crc);
+            temp ^= (byte)(temp << 4);
+            return (ushort)((crc >> 8) ^ (temp << 8) ^
+                            (temp << 3) ^ (temp >> 4));
+        }
+
         // MAVLink 1/2 ATTITUDE (ID 30): time_boot_ms followed by IEEE754
         // roll and pitch radians. This is passive decoding from *real frames*;
         // a stale/invalid source never generates a new measurement.
@@ -319,6 +373,7 @@ namespace AeroHelm.GcsCloud
             pitchDegrees=0;
             int messageId;
             if (!ValidFrame(frame,size,out messageId) || messageId!=30 ||
+                !HasValidTelemetryChecksum(frame,size,30) ||
                 frame[1]<12 || !BitConverter.IsLittleEndian)
                 return false;
             int offset=frame[0]==0xFE?6:10;
@@ -338,6 +393,7 @@ namespace AeroHelm.GcsCloud
         public void Dispose()
         {
             if (cancellation == null) return;
+            cloudStreamOpen = false;
             cancellation.Cancel();
             listener.Stop();
             cancellation.Dispose();
