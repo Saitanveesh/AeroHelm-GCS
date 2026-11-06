@@ -216,13 +216,17 @@ namespace MissionPlanner
                 Uri approved;
                 if(!Uri.TryCreate(trusted,UriKind.Absolute,out approved) ||
                    approved.Scheme!=Uri.UriSchemeHttps ||
-                   !string.Equals(address,approved.GetLeftPart(UriPartial.Authority),
-                       StringComparison.OrdinalIgnoreCase) ||
+                   !(approved.Host.EndsWith(".ts.net",StringComparison.OrdinalIgnoreCase) ||
+                     approved.Host.EndsWith(".internal",StringComparison.OrdinalIgnoreCase)) ||
                    approved.AbsolutePath!="/" || approved.UserInfo!="" ||
                    approved.Query!="" || approved.Fragment!="")
                     throw new InvalidOperationException(
-                        "Kerberos SSO origin is not administrator-approved.");
-                string reply=await Task.Run(()=>NegotiateRequest(address));
+                        "Kerberos SSO requires an exact administrator-pinned private HTTPS origin.");
+                // KDC service principals may use a dedicated internal DNS
+                // host+TLS port. Only Negotiate with the administrator-pinned
+                // identity endpoint, never with an arbitrary cloud URL.
+                string ssoOrigin=approved.GetLeftPart(UriPartial.Authority);
+                string reply=await Task.Run(()=>NegotiateRequest(ssoOrigin));
                 if(!IsDisposed)AcceptToken(reply,address);
             }
             catch(WebException ex)
