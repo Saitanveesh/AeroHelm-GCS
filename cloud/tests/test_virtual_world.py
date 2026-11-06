@@ -48,6 +48,7 @@ def test_cloud_schedules_two_virtual_vehicles_and_observes_route(monkeypatch):
             assert telemetry["observation"]["mode"] == "VIRTUAL_ROUTE"
             assert telemetry["observation"]["armed"] is False
             assert telemetry["flight_ready"] is False
+            assert telemetry["observation_source"] == "VIRTUAL_SIMULATED"
             assert worker.execute_one()["status"] == "IDLE_SIM"
         final = client.get("/api/v1/missions/" + mission["id"],
                            headers=jwt_header()).json()
