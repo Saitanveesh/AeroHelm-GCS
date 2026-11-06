@@ -361,7 +361,7 @@ namespace AeroHelm.GcsCloud
 
         public CloudWindow()
         {
-            Text = "AeroHelm Cloud — Aircraft registry";
+            Text = VihangaVedikaProduct.Name + " — Cloud Connections";
             StartPosition = FormStartPosition.CenterParent;
             Width = 570;
             Height = 490;
