@@ -59,7 +59,7 @@ namespace MissionPlanner
 
         public AeroHelmStartupWindow()
         {
-            Text="AeroHelm GCS — Cloud sign in";
+            Text="Vihanga Vedika — Cloud Sign In";
             StartPosition=FormStartPosition.CenterScreen;
             Width=680;Height=325;
             FormBorderStyle=FormBorderStyle.FixedDialog;
