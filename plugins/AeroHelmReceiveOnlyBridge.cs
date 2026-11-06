@@ -23,9 +23,6 @@ namespace AeroHelm.GcsCloud
         private long frames;
         private long heartbeats;
         private long attitudes;
-        private long lastFrameUtcTicks;
-        private long lastHeartbeatUtcTicks;
-        private long lastAttitudeUtcTicks;
         private long lastRollCentideg;
         private long lastPitchCentideg;
         private long validAttitudeSamples;
@@ -40,14 +37,10 @@ namespace AeroHelm.GcsCloud
                 long count = Interlocked.Read(ref frames);
                 long hb = Interlocked.Read(ref heartbeats);
                 long att = Interlocked.Read(ref attitudes);
-                long lastTicks = Interlocked.Read(ref lastFrameUtcTicks);
-                string age = lastTicks == 0 ? "never" :
-                    Math.Max(0, (int)(DateTime.UtcNow - new DateTime(
-                        lastTicks, DateTimeKind.Utc)).TotalSeconds) + "s ago";
-                var now = DateTime.UtcNow;
-                long hbTicks = Interlocked.Read(ref lastHeartbeatUtcTicks);
-                long attTicks = Interlocked.Read(ref lastAttitudeUtcTicks);
                 var metrics = quality.Snapshot();
+                string age = metrics.FrameAgeMs < 0 ? "never" :
+                    (metrics.FrameAgeMs / 1000.0).ToString("F1",
+                        System.Globalization.CultureInfo.InvariantCulture) + "s ago";
                 bool liveHb = cloudStreamOpen && metrics.HeartbeatFresh;
                 bool liveAtt = cloudStreamOpen && metrics.AttitudeFresh;
                 long decoded = Interlocked.Read(ref validAttitudeSamples);
@@ -84,9 +77,6 @@ namespace AeroHelm.GcsCloud
                 }
                 if (state == "WAITING FOR NATIVE TCP CLIENT")
                     return "LOCAL TCP / READY — CLICK FLIGHT TO START HUD";
-                long hbTicks = Interlocked.Read(ref lastHeartbeatUtcTicks);
-                long attTicks = Interlocked.Read(ref lastAttitudeUtcTicks);
-                DateTime now = DateTime.UtcNow;
                 var metrics = quality.Snapshot();
                 bool hbLive = cloudStreamOpen && metrics.HeartbeatFresh;
                 bool attLive = cloudStreamOpen && metrics.AttitudeFresh;
@@ -205,8 +195,6 @@ namespace AeroHelm.GcsCloud
                 // previous-session freshness or angles into this one.
                 cloudStreamOpen = false;
                 quality.Reset();
-                Interlocked.Exchange(ref lastHeartbeatUtcTicks, 0);
-                Interlocked.Exchange(ref lastAttitudeUtcTicks, 0);
                 Interlocked.Exchange(ref validAttitudeSamples, 0);
                 ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
                 ws.Options.SetRequestHeader("Authorization",
@@ -255,16 +243,13 @@ namespace AeroHelm.GcsCloud
                         await client.GetStream().WriteAsync(packet, 0, length, linked.Token);
                         quality.Observe(messageId);
                         Interlocked.Increment(ref frames);
-                        long receivedTicks = DateTime.UtcNow.Ticks;
                         if (messageId == 0)
                         {
                             Interlocked.Increment(ref heartbeats);
-                            Interlocked.Exchange(ref lastHeartbeatUtcTicks, receivedTicks);
                         }
                         if (messageId == 30)
                         {
                             Interlocked.Increment(ref attitudes);
-                            Interlocked.Exchange(ref lastAttitudeUtcTicks, receivedTicks);
                             float rollDeg,pitchDeg;
                             if (TryReadAttitude(packet,length,out rollDeg,out pitchDeg))
                             {
@@ -275,7 +260,6 @@ namespace AeroHelm.GcsCloud
                                 Interlocked.Increment(ref validAttitudeSamples);
                             }
                         }
-                        Interlocked.Exchange(ref lastFrameUtcTicks, receivedTicks);
                         state = "RECEIVING READ-ONLY MAVLINK";
                     }
                 }
