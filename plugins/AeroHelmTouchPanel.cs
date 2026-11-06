@@ -237,11 +237,29 @@ namespace AeroHelm.GcsCloud
                 cloudHealthTimer.Stop();
                 bridgeStatusTimer.Stop();
             };
-            Activated += (s,e) => {
+            Activated += async (s,e) => {
                 if (IsDisposed || Disposing || WindowState == FormWindowState.Minimized)
                     return;
+                // A previously green status never survives focus loss; make
+                // cloud health prove itself again after workspace reactivation.
+                cloudStatusCheckedUtc = DateTime.MinValue;
+                cloudHeartbeatLive = null;
+                linkStatus.Text = "CLOUD VIEW / RECHECKING — NO FLIGHT AUTHORITY";
+                linkStatus.ForeColor = Drawing.Color.FromArgb(244,210,161);
                 bridgeStatusTimer.Start();
                 cloudHealthTimer.Start();
+                await RefreshCloudStatusAsync();
+            };
+            Deactivate += (s,e) => {
+                cloudHealthTimer.Stop();
+                bridgeStatusTimer.Stop();
+                cloudStatusCheckedUtc = DateTime.MinValue;
+                cloudHeartbeatLive = null;
+                if (!IsDisposed && !Disposing)
+                {
+                    linkStatus.Text = "CLOUD VIEW / INACTIVE — RECHECK ON RETURN";
+                    linkStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
+                }
             };
             FormClosed += (s,e) => {
                 bridgeStatusTimer.Stop();
