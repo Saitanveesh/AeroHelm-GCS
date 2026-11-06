@@ -172,16 +172,12 @@ namespace AeroHelm.GcsCloud
             }
             if (selected == AeroHelmLinkPath.PilotDirect)
             {
-                main.MenuFlightData.PerformClick();
-                MessageBox.Show(main,
-                    "PILOT BACKUP: select the physical telemetry radio or USB COM "+
-                    "port and the correct baud rate using Mission Planner's "+
-                    "native port selector. Then CONNECT deliberately. "+
-                    "No radio connection, command, or flight-mode change was "+
-                    "performed automatically. Never use this as an automatic "+
-                    "failover or bypass the flight controller's failsafes.",
-                    "AeroHelm — direct pilot backup",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                // A completely independent native COM/telemetry-radio
+                // connection module. No cloud credential, TCP bridge, UART
+                // handover or automatic switch is required. An on-site pilot
+                // must choose an observed port and explicitly authorize it.
+                using(var window=new AeroHelmPilotDirectWindow(main))
+                    window.ShowDialog(main);
                 return true;
             }
 
