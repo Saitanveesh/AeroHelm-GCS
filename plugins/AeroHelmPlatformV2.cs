@@ -38,8 +38,12 @@ namespace AeroHelm.GcsCloud
             var header=new FlowLayoutPanel{Dock=DockStyle.Top,Height=42,Padding=new Padding(8)};
             header.Controls.Add(new Label{Text="Aircraft:",Width=65,
                 TextAlign=Drawing.ContentAlignment.MiddleRight,Height=26});
-            vehicle.Text="AH-HW-001";vehicle.Width=160;header.Controls.Add(vehicle);
-            banner.Text="ANALYSIS ONLY — no mission upload, flight command, calibration or parameter write.";
+            var configuredId=Environment.GetEnvironmentVariable("AEROHELM_VEHICLE_ID");
+            vehicle.Text=!string.IsNullOrWhiteSpace(configuredId) &&
+                System.Text.RegularExpressions.Regex.IsMatch(configuredId,
+                @"\A[A-Za-z0-9_-]{3,64}\z") ? configuredId : "";
+            vehicle.Width=170;header.Controls.Add(vehicle);
+            banner.Text="OBSERVATION / REVIEW ONLY — local pilot authority is unchanged.";
             banner.AutoSize=true;banner.ForeColor=Drawing.Color.DarkRed;header.Controls.Add(banner);
             var tabs=new TabControl{Dock=DockStyle.Fill};
             var fleet=new TabPage("FLEET");
@@ -68,8 +72,8 @@ namespace AeroHelm.GcsCloud
             report.ScrollBars=ScrollBars.Both;
             report.WordWrap=false;
             report.Font=new Drawing.Font("Consolas",10);
-            report.Text="Select a module to inspect authenticated cloud state.\r\n" +
-                        "Mission checks are advisory; flight authorization is ALWAYS false.";
+            report.Text="Select a fleet or configuration review. " +
+                        "Cloud evidence never establishes flight authorization.";
             Controls.Add(tabs);
             Controls.Add(report);
             Controls.Add(header);
@@ -81,6 +85,11 @@ namespace AeroHelm.GcsCloud
             fleetPanel.Controls.Add(ActionButton("Aircraft risk flags",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/vehicles/"+Id()+"/alerts"),"Aircraft alerts")));
+            Shown+=async (sender,args)=>{
+                if((initialTab??"FLEET").Equals("FLEET",
+                    StringComparison.OrdinalIgnoreCase))
+                    await Run(()=>ReadFleetStatus(),"Fleet status");
+            };
             fleetPanel.Controls.Add(new Label{Text="Virtual telemetry is simulated; device reports are unverified. Missing samples remain STALE.",
                 AutoSize=true,ForeColor=Drawing.Color.DarkRed});
 
@@ -128,7 +137,7 @@ namespace AeroHelm.GcsCloud
                 Width=650,Height=28});
             fence.Multiline=true;fence.ScrollBars=ScrollBars.Vertical;
             fence.Width=650;fence.Height=75;missionPanel.Controls.Add(fence);
-            var opts=new FlowLayoutPanel{Width=660,Height=42};
+            var opts=new FlowLayoutPanel{Width=730,Height=44,WrapContents=false};
             altitude.Minimum=5;altitude.Maximum=120;altitude.Value=30;
             altitude.Width=65;altitude.DecimalPlaces=1;
             speed.Minimum=1;speed.Maximum=15;speed.Value=5;
@@ -271,7 +280,7 @@ namespace AeroHelm.GcsCloud
                     v["telemetry"] as Dictionary<string,object> : null;
                 var observation=telemetry!=null && telemetry.ContainsKey("observation") ?
                     telemetry["observation"] as Dictionary<string,object> : null;
-                double age;
+                double age=0;
                 bool validAge=telemetry!=null && telemetry.ContainsKey("age_s") &&
                     telemetry["age_s"]!=null &&
                     double.TryParse(Convert.ToString(telemetry["age_s"],
@@ -437,7 +446,7 @@ namespace AeroHelm.GcsCloud
 
         private async Task CompareParameters()
         {
-            var parsed=new Dictionary<string,double>();
+            var parsed=new SortedDictionary<string,double>(StringComparer.Ordinal);
             try
             {
                 foreach(string line in targets.Lines)
@@ -453,7 +462,10 @@ namespace AeroHelm.GcsCloud
                     string key=parts[0].Trim();
                     if(key.Length<1||key.Length>16||key.Any(x=>!char.IsLetterOrDigit(x)&&x!='_'))
                         throw new ArgumentException("Invalid parameter name");
-                    parsed[key]=value;
+                    key=key.ToUpperInvariant();
+                    if(parsed.ContainsKey(key))
+                        throw new ArgumentException("Duplicate parameter name: "+key);
+                    parsed.Add(key,value);
                 }
                 if(parsed.Count<1||parsed.Count>300)
                     throw new ArgumentException("Supply 1–300 parameters");
