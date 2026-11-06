@@ -50,19 +50,26 @@ foreach($relative in $relatives){
     if($LASTEXITCODE -ne 0 -or $tracked.Count -gt 0){
         throw "Cleanup target contains tracked files: $relative"
     }
-    # Junctions/symlinks nested inside generated outputs could point to
-    # unrelated operator files. Stop instead of following them.
-    $linked=@(Get-ChildItem -LiteralPath $full -Recurse -Force -ErrorAction Stop |
-        Where-Object { ($_.Attributes -band
-            [IO.FileAttributes]::ReparsePoint) -ne 0 } |
-        Select-Object -First 1)
-    if($linked.Count -gt 0){
-        throw "Cleanup target contains a reparse point; inspect: $relative"
+    # Scan one level at a time. Never recurse THROUGH junctions or symlinks
+    # even during the dry-run inspection (Windows PowerShell 5.1 safe).
+    $pending=New-Object 'System.Collections.Generic.Stack[string]'
+    $pending.Push($full)
+    [long]$size=0
+    while($pending.Count -gt 0){
+        $directory=$pending.Pop()
+        foreach($child in @(Get-ChildItem -LiteralPath $directory -Force
+                             -ErrorAction Stop)){
+            if(($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){
+                throw "Cleanup target contains a reparse point; inspect: $($child.FullName)"
+            }
+            if($child.PSIsContainer){
+                $pending.Push($child.FullName)
+            } else {
+                $size += [long]$child.Length
+            }
+        }
     }
-    $size=(@(Get-ChildItem -LiteralPath $full -Recurse -File -Force |
-        Measure-Object -Property Length -Sum))[0].Sum
-    if($null -eq $size){$size=0}
-    $candidates+= [pscustomobject]@{Relative=$relative;Path=$full;Bytes=[long]$size}
+    $candidates+= [pscustomobject]@{Relative=$relative;Path=$full;Bytes=$size}
 }
 Write-Host "Generated build/test directories found: $($candidates.Count)"
 $candidates | Select-Object Relative,@{N='MiB';E={[math]::Round($_.Bytes/1MB,1)}} |
