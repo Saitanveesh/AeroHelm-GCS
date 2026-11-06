@@ -417,7 +417,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                       p: Principal = Depends(identity), db: Session = Depends(database)):
         p.require("fleet:operate")
         with db.begin():
-            sweep(db)
             vehicle = scoped_vehicle(db, p.tenant, vehicle_id, lock=True)
             if vehicle.kind != "virtual":
                 raise HTTPException(403, "Hardware control leases are disabled")
@@ -444,7 +443,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     p: Principal = Depends(identity), db: Session = Depends(database)):
         p.require("fleet:operate")
         with db.begin():
-            sweep(db)
             vehicle = scoped_vehicle(db, p.tenant, vehicle_id, lock=True)
             current = db.get(Lease, vehicle.id)
             timestamp = now(db)
@@ -548,7 +546,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(503, "Virtual dispatch feature gate is off")
         payload_sha = digest({"mission": str(mission_id), "operation": "start"})
         with db.begin():
-            sweep(db)
             mission = scoped_mission(db, p.tenant, str(mission_id), lock=True)
             previous = request_seen(db, p, body.request_id, "start", payload_sha)
             if previous:
@@ -602,7 +599,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not virtual_dispatch:
             raise HTTPException(503, "Virtual dispatch feature gate is off")
         with db.begin():
-            sweep(db)
             vehicle = scoped_vehicle(db, p.tenant, p.vehicle_id, lock=True)
             if vehicle.kind != "virtual" or not vehicle.active_mission:
                 return {"job": None}
@@ -651,7 +647,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Lock consistently: mission -> vehicle -> job. Never hold a job
             # lock while waiting for its mission, avoiding deadlocks with
             # concurrent start/abort/scheduler state transitions.
-            sweep(db)
             known = db.scalar(select(Job).where(Job.id == str(job_id),
                                                 Job.tenant == p.tenant))
             if known is None:
