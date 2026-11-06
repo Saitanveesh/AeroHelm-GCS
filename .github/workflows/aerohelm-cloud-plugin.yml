@@ -11,6 +11,7 @@ on:
       - feat/gcs-unified-login-readonly-bridge
       - feat/gcs-research-cybershield-twin-ui
       - feat/aerohelm-cloud-link-quality-v1
+      - feat/aerohelm-duplex-link-console
       - feat/aerohelm-windows-integration
       - feat/aerohelm-windows-pages-v1
       - feat/aerohelm-windows-readiness-v2
