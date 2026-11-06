@@ -425,25 +425,31 @@ namespace AeroHelm.GcsCloud
         private readonly TextBox url = new TextBox();
         private readonly TextBox output = new TextBox();
         private readonly Button check = new Button();
+        private readonly Button duplexPing = new Button();
+        private readonly Button duplexStatusQuery = new Button();
+        private readonly Label duplexStatus = new Label();
         private readonly Label freshness = new Label();
         private readonly CheckBox autoRefresh = new CheckBox();
         private readonly System.Windows.Forms.Timer refreshTimer = new System.Windows.Forms.Timer();
         private bool checking;
+        private bool diagnosticPending;
+        private string lastDuplexResult = "No authenticated duplex request has been sent.";
 
         public AeroHelmLinkWindow()
         {
             Text = "AeroHelm LINK — Cloud link diagnostics";
-            Width = 770; Height = 470;
-            MinimumSize = new Drawing.Size(620,400);
+            Width = 870; Height = 580;
+            MinimumSize = new Drawing.Size(700,480);
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.Dpi;
             BackColor = Drawing.Color.FromArgb(8,8,8);
             ForeColor = Drawing.Color.White;
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(15),
-                RowCount = 4, ColumnCount = 1 };
+                RowCount = 5, ColumnCount = 1 };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(layout);
             var linkHeading = new TableLayoutPanel {
@@ -487,6 +493,31 @@ namespace AeroHelm.GcsCloud
             buttons.Controls.Add(check);
             buttons.Controls.Add(autoRefresh);
             layout.Controls.Add(buttons, 0, 2);
+            // Full duplex means authenticated diagnostic request/ACK only:
+            // never forward GCS MAVLink, arm, calibrate, or change an FC parameter.
+            var duplexBar = new FlowLayoutPanel {
+                Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true
+            };
+            duplexPing.Text = "PI ROUND-TRIP PING";
+            duplexPing.Width = 190; duplexPing.Height = 40;
+            duplexStatusQuery.Text = "PI UPLINK COUNTERS";
+            duplexStatusQuery.Width = 190; duplexStatusQuery.Height = 40;
+            foreach (var b in new[] { duplexPing, duplexStatusQuery })
+            {
+                b.FlatStyle = FlatStyle.Flat;
+                b.BackColor = Drawing.Color.FromArgb(45,45,45);
+                b.ForeColor = Drawing.Color.White;
+                b.FlatAppearance.BorderSize = 0;
+                duplexBar.Controls.Add(b);
+            }
+            duplexPing.Click += async (s,e) => await ProbeDuplexAsync("ping");
+            duplexStatusQuery.Click += async (s,e) => await ProbeDuplexAsync("uplink_status");
+            duplexStatus.Width = 330; duplexStatus.Height = 40;
+            duplexStatus.TextAlign = Drawing.ContentAlignment.MiddleLeft;
+            duplexStatus.Text = "DUPLEX / not tested";
+            duplexStatus.ForeColor = Drawing.Color.FromArgb(220,210,186);
+            duplexBar.Controls.Add(duplexStatus);
+            layout.Controls.Add(duplexBar,0,3);
             refreshTimer.Interval = 15000;
             refreshTimer.Tick += async (s,e) => await CheckAsync();
             autoRefresh.CheckedChanged += (s,e) => {
@@ -505,9 +536,114 @@ namespace AeroHelm.GcsCloud
             output.BackColor = Drawing.Color.FromArgb(25,25,25);
             output.ForeColor = Drawing.Color.FromArgb(230,230,230);
             output.BorderStyle = BorderStyle.None;
-            layout.Controls.Add(output, 0, 3);
+            layout.Controls.Add(output, 0, 4);
             Shown += async (s,e) => await CheckAsync();
             FormClosing += (s,e) => refreshTimer.Stop();
+        }
+
+        // Do not send the operator JWT to an origin typed into LINK. Only the
+        // process-login private origin may receive authenticated duplex POST.
+        private void RequireAuthenticatedOrigin()
+        {
+            Uri displayed = AeroHelmWorkspaceSettings.CheckedPrivateUrl(url.Text);
+            Uri authenticated = AeroHelmWorkspaceSettings.CheckedPrivateUrl(
+                MissionPlanner.Program.AeroHelmCloudOrigin);
+            if (displayed.AbsolutePath != "/" ||
+                !string.Equals(displayed.GetLeftPart(UriPartial.Authority),
+                    authenticated.GetLeftPart(UriPartial.Authority),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "Duplex requires the signed-in private cloud origin.");
+        }
+
+        private async Task ProbeDuplexAsync(string action)
+        {
+            if (diagnosticPending || IsDisposed || Disposing) return;
+            if (action != "ping" && action != "uplink_status") return;
+            diagnosticPending = true;
+            duplexPing.Enabled = duplexStatusQuery.Enabled = false;
+            duplexStatus.Text = "DUPLEX / awaiting Pi ACK";
+            try
+            {
+                RequireAuthenticatedOrigin();
+                string summary = await Task.Run(() =>
+                {
+                    var json = new JavaScriptSerializer();
+                    string submitted = OperationsApi.Request("POST",
+                        "api/v1/network/requests",
+                        new Dictionary<string,string> { { "action", action } });
+                    var receipt = json.Deserialize<Dictionary<string,object>>(submitted);
+                    string id = Convert.ToString(receipt["request_id"]);
+                    if (!System.Text.RegularExpressions.Regex.IsMatch(id,
+                        @"^[0-9a-f]{32}$"))
+                        throw new InvalidOperationException(
+                            "Cloud returned an invalid diagnostic correlation ID.");
+                    for (int i=0; i<22; i++)
+                    {
+                        string received = OperationsApi.Request("GET",
+                            "api/v1/network/requests/" + id);
+                        var report = json.Deserialize<Dictionary<string,object>>(received);
+                        string state = Convert.ToString(report["status"]);
+                        if (state != "PENDING")
+                        {
+                            if (state != "ACK")
+                                return "DUPLEX / " + state + " — no trusted Pi result";
+                            var details = report.ContainsKey("result") ?
+                                report["result"] as Dictionary<string,object> : null;
+                            if (details == null)
+                                throw new InvalidOperationException("Missing Pi ACK details.");
+                            string rtt = Convert.ToString(report["rtt_ms"],
+                                CultureInfo.InvariantCulture);
+                            if (action == "ping")
+                            {
+                                if (!details.ContainsKey("agent_alive") ||
+                                    !(details["agent_alive"] is bool) ||
+                                    !(bool)details["agent_alive"])
+                                    throw new InvalidOperationException(
+                                        "No positive Pi diagnostic acknowledgment.");
+                                return "DUPLEX / ACK — Pi online; round-trip " + rtt + " ms";
+                            }
+                            return "DUPLEX / ACK — RTT " + rtt + " ms; frames " +
+                                Convert.ToString(details["frames_observed"],
+                                    CultureInfo.InvariantCulture) +
+                                "; HB " + Convert.ToString(details["heartbeats_observed"],
+                                    CultureInfo.InvariantCulture) +
+                                "; ATT " + Convert.ToString(details["attitudes_observed"],
+                                    CultureInfo.InvariantCulture) +
+                                "; queued " + Convert.ToString(details["queued_frames"],
+                                    CultureInfo.InvariantCulture) +
+                                "; dropped " + Convert.ToString(details["dropped_frames"],
+                                    CultureInfo.InvariantCulture);
+                        }
+                        System.Threading.Thread.Sleep(250);
+                    }
+                    return "DUPLEX / TIMED OUT — Pi did not ACK in the bounded window";
+                });
+                if (IsDisposed || Disposing) return;
+                lastDuplexResult = summary;
+                duplexStatus.Text = summary.StartsWith("DUPLEX / ACK",
+                    StringComparison.Ordinal) ? "DUPLEX / ACK VERIFIED" : "DUPLEX / NO ACK";
+                output.AppendText(Environment.NewLine + Environment.NewLine +
+                    summary + Environment.NewLine +
+                    "Authenticated diagnostics only. Flight commands remain blocked.");
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed || Disposing) return;
+                // Do not print an exception message containing an HTTP response,
+                // JWT, private device identity or user-supplied URL.
+                lastDuplexResult = "DUPLEX / unavailable: " + ex.GetType().Name;
+                duplexStatus.Text = "DUPLEX / UNAVAILABLE";
+                output.AppendText(Environment.NewLine + Environment.NewLine +
+                    lastDuplexResult + Environment.NewLine +
+                    "Check signed-in cloud, staged backend and Pi duplex opt-in.");
+            }
+            finally
+            {
+                diagnosticPending = false;
+                if (!IsDisposed && !Disposing)
+                    duplexPing.Enabled = duplexStatusQuery.Enabled = true;
+            }
         }
 
         private static string Read(Uri origin, string route)
@@ -668,7 +804,8 @@ namespace AeroHelm.GcsCloud
                     "Dropped queued frames: " + Convert.ToString(m.ContainsKey("viewer_frames_dropped") ? m["viewer_frames_dropped"] : "unknown") + Environment.NewLine +
                     "UTC checked: " + DateTime.UtcNow.ToString("u", CultureInfo.InvariantCulture) +
                     Environment.NewLine + Environment.NewLine +
-                    "Diagnostics only. Fresh telemetry is not proof of safe flight or command authority.";
+                    "Diagnostics only. Fresh telemetry is not proof of safe flight or command authority." +
+                    Environment.NewLine + Environment.NewLine + lastDuplexResult;
             }
             catch (Exception ex)
             {
