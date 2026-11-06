@@ -151,3 +151,27 @@ def test_cloud_compute_never_requires_gcs_or_aircraft_imports():
         "param_set_send(", "os.system(", "subprocess.run(", "eval(",
     ):
         assert forbidden not in sources
+
+
+def test_completed_reports_expire_without_erasing_audit_or_mission_state():
+    from sqlalchemy import func, select
+    from cloud.app.analytics import prune_expired_reports, REPORT_RETENTION_SECONDS
+    from cloud.app.models import CloudComputeJob
+    with TestClient(create_app(config())) as client:
+        result = submit(client)
+        assert result.status_code == 202
+        report_id = result.json()["job_id"]
+        assert process(client) is True
+        with Session(client.app.state.engine) as db:
+            with db.begin():
+                row = db.get(CloudComputeJob, report_id)
+                row.finished_at = time.time() - REPORT_RETENTION_SECONDS - 5
+        with Session(client.app.state.engine) as db:
+            with db.begin():
+                audit_before = db.scalar(select(func.count(OutboxEvent.id)))
+                prune_expired_reports(db, time.time())
+        assert client.get("/api/v1/cloud-compute/jobs/" + report_id,
+                          headers=auth()).status_code == 404
+        with Session(client.app.state.engine) as db:
+            audit_after = db.scalar(select(func.count(OutboxEvent.id)))
+            assert audit_after == audit_before
