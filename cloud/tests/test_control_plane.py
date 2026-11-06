@@ -280,3 +280,20 @@ def test_tampered_database_plan_cannot_be_approved_or_dispatched(client):
     assert approve(client, mission).status_code == 409
     # The approval API checks the persisted specification digest,
     # not just a client-supplied plan hash.
+
+
+def test_tenant_scoped_bounded_mission_listing(client):
+    make_two(client)
+    first = draft(client).json()
+    second = draft(client).json()
+    page = client.get("/api/v1/missions", headers=jwt_header(),
+                      params={"limit":1,"offset":0}).json()
+    assert len(page["missions"]) == 1
+    assert page["missions"][0]["id"] == second["id"]
+    remainder = client.get("/api/v1/missions", headers=jwt_header(),
+                           params={"limit":1,"offset":1}).json()
+    assert remainder["missions"][0]["id"] == first["id"]
+    assert client.get("/api/v1/missions",
+                      headers=jwt_header(tenant="TENANT-B")).json()["missions"] == []
+    assert client.get("/api/v1/missions", headers=jwt_header(),
+                      params={"limit":9999}).status_code == 422
