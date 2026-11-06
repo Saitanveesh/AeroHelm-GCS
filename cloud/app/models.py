@@ -98,3 +98,16 @@ class OutboxEvent(Base):
     aggregate_id: Mapped[str] = mapped_column(String(36), nullable=False)
     body: Mapped[dict] = mapped_column(JSON, nullable=False)
     __table_args__ = (Index("ix_outbox_tenant_sequence", "tenant", "id"),)
+
+
+class TelemetryLatest(Base):
+    """Latest trusted server-received observation; never a control capability."""
+    __tablename__ = "telemetry_latest"
+    vehicle_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("vehicles.id"), primary_key=True)
+    tenant: Mapped[str] = mapped_column(String(64), nullable=False)
+    epoch: Mapped[int] = mapped_column(Integer, nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    received_at: Mapped[float | None] = mapped_column(Float)
+    observation: Mapped[dict | None] = mapped_column(JSON)
+    __table_args__ = (Index("ix_telemetry_tenant", "tenant"),)
