@@ -69,8 +69,13 @@ export AEROHELM_OIDC_AUDIENCE=aerohelm-cloud
 export AEROHELM_ALLOWED_HOSTS=aerohelm-private.example.invalid
 export AEROHELM_VIRTUAL_DISPATCH_ENABLED=false
 
-python -m alembic -c cloud/alembic.ini upgrade head
-python -m uvicorn cloud.app.main:create_app --factory --host 127.0.0.1 --port 8080 --workers 1
+# Schema migration is a distinct privileged operation.
+# On Oracle use the one-shot Compose migrate service with the DDL-only credential;
+# do not migrate as the restricted API database user.
+export COMPOSE_PROJECT_NAME=aerohelm-cloud-r2
+docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml up -d database
+docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml --profile migrate run --rm migrate
+docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml up -d api scheduler compute
 ```
 
 Do not enable public API ingress by binding 0.0.0.0 without a private,
