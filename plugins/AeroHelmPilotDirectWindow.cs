@@ -23,7 +23,7 @@ namespace AeroHelm.GcsCloud
         {
             if (mainForm == null) throw new ArgumentNullException("mainForm");
             main = mainForm;
-            Text = "AeroHelm — PILOT DIRECT BACKUP / USB + TELEMETRY RADIO";
+            Text = VihangaVedikaProduct.Name + " — Direct USB / Telemetry Radio";
             Width = 800; Height = 480;
             MinimumSize = new Drawing.Size(620,420);
             StartPosition = FormStartPosition.CenterParent;
@@ -147,7 +147,7 @@ namespace AeroHelm.GcsCloud
                baud==null || !Regex.IsMatch(baud,@"^[0-9]{4,6}$"))
             {
                 MessageBox.Show(this,"Select a valid observed COM port and baud rate.",
-                    "AeroHelm — direct pilot link",MessageBoxButtons.OK,
+                    "Vihanga Vedika — Direct Radio",MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
             }
@@ -155,7 +155,7 @@ namespace AeroHelm.GcsCloud
                 string.Equals(x,port,StringComparison.OrdinalIgnoreCase)))
             {
                 MessageBox.Show(this,"The selected COM port is no longer available.",
-                    "AeroHelm — radio disconnected",MessageBoxButtons.OK,
+                    "Vihanga Vedika — Radio Unavailable",MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 RefreshPorts();return;
             }
@@ -164,7 +164,7 @@ namespace AeroHelm.GcsCloud
                 MessageBox.Show(this,
                     "An aircraft link may already be active. Disconnect it "+
                     "explicitly in native Mission Planner before changing links.",
-                    "AeroHelm — link handover blocked",MessageBoxButtons.OK,
+                    "Vihanga Vedika — Connection Change Blocked",MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;
             }
@@ -177,7 +177,7 @@ namespace AeroHelm.GcsCloud
                 "or transfer authority automatically."+
                 Environment.NewLine+
                 "Proceed only as the on-site authorized pilot.",
-                "AeroHelm — confirm direct pilot link",
+                "Vihanga Vedika — Confirm Radio Connection",
                 MessageBoxButtons.YesNo,MessageBoxIcon.Warning,
                 MessageBoxDefaultButton.Button2)!=DialogResult.Yes)
                 return;
@@ -196,7 +196,7 @@ namespace AeroHelm.GcsCloud
                         MessageBox.Show(main,
                             "Direct pilot link failed: "+ex.GetType().Name+
                             ". Inspect USB/radio and FC settings locally.",
-                            "AeroHelm — direct link unavailable",
+                            "Vihanga Vedika — Radio Connection Unavailable",
                             MessageBoxButtons.OK,MessageBoxIcon.Warning);
                     }
                 }));
