@@ -32,7 +32,10 @@ packages/
 /ExtLibs/UsbSerialForAndroid/usb-serial-for-android-3.3.0
 /ExtLibs/Xamarin/opentk
 *.binlog
-docs/
+# Preserve authored documentation; ignore only generated doc output.
+/docs/_build/
+/docs/site/
+/docs/html/
 *.Test/
 *.jar
 *.cache
@@ -49,3 +52,42 @@ obj3/
 
 /.claude/settings.local.json
 /CLAUDE.md
+
+# AeroHelm cloud dev artifacts — generated locally, never part of source.
+/.venv-cloud/
+/cloud/.venv/
+/cloud/.pytest_cache/
+/cloud/.mypy_cache/
+/cloud/.ruff_cache/
+/cloud/.coverage
+/cloud/coverage_html/
+/cloud/test-results/
+/cloud/secrets/
+/cloud/.env
+/cloud/.env.*
+!/cloud/.env.example
+/cloud/**/*.db
+/cloud/**/*.sqlite3
+/cloud/**/__pycache__/
+
+# Generated WASM debug source maps (23 MB+ previously tracked).
+/ExtLibs/wasm/wwwroot/**/*.js.map
+/ExtLibs/wasm/wwwroot/**/*.css.map
+
+# Do not accidentally commit downloaded experimental model weights.
+*.onnx
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+*.h5
+*.tflite
+
+# Local flight logs, temporary analytics exports and generated build output.
+*.tlog
+*.binlog
+*.ulg
+*.bag
+/.aerohelm-releases/
+/build-logs/
+/release-manifests-local/
