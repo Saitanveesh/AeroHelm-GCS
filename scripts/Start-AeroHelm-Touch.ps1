@@ -39,7 +39,7 @@ if ($branch -notin @('feat/gcs-touch-ux-readonly-fleet-r1', 'feat/aerohelm-touch
 # The consolidated branch must NEVER silently launch an old cached
 # MissionPlanner.exe or plugin DLL. Use the local manifest produced after a
 # successful backed-up native build, not just git branch/source labels.
-if ($branch -eq 'feat/gcs-research-cybershield-twin-ui') {
+if ($branch -in @('feat/gcs-research-cybershield-twin-ui', 'feat/gcs-touch-ux-readonly-fleet-r1')) {
     $manifestFile = Join-Path $root 'build-logs\aerohelm-consolidated-release.json'
     if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
         throw 'Consolidated runtime not verified. Run scripts\Consolidate-AeroHelmWindows.ps1 -Stage Build -Apply, then -Stage Verify.'
