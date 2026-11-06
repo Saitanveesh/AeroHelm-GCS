@@ -64,6 +64,9 @@ class GcsTouchUxContracts(unittest.TestCase):
         self.assertIn("cloudStatusCheckedUtc = DateTime.MinValue;", text)
         self.assertIn("!Visible", text)
         self.assertIn("WindowState == FormWindowState.Minimized", text)
+        self.assertIn("Deactivate += (s,e) =>", text)
+        self.assertIn("CLOUD VIEW / INACTIVE — RECHECK ON RETURN", text)
+        self.assertIn("await RefreshCloudStatusAsync();", text)
 
     def test_cloud_and_radio_are_distinct_statuses_not_auto_handover(self):
         text = source("plugins/AeroHelmTouchPanel.cs")
