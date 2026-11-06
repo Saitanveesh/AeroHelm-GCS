@@ -42,7 +42,8 @@ def main(argv: list[str] | None = None) -> int:
         env.pop("AEROHELM_DATABASE_URL_FILE", None)
         env["AEROHELM_CLOUD_MODE"] = "test"
         print("Unit tests use SQLite test fixtures. PostgreSQL tests may SKIP.")
-        return call([sys.executable, "-m", "pytest", "-q", "cloud/tests"], env=env)
+        return call([sys.executable, "-m", "pytest", "-q", "cloud/tests",
+                     "cloud/deploy/oci/test_staging_contract.py"], env=env)
     if args.mode == "postgres":
         url = os.getenv("AEROHELM_DATABASE_URL", "")
         if not url.startswith("postgresql+psycopg://"):
