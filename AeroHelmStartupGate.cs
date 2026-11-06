@@ -226,6 +226,12 @@ namespace MissionPlanner
                 // host+TLS port. Only Negotiate with the administrator-pinned
                 // identity endpoint, never with an arbitrary cloud URL.
                 string ssoOrigin=approved.GetLeftPart(UriPartial.Authority);
+                // The SSO endpoint and token audience MUST be the exact
+                // same private cloud origin. A different *.ts.net host could
+                // otherwise mint a token for an unrelated AeroHelm server.
+                if (!string.Equals(ssoOrigin,address,StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "Kerberos gateway must share the exact cloud HTTPS origin.");
                 string reply=await Task.Run(()=>NegotiateRequest(ssoOrigin));
                 if(!IsDisposed)AcceptToken(reply,address);
             }
