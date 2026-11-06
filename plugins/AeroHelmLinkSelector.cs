@@ -24,7 +24,7 @@ namespace AeroHelm.GcsCloud
         internal AeroHelmLinkSelector()
         {
             Selection = AeroHelmLinkPath.Cancel;
-            Text = "AeroHelm PATHS — select flight-data link";
+            Text = VihangaVedikaProduct.Name + " — Select Telemetry Link";
             Width = 850; Height = 660;
             MinimumSize = new Drawing.Size(680, 570);
             StartPosition = FormStartPosition.CenterParent;
@@ -233,7 +233,7 @@ namespace AeroHelm.GcsCloud
                     "Generic frame counts cannot initialize Mission Planner. "+
                     "Use LINK diagnostics or direct physical telemetry radio. "+
                     "No fake HEARTBEAT will be emitted.",
-                    "AeroHelm — missing real heartbeat",
+                    "Vihanga Vedika — Heartbeat Required",
                     MessageBoxButtons.OK,MessageBoxIcon.Warning);
                 return false;
             }
@@ -246,7 +246,7 @@ namespace AeroHelm.GcsCloud
                     "A native connection is already open. Disconnect it "+
                     "deliberately before selecting a different path. "+
                     "AeroHelm will not change control authority automatically.",
-                    "AeroHelm — active native connection",
+                    "Vihanga Vedika — Active Native Connection",
                     MessageBoxButtons.OK,MessageBoxIcon.Information);
                 return false;
             }
@@ -264,7 +264,7 @@ namespace AeroHelm.GcsCloud
                     "Inspect LINK and upstream ATTITUDE counters; no "+
                     "autopilot control or stream-rate request was made."+
                     Environment.NewLine+ex.Message,
-                    "AeroHelm — cloud HUD not verified",
+                    "Vihanga Vedika — Telemetry Not Verified",
                     MessageBoxButtons.OK,MessageBoxIcon.Warning);
                 return false;
             }
