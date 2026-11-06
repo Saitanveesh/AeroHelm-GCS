@@ -127,7 +127,7 @@ if ($SkipBridge -or $UseLegacyPythonBridge) { $gcsArgs += '-NoInternalBridge' }
 if ($ShowNativeToolbar) { $gcsArgs += '-ShowNativeToolbar' }
 Write-Host 'Starting Vihanga Vedika: native GCS and its cloud observation toolbar.'
 Write-Host 'Native TCP is loopback-only (127.0.0.1:5760); GCS outbound MAVLink is discarded.'
-& powershell @touchArgs
+& powershell @gcsArgs
 if ($LASTEXITCODE -ne 0) {
     throw 'Vihanga Vedika native launcher failed.'
 }
