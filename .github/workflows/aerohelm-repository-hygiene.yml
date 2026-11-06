@@ -1,0 +1,29 @@
+name: AeroHelm Repository Hygiene
+on:
+  push:
+    branches:
+      - chore/lean-gcs-source-artifact-cleanup
+    paths:
+      - '.gitignore'
+      - 'ci/**'
+      - 'ExtLibs/wasm/wwwroot/**'
+      - '.github/workflows/aerohelm-repository-hygiene.yml'
+  pull_request:
+    paths:
+      - '.gitignore'
+      - 'ci/**'
+      - 'ExtLibs/wasm/wwwroot/**'
+      - '.github/workflows/aerohelm-repository-hygiene.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify GCS source assets and repository hygiene
+        run: python ci/check_repository_hygiene.py
