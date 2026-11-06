@@ -297,3 +297,14 @@ def test_tenant_scoped_bounded_mission_listing(client):
                       headers=jwt_header(tenant="TENANT-B")).json()["missions"] == []
     assert client.get("/api/v1/missions", headers=jwt_header(),
                       params={"limit":9999}).status_code == 422
+
+
+def test_nonfinite_mission_inputs_fail_validation_not_server_error(client):
+    make_two(client)
+    bad = spec()
+    bad["tasks"][0]["latitude"] = float("nan")
+    response = draft(client, plan=bad)
+    assert response.status_code == 422
+    bad = spec()
+    bad["tasks"][0]["required_energy_wh"] = float("inf")
+    assert draft(client, plan=bad).status_code == 422
