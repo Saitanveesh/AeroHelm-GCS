@@ -29,7 +29,7 @@ from sqlalchemy.pool import StaticPool
 
 from .config import Settings
 from .models import (AckRecord, Base, Job, Lease, Mission, OutboxEvent,
-                     RequestRecord, Vehicle)
+                     RequestRecord, TelemetryLatest, Vehicle)
 from .planner import MissionSpec, VehicleProfile, allocate, digest
 from .security import IDENTIFIER, Principal, TokenVerifier
 
@@ -74,6 +74,21 @@ class AckIn(BaseModel):
     phase: Literal["ACCEPTED_SIM", "COMPLETED_SIM", "REJECTED_SIM"]
 
 
+class TelemetryObservation(BaseModel):
+    """Normalized observation only; no raw MAVLink, firmware or command fields."""
+    model_config = ConfigDict(extra="forbid")
+    epoch: int = Field(ge=1)
+    sequence: int = Field(ge=1)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    altitude_m: float | None = Field(default=None, ge=-1000, le=30000)
+    battery_pct: float | None = Field(default=None, ge=0, le=100)
+    armed: bool
+    mode: str = Field(min_length=1, max_length=32)
+    link_rtt_ms: float | None = Field(default=None, ge=0, le=60000)
+    gps_fix_type: int | None = Field(default=None, ge=0, le=6)
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     cfg = settings or Settings.from_env()
     if cfg.mode == "test" and cfg.database_url.startswith("sqlite") and ":memory:" in cfg.database_url:
@@ -93,7 +108,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # than silently create production tables or start without schema.
             with engine.connect() as connection:
                 for name in ("vehicles", "missions", "jobs", "control_leases",
-                             "idempotency", "job_ack_inbox", "event_outbox"):
+                             "idempotency", "job_ack_inbox", "event_outbox",
+                             "telemetry_latest"):
                     connection.execute(text("SELECT 1 FROM " + name + " LIMIT 1"))
         try:
             yield
@@ -275,6 +291,80 @@ def create_app(settings: Settings | None = None) -> FastAPI:
              "active_mission": v.active_mission,
              "physical_control_enabled": False} for v in rows
         ]}
+
+    @app.post("/api/v1/device/telemetry/session")
+    def open_telemetry_session(p: Principal = Depends(identity),
+                               db: Session = Depends(database)):
+        p.require("telemetry:write", kind="device")
+        with db.begin():
+            vehicle = scoped_vehicle(db, p.tenant, p.vehicle_id, lock=True)
+            state = db.scalar(select(TelemetryLatest).where(
+                TelemetryLatest.vehicle_id == vehicle.id).with_for_update())
+            if state is None:
+                state = TelemetryLatest(vehicle_id=vehicle.id, tenant=p.tenant,
+                                        epoch=1, sequence=0,
+                                        received_at=None, observation=None)
+                db.add(state)
+            else:
+                state.epoch += 1  # fencing: stale sessions cannot revive a link
+                state.sequence = 0
+                state.received_at = None
+                state.observation = None
+            emit(db, p.tenant, "telemetry.session_opened", vehicle.id, p.subject)
+            return {"vehicle_id": vehicle.name, "session_epoch": state.epoch,
+                    "previous_telemetry_live": False,
+                    "physical_control_authorized": False}
+
+    @app.post("/api/v1/device/telemetry", status_code=202)
+    def ingest_telemetry(body: TelemetryObservation, p: Principal = Depends(identity),
+                         db: Session = Depends(database)):
+        p.require("telemetry:write", kind="device")
+        with db.begin():
+            vehicle = scoped_vehicle(db, p.tenant, p.vehicle_id, lock=True)
+            state = db.scalar(select(TelemetryLatest).where(
+                TelemetryLatest.vehicle_id == vehicle.id).with_for_update())
+            if state is None or body.epoch != state.epoch:
+                raise HTTPException(409, "Telemetry session is not current")
+            if body.sequence <= state.sequence:
+                raise HTTPException(409, "Replayed or out-of-order telemetry")
+            state.sequence = body.sequence
+            state.received_at = now(db)
+            state.observation = body.model_dump(exclude={"epoch", "sequence"})
+            # No broadcast into a command channel. Live/past data remain separate.
+            return {"accepted": True, "sequence": state.sequence,
+                    "session_epoch": state.epoch,
+                    "physical_control_authorized": False}
+
+    def read_telemetry(db: Session, vehicle: Vehicle) -> dict:
+        state = db.get(TelemetryLatest, vehicle.id)
+        if state is None or state.received_at is None:
+            return {"vehicle_id": vehicle.name, "fresh": False,
+                    "age_s": None, "session_epoch": state.epoch if state else None,
+                    "observation": None, "flight_ready": False}
+        age = max(0.0, now(db) - state.received_at)
+        return {"vehicle_id": vehicle.name, "fresh": age <= 5.0,
+                "age_s": round(age, 3), "session_epoch": state.epoch,
+                "last_sequence": state.sequence, "observation": state.observation,
+                "flight_ready": False}
+
+    @app.get("/api/v1/vehicles/{vehicle_id}/telemetry")
+    def latest_telemetry(vehicle_id: str, p: Principal = Depends(identity),
+                         db: Session = Depends(database)):
+        p.require("fleet:read")
+        return read_telemetry(db, scoped_vehicle(db, p.tenant, vehicle_id))
+
+    @app.get("/api/v1/fleet/status")
+    def fleet_status(p: Principal = Depends(identity),
+                     db: Session = Depends(database)):
+        p.require("fleet:read")
+        vehicles = list(db.scalars(select(Vehicle).where(
+            Vehicle.tenant == p.tenant).order_by(Vehicle.name)).all())
+        return {"tenant": p.tenant, "vehicles": [{
+            "vehicle_id": vehicle.name, "kind": vehicle.kind,
+            "active_virtual_mission": vehicle.active_mission,
+            "telemetry": read_telemetry(db, vehicle),
+            "physical_control_enabled": False,
+        } for vehicle in vehicles], "cloud_flight_authorized": False}
 
     @app.post("/api/v1/vehicles/{vehicle_id}/lease")
     def acquire_lease(vehicle_id: str, body: LeaseRequest,
