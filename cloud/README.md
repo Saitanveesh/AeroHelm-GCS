@@ -58,6 +58,7 @@ export AEROHELM_DATABASE_URL_FILE=/run/secrets/app_database_url
 export AEROHELM_OIDC_ISSUER=https://YOUR-TRUSTED-IDP/realms/aerohelm
 export AEROHELM_OIDC_JWKS_URL=https://YOUR-TRUSTED-IDP/realms/aerohelm/protocol/openid-connect/certs
 export AEROHELM_OIDC_AUDIENCE=aerohelm-cloud
+export AEROHELM_ALLOWED_HOSTS=aerohelm-private.example.invalid
 export AEROHELM_VIRTUAL_DISPATCH_ENABLED=false
 
 python -m alembic -c cloud/alembic.ini upgrade head
