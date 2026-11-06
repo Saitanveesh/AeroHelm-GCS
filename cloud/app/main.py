@@ -22,6 +22,7 @@ from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session
@@ -124,6 +125,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="AeroHelm Cloud Fleet Control Plane",
                   version="1.0.0-rc1", lifespan=lifespan)
+    if cfg.mode == "production":
+        raw_hosts = os.getenv("AEROHELM_ALLOWED_HOSTS", "")
+        hosts = [value.strip().lower() for value in raw_hosts.split(",") if value.strip()]
+        if (not hosts or any(host == "*" or "/" in host or ":" in host or
+                              " " in host or host.startswith(".")
+                              for host in hosts)):
+            raise ValueError("Production requires explicit, nonwildcard trusted hosts")
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
     app.state.engine = engine
     app.state.dispatch_enabled = virtual_dispatch
 
