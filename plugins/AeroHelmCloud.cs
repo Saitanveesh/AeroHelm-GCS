@@ -35,6 +35,9 @@ namespace AeroHelm.GcsCloud
         private EventHandler _touchStartupShown;
         private bool _simulationWasVisible;
         private bool _helpWasVisible;
+        private readonly System.Windows.Forms.Timer _cloudLinkWatchdog =
+            new System.Windows.Forms.Timer();
+        private bool _cloudProbeBusy;
 
         public override string Name { get { return "AeroHelm Cloud"; } }
         public override string Version { get { return "0.3.0-rc1"; } }
@@ -142,6 +145,14 @@ namespace AeroHelm.GcsCloud
                 }
             };
             menu.Items.Insert(menu.Items.IndexOf(_touch) + 1, _paths);
+            // This monitor stays active after the TOUCH window closes and the
+            // pilot opens native Flight Data. It NEVER connects to a radio,
+            // sends MAVLink or initiates failover. Its only output is a
+            // persistent, nonmodal LINK/PATHS warning to the operator.
+            _cloudLinkWatchdog.Interval=5000;
+            _cloudLinkWatchdog.Tick+=async(sender,args)=>await CheckCloudLinkAsync();
+            _cloudLinkWatchdog.Start();
+            _ = CheckCloudLinkAsync();
 
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
@@ -199,6 +210,71 @@ namespace AeroHelm.GcsCloud
             return true;
         }
 
+        private async Task CheckCloudLinkAsync()
+        {
+            if (_cloudProbeBusy || _paths == null || _paths.IsDisposed) return;
+            _cloudProbeBusy = true;
+            try
+            {
+                // Local USB/telemetry-radio recovery is usable without
+                // Oracle, cloud credentials or Kerberos. Never treat the
+                // absence of a cloud token as a native aircraft fault.
+                if(string.IsNullOrWhiteSpace(Program.AeroHelmOperatorToken) ||
+                   DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc)
+                {
+                    _paths.Text = "PATHS";
+                    _paths.ToolTipText = "CLOUD NOT AUTHENTICATED — pilot direct COM/radio remains independent";
+                    _paths.ForeColor = FrameworkDrawing::System.Drawing.Color.FromArgb(
+                        242,198,139);
+                    return;
+                }
+                string raw = await Task.Run(()=>OperationsApi.Request(
+                    "GET","api/v1/mavlink/health"));
+                if(_paths == null || _paths.IsDisposed) return;
+                var result = new JavaScriptSerializer()
+                    .Deserialize<Dictionary<string,object>>(raw);
+                object online, fresh, hb, att;
+                bool link = result.TryGetValue("device_online",out online) &&
+                            online is bool && (bool)online &&
+                            result.TryGetValue("fresh",out fresh) &&
+                            fresh is bool && (bool)fresh;
+                bool hbKnown = result.TryGetValue("native_hud_heartbeat_ready",out hb)
+                               && hb is bool;
+                bool attKnown = result.TryGetValue("attitude_stream_active",out att)
+                                && att is bool;
+                bool ready = link && hbKnown && (bool)hb &&
+                             attKnown && (bool)att;
+                _paths.Text = ready ? "PATHS" : "PATHS !";
+                _paths.ForeColor = ready ?
+                    FrameworkDrawing::System.Drawing.Color.FromArgb(195,228,195) :
+                    FrameworkDrawing::System.Drawing.Color.FromArgb(242,198,139);
+                _paths.ToolTipText = ready ?
+                    "CLOUD: real HB + ATTITUDE observed; not flight certification. "+
+                    "Click to select CLOUD or PILOT DIRECT." :
+                    !link ?
+                    "CLOUD STALE/OFFLINE — select physical pilot radio manually. "+
+                    "NO automatic failover." :
+                    !hbKnown || !attKnown ?
+                    "CLOUD FRAMES FRESH, HB/ATTITUDE UNVERIFIED (legacy server). "+
+                    "PILOT DIRECT is independent." :
+                    "CLOUD HEARTBEAT/ATTITUDE MISSING — do not trust old HUD data. "+
+                    "PILOT DIRECT requires explicit operator selection.";
+            }
+            catch (Exception)
+            {
+                if(_paths != null && !_paths.IsDisposed)
+                {
+                    _paths.Text="PATHS !";
+                    _paths.ForeColor=FrameworkDrawing::System.Drawing.Color.FromArgb(
+                        244,177,150);
+                    _paths.ToolTipText="Cloud check unavailable / sign-in expired. "+
+                        "Pilot's direct USB/radio path remains independent; "+
+                        "NO automatic switching or flight commands.";
+                }
+            }
+            finally { _cloudProbeBusy = false; }
+        }
+
         private static ToolStripButton NewToolbarButton(string label, string tip)
         {
             return new ToolStripButton(label)
@@ -234,6 +310,8 @@ namespace AeroHelm.GcsCloud
 
         public override bool Exit()
         {
+            _cloudLinkWatchdog.Stop();
+            _cloudLinkWatchdog.Dispose();
             if (ActiveNativeBridge != null)
             {
                 ActiveNativeBridge.Dispose();
