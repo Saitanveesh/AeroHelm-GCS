@@ -78,9 +78,14 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn('NO AUTO-FAILOVER', navigator)
         self.assertIn("RefreshCloudStatusAsync", home)
         self.assertIn("native_hud_heartbeat_ready", home)
-        self.assertIn("cloudHeartbeatLive == false", home)
-        self.assertIn("Oracle reports NO real Pixhawk HEARTBEAT", home)
-        self.assertIn("native == null || !native.IsListening", home)
+        # The refresh uses an explicit nullable heartbeat evidence value,
+        # not a cached green state or an inferred physical-aircraft link.
+        self.assertIn("cloudHeartbeatLive = fresh && connected ? heartbeatLive : (bool?)false;", home)
+        self.assertIn("if (heartbeatLive == false)", home)
+        self.assertIn("CLOUD / NO LIVE HEARTBEAT", home)
+        self.assertIn("cloudStatusCheckedUtc = DateTime.MinValue;", home)
+        self.assertIn("if (!bridge.IsListening && !bridge.Start())", navigator)
+        self.assertIn("MainV2.comPort.BaseStream.IsOpen", navigator)
         self.assertIn("attitude_stream_active", home)
         self.assertIn("cloudHealthTimer.Interval = 5000", home)
         self.assertIn("CLOUD / STALE OR DISCONNECTED", home)
@@ -189,7 +194,9 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("new AeroHelmLinkSelector()", panel)
         self.assertIn("AeroHelmLinkNavigation.Open(gcs,chosen,heartbeat)", panel)
         self.assertIn("if (!bridge.IsListening && !bridge.Start())", selector)
-        self.assertIn("main.MenuFlightData.PerformClick();", panel)
+        # Native Flight Data selection occurs in the explicit link path
+        # controller, after the pilot has selected their desired route.
+        self.assertIn("main.MenuFlightData.PerformClick();", selector)
         self.assertIn("main.doConnect(MainV2.comPort", selector)
         self.assertIn('NewToolbarButton("PATHS"', plugin)
         self.assertIn("AeroHelmLinkNavigation.Open(MainV2.instance,", plugin)
@@ -259,7 +266,10 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn('NewToolbarButton("PATHS"',toolbar)
         self.assertIn('AeroHelmLinkSelector.cs',project)
         self.assertIn('case "PATHS":',home)
-        self.assertIn('No radio connection, command, or flight-mode change',selector)
+        self.assertIn("AeroHelm will not change control authority automatically.", selector)
+        self.assertIn("MainV2.comPort.BaseStream.IsOpen",selector)
+        self.assertIn("Disconnect it ",selector)
+        self.assertIn("main.doConnect(MainV2.comPort",selector)
 
     def test_observed_cloud_attitude_and_offline_direct_backup(self):
         cloud = source("plugins/AeroHelmCloudAttitudeWindow.cs")
