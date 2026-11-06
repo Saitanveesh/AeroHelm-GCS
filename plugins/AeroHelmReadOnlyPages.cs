@@ -41,7 +41,7 @@ namespace AeroHelm.GcsCloud
 
             Text = "AeroHelm — " + section;
             StartPosition = FormStartPosition.CenterParent;
-            MinimumSize = new Drawing.Size(700,540);
+            MinimumSize = new Drawing.Size(720,580);
             Width = 1020;
             Height = 720;
             BackColor = Background;
@@ -56,7 +56,10 @@ namespace AeroHelm.GcsCloud
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,76));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,58));
+            // Multi-row actions are visible on touch screens instead of
+            // disappearing into a hard-to-use horizontal scrollbar.
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,
+                section == "ANALYTICS" ? 142 : 112));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,148));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,35));
@@ -92,7 +95,8 @@ namespace AeroHelm.GcsCloud
 
             var bar = new FlowLayoutPanel {
                 Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false, AutoScroll = true, Padding = new Padding(0,5,0,0)
+                WrapContents = true, AutoScroll = true, Padding = new Padding(0,5,0,0),
+                AccessibleName = section + " read-only cloud actions"
             };
             layout.Controls.Add(bar,0,1);
             if (section == "ANALYTICS" || section == "FLEET" || section == "SECURITY")
@@ -114,6 +118,7 @@ namespace AeroHelm.GcsCloud
             if (section == "FLEET")
             {
                 ActionButton(bar,"Refresh fleet", "fleet");
+                ActionButton(bar,"Cloud metrics", "cloudMetrics");
                 ActionButton(bar,"Aircraft alerts", "alerts");
                 ActionButton(bar,"Shadow fleet", "researchFleet");
                 var scheduler=new Button {
@@ -128,7 +133,7 @@ namespace AeroHelm.GcsCloud
                 };
                 bar.Controls.Add(scheduler);
                 SetColumns("Aircraft", "Link", "Sample age (s)", "Mode",
-                           "Armed", "Battery (%)", "GNSS sats", "Risk flags");
+                           "Armed", "Battery (%)", "GNSS", "Risk flags");
             }
             else if (section == "SECURITY")
             {
@@ -157,6 +162,7 @@ namespace AeroHelm.GcsCloud
                 };
                 bar.Controls.Add(availableAircraft);
                 ActionButton(bar,"Discover aircraft","discover");
+                ActionButton(bar,"Cloud portfolio","cloudMetrics");
                 ActionButton(bar,"Flight report", "report");
                 ActionButton(bar,"Recent telemetry", "history");
                 ActionButton(bar,"Offline archive", "archive");
@@ -207,7 +213,8 @@ namespace AeroHelm.GcsCloud
             table.ColumnHeadersHeight = 42;
             table.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
             table.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-            table.RowTemplate.Height = 38;
+            table.RowTemplate.Height = 44;
+            table.AccessibleName = section + " read-only cloud evidence table";
             table.AllowUserToAddRows = false;
             table.AllowUserToDeleteRows = false;
             table.AllowUserToResizeRows = false;
@@ -269,9 +276,10 @@ namespace AeroHelm.GcsCloud
         private void ActionButton(FlowLayoutPanel parent, string caption, string operation)
         {
             var button = new Button {
-                Text = caption, Width = Math.Max(144,caption.Length*8+24), Height = 40,
+                Text = caption, Width = Math.Max(144,caption.Length*8+24), Height = 46,
                 FlatStyle = FlatStyle.Flat, BackColor = Surface, ForeColor = Ink,
-                Margin = new Padding(3,0,8,0), UseVisualStyleBackColor = false
+                Margin = new Padding(3,0,8,6), UseVisualStyleBackColor = false,
+                AccessibleName = caption + " (read-only cloud request)"
             };
             button.FlatAppearance.BorderSize = 0;
             button.Click += async (s,e) => await LoadAsync(operation);
@@ -444,6 +452,7 @@ namespace AeroHelm.GcsCloud
                 switch (operation)
                 {
                     case "fleet": route = "api/v2/fleet"; break;
+                    case "cloudMetrics": route = "api/v1/fleet/metrics"; break;
                     case "capabilities": route = "api/v3/research/capabilities"; break;
                     case "researchFleet": route = "api/v3/research/fleet"; break;
                     case "integrity": route = "api/v3/research/evidence-integrity"; break;
@@ -484,6 +493,7 @@ namespace AeroHelm.GcsCloud
             try
             {
                 bool usedM1Registry = false;
+                bool usedCloudControlPlane = false;
                 var response = await Task.Run(() => {
                     try { return OperationsApi.Request("GET",route); }
                     catch (WebException ex)
@@ -493,6 +503,24 @@ namespace AeroHelm.GcsCloud
                             http == null || http.StatusCode != HttpStatusCode.NotFound)
                             throw;
                         http.Dispose();
+                        // New independent cloud R1/R2 fleet observations.
+                        // Never issue commands to discover fleet identity.
+                        try
+                        {
+                            var cloud = OperationsApi.Request(
+                                "GET","api/v1/fleet/status");
+                            var mapped = CloudV1FleetSnapshot(cloud);
+                            usedCloudControlPlane = true;
+                            return mapped;
+                        }
+                        catch (WebException cloudFailure)
+                        {
+                            var second = cloudFailure.Response as HttpWebResponse;
+                            if (second == null ||
+                                second.StatusCode != HttpStatusCode.NotFound)
+                                throw;
+                            second.Dispose();
+                        }
                         var legacy = OperationsApi.Request("GET","api/v1/vehicles");
                         var converted = LegacyFleetSnapshot(legacy);
                         usedM1Registry = true;
@@ -512,6 +540,8 @@ namespace AeroHelm.GcsCloud
                     CultureInfo.InvariantCulture) +
                     (usedM1Registry ?
                         "  |  LEGACY M1 REGISTRY; RISK/HISTORY NOT AVAILABLE" :
+                     usedCloudControlPlane ?
+                        "  |  CLOUD R2 DEVICE-REPORTED; NOT FLIGHT-CLEARED" :
                         "  |  Read-only cloud snapshot; NOT an aircraft safety clearance.");
             }
             catch (Exception ex)
@@ -615,7 +645,7 @@ namespace AeroHelm.GcsCloud
             else if (operation == "fleet")
             {
                 SetColumns("Aircraft","Link","Sample age (s)","Mode","Armed",
-                           "Battery (%)","GNSS sats","Risk flags");
+                           "Battery (%)","GNSS","Risk flags");
                 var vehicles = Array(Value(result,"vehicles"));
                 int online = 0;
                 foreach (var entry in vehicles)
@@ -623,8 +653,13 @@ namespace AeroHelm.GcsCloud
                     var v = AsObject(entry);
                     bool fresh = Value(v,"online") is bool && (bool)Value(v,"online");
                     if (fresh) online++;
+                    var kind = Convert.ToString(Value(v,"kind"),
+                        CultureInfo.InvariantCulture);
+                    var link = !fresh ? "STALE / OFF" :
+                        string.Equals(kind,"virtual",StringComparison.OrdinalIgnoreCase) ?
+                            "VIRTUAL / SIM" : "DEVICE REPORTED";
                     var index = table.Rows.Add(Display(Value(v,"vehicle_id")),
-                        fresh ? "FRESH (<5s)" : "STALE / OFF",
+                        link,
                         Display(Value(v,"last_sample_age_s")),Display(Value(v,"mode")),
                         Display(Value(v,"armed")),Display(Value(v,"battery_pct")),
                         Display(Value(v,"satellites")),Display(Value(v,"risks")));
@@ -634,9 +669,32 @@ namespace AeroHelm.GcsCloud
                 }
                 detail.Text = "Aircraft observed: " + vehicles.Length +
                     Environment.NewLine + "Backend-reported fresh: " + online +
+                    Environment.NewLine + "Hardware telemetry is DEVICE REPORTED, not independently attested." +
+                    Environment.NewLine + "Virtual vehicles are simulations, not physical flights." +
                     Environment.NewLine + "Physical flight control authorized: NO" +
                     Environment.NewLine + "Fleet freshness comes from the server clock and sample age." +
                     Environment.NewLine + "Select an aircraft row to inspect its advisory risk flags.";
+            }
+            else if (operation == "cloudMetrics")
+            {
+                // Only bounded server-aggregated metrics; no portfolio joins
+                // or historical telemetry processing in the Windows GCS.
+                SetColumns("Cloud fleet metric", "Server-reported value");
+                foreach (var field in new [] {
+                    "vehicles", "virtual_vehicles", "hardware_observation_only",
+                    "fresh_telemetry_sources", "queued_virtual_jobs"
+                })
+                    table.Rows.Add(field.Replace('_',' '),
+                        Display(Value(result,field)));
+                foreach (var pair in AsObject(Value(result,"missions_by_state")))
+                    table.Rows.Add("mission " + pair.Key, Display(pair.Value));
+                detail.Text = "CLOUD AGGREGATION / DEVICE-REPORTED EVIDENCE ONLY" +
+                    Environment.NewLine +
+                    "The cloud computes these totals; the GCS only displays results." +
+                    Environment.NewLine +
+                    "Missing telemetry, audit or mission data does not imply safety." +
+                    Environment.NewLine +
+                    "No aircraft commands or mission starts are issued.";
             }
             else if (operation == "alerts")
             {
