@@ -31,7 +31,7 @@ $commit = (& git -C $root rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') {
     throw 'Unable to establish reproducible Git commit.'
 }
-if ($actualBranch -notin @('feat/aerohelm-touch-console',
+if ($actualBranch -notin @('feat/vihanga-vedika-toolbar-ops-intel-phase3', 'feat/aerohelm-touch-console',
                            'feat/gcs-unified-login-readonly-bridge',
                            'feat/gcs-research-cybershield-twin-ui',
                            'feat/aerohelm-windows-readiness-v2',
