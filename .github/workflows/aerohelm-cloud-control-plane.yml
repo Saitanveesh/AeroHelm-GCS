@@ -69,3 +69,5 @@ jobs:
           python -c 'from cloud.app.main import create_app; app=create_app(); print(app.title)'
       - name: Validate initial migration repeatability
         run: python -m alembic -c cloud/alembic.ini upgrade head
+      - name: PostgreSQL concurrent vehicle authority regression
+        run: python -m pytest -q cloud/tests/test_postgres_races.py
