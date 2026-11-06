@@ -4,11 +4,11 @@ AeroHelm is a project built **on an existing open-source native ground-control f
 
 ## Inherited foundation
 
-The native application tree, solution and build structure in \`master\` derive from **[ArduPilot Mission Planner](https://github.com/ArduPilot/MissionPlanner)**. Mission Planner is an ArduPilot ground-control application and is **not** authored solely by the AeroHelm repository owner.
+The native application tree, solution and build structure in `master` derive from **[ArduPilot Mission Planner](https://github.com/ArduPilot/MissionPlanner)**. Mission Planner is an ArduPilot ground-control application and is **not** authored solely by the AeroHelm repository owner.
 
-The inherited license text is in [\`COPYING.txt\`](../COPYING.txt), **GNU General Public License version 3**. This file and the underlying copyright notices must remain intact. Changes to README copy or a new AeroHelm identity cannot remove the rights and obligations attached to this upstream code.
+The inherited license text is in [`COPYING.txt`](../COPYING.txt), **GNU General Public License version 3**. This file and the underlying copyright notices must remain intact. Changes to README copy or a new AeroHelm identity cannot remove the rights and obligations attached to this upstream code.
 
-Other bundled components may be distributed under additional license terms. Review source headers and \`ExtLibs/\` license files, NuGet assets and any third-party binaries when building/releasing a distributable package.
+Other bundled components may be distributed under additional license terms. Review source headers and `ExtLibs/` license files, NuGet assets and any third-party binaries when building/releasing a distributable package.
 
 ## AeroHelm-specific work
 
@@ -30,7 +30,7 @@ Source files, native plugins and other derivative additions distributed together
 
 ## Archival upstream documentation
 
-The original inherited root README is preserved without losing build details at [\`UPSTREAM_BUILD_REFERENCE.md\`](UPSTREAM_BUILD_REFERENCE.md). Its upstream installer links and release instructions refer to the original project, **not** an AeroHelm binary. All AeroHelm-facing information now lives in the root [README](../README.md) and the dedicated engineering docs.
+The original inherited root README is preserved without losing build details at [`UPSTREAM_BUILD_REFERENCE.md`](UPSTREAM_BUILD_REFERENCE.md). Its upstream installer links and release instructions refer to the original project, **not** an AeroHelm binary. All AeroHelm-facing information now lives in the root [README](../README.md) and the dedicated engineering docs.
 
 ## Safety and authenticity
 

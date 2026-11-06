@@ -6,7 +6,7 @@
 
 ## Platform goal
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
   UAVS["Distinct UAV identities"] --> EDGE["Companion / edge acquisition"]
   EDGE --> LINK["Private secure link"]
@@ -17,7 +17,7 @@ flowchart LR
   CTRL --> ANALYZE["Analytics + compute offload<br/>(separate R&D branch)"]
   CTRL --> UI["Lightweight operator / touch UI"]
   UAVS -. "Independent local pilot cable/radio" .-> PILOT["Pilot-direct maintenance / fallback"]
-\`\`\`
+```
 
 This is a **conceptual platform diagram spanning branches**, not the final deployed and accepted topology.
 
@@ -34,7 +34,7 @@ This is a **conceptual platform diagram spanning branches**, not the final deplo
 
 ## Intended connectivity behavior
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
   P["Pi / edge source receives actual vehicle observations"] --> F{"Fresh and valid?"}
   F -->|No| STALE["Mark unavailable / stale<br/>never synthesize observations"]
@@ -44,7 +44,7 @@ flowchart TD
   LINKLOSS -->|Yes| EXPIRE["Quarantine old authority and samples<br/>no stale command replay"]
   EXPIRE --> LOCAL["Onboard failsafes + deliberate local pilot path"]
   LINKLOSS -->|No| OBS["Continue observing"]
-\`\`\`
+```
 
 **MAVLink transport note:** Telemetry observation, operator viewing, and physical bidirectional command streams are different transports and privileges. Current cloud R1 **does not contain a physical command dispatcher**. Native Windows integrations explored read-only bridges and backup link selection; they require separate, verified safety acceptance.
 
@@ -52,13 +52,13 @@ flowchart TD
 
 Cloud R1 implements source for production-mode RS256 OIDC issuer/audience/JWKS verification, signed tenant/device identity, operator/device scope separation, a durable mission lifecycle, leases/epochs, and replay-safe virtual job processing. Those capabilities are on an **unmerged draft branch**, not an attestation of a deployed production IdP. Network ingress, IdP, mTLS, key storage, certificate rotation, recovery and operational monitoring require independent setup and acceptance.
 
-**Kerberos:** A proposed optional enterprise operator single-sign-on integration only; no configured KDC, SPN or Kerberos tunnel is claimed. See [the draft design](../blob/feat/aerohelm-duplex-link-console/docs/KERBEROS_SECURITY_DESIGN.md) on its branch.
+**Kerberos:** A proposed optional enterprise operator single-sign-on integration only; no configured KDC, SPN or Kerberos tunnel is claimed. See [the draft design](https://github.com/Saitanveesh/AeroHelm-GCS/blob/feat/aerohelm-duplex-link-console/docs/KERBEROS_SECURITY_DESIGN.md) on its branch.
 
 ## Architecture milestones
 
 | Stage | Engineering deliverable | Current qualification |
 |---|---|---|
-| 0 — native foundation | Existing desktop tooling and ArduPilot-compatible operator functions | Present on \`master\`; inherited upstream code |
+| 0 — native foundation | Existing desktop tooling and ArduPilot-compatible operator functions | Present on `master`; inherited upstream code |
 | 1 — identity and read-only link | Signed operator/device access, observed heartbeat/attitude, touch/link UI | Implementations explored in separate GCS branches |
 | 2 — durable multi-UAV control plane | Tenant-scoped fleet, missions, two-person approval, leases, audit, virtual workers | Cloud R1 draft PR #24 |
 | 3 — cloud offload | Analytics workers, compute jobs and bounded reporting | Separate research branch |
@@ -71,4 +71,4 @@ The full project is intentionally not described as a completed production contro
 
 No code, firmware, serial settings, cloud secrets, database schema, release binary, Windows startup path or flight controller have been modified by the README/documentation redesign.
 
-Use [the Cloud R1 acceptance runbook](../blob/feat/cloud-fleet-control-plane-r1/cloud/ACCEPTANCE_RUNBOOK.md) for its exact tests, and [the release gate ledger](../blob/feat/cloud-fleet-control-plane-r1/docs/CLOUD_CONTROL_PLANE_RELEASE_GATES.md) before any operational promotion.
+Use [the Cloud R1 acceptance runbook](https://github.com/Saitanveesh/AeroHelm-GCS/blob/feat/cloud-fleet-control-plane-r1/cloud/ACCEPTANCE_RUNBOOK.md) for its exact tests, and [the release gate ledger](https://github.com/Saitanveesh/AeroHelm-GCS/blob/feat/cloud-fleet-control-plane-r1/docs/CLOUD_CONTROL_PLANE_RELEASE_GATES.md) before any operational promotion.
