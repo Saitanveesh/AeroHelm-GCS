@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # Restrict automated dependency maintenance to cloud only.
+  - package-ecosystem: "pip"
+    directory: "/cloud"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
