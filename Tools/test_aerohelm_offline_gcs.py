@@ -56,6 +56,18 @@ class OfflineGcsContracts(unittest.TestCase):
                           "param_set_send", "mission_item_send"):
             self.assertNotIn(forbidden, native)
 
+    def test_duplex_link_is_authenticated_and_never_cloud_flight_control(self):
+        link = source("plugins/AeroHelmWorkspace.cs")
+        self.assertIn('ProbeDuplexAsync("ping")', link)
+        self.assertIn('ProbeDuplexAsync("uplink_status")', link)
+        self.assertIn('"api/v1/network/requests"', link)
+        self.assertIn('"api/v1/network/requests/" + id', link)
+        self.assertIn('RequireAuthenticatedOrigin()', link)
+        self.assertIn('StringComparison.OrdinalIgnoreCase', link)
+        self.assertIn('report["rtt_ms"]', link)
+        self.assertIn('Authenticated diagnostics only. Flight commands remain blocked.', link)
+        self.assertNotIn('ws.SendAsync(', link)
+
     def test_hud_uses_real_flight_data_and_fails_closed_when_stale(self):
         home = source("plugins/AeroHelmTouchPanel.cs")
         self.assertIn('AeroHelmLinkNavigation.Open(', home)
