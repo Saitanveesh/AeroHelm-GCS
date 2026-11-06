@@ -12,14 +12,15 @@ from typing import Callable, Literal
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from .models import CloudComputeJob, Job, Mission, OutboxEvent, TelemetryLatest, Vehicle
+from .models import CloudComputeJob, Job, Mission, TelemetryLatest, Vehicle
 from .security import Principal
 
 MAX_OUTSTANDING_PER_TENANT = 16
 MAX_RETAINED_PER_TENANT = 512
+REPORT_RETENTION_SECONDS = 86400
 
 
 class ComputeRequest(BaseModel):
@@ -84,8 +85,17 @@ def _mission_portfolio(db: Session, tenant: str, timestamp: float) -> dict:
     }
 
 
+def prune_expired_reports(db: Session, timestamp: float) -> None:
+    """Delete only completed ephemeral reports; never mission/event evidence."""
+    db.execute(delete(CloudComputeJob).where(
+        CloudComputeJob.status.in_(("SUCCEEDED", "FAILED")),
+        CloudComputeJob.finished_at.is_not(None),
+        CloudComputeJob.finished_at < timestamp - REPORT_RETENTION_SECONDS,
+    ))
+
+
 def compute_one(db: Session, now: Callable[[Session], float],
-                emit: Callable, *, allow_sqlite_test: bool = True) -> bool:
+                emit: Callable) -> bool:
     """Process one queued report in caller's atomic DB transaction.
 
     PostgreSQL SKIP LOCKED fences parallel workers. Crash before commit
