@@ -48,6 +48,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-AeroHelmWindo
 python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_aerohelm_build_globs
 ```
 
+The existing Windows session launcher and transactional release-consolidation
+script remain deliberately pinned to the previously reviewed integration
+branch. They will **refuse to launch this new feature branch** until a
+separately reviewed consolidated release candidate is prepared. Use the
+read-only source checks and `scripts/Build-AeroHelmGCS.ps1` with the
+`-Target Solution` and `-Target Plugin` options for developer-only
+compilation; do not manually copy its DLL into the verified runtime.
+
 Native MSBuild, plugin SHA-256 manifest checks, Windows UI smoke tests,
 real JWT authentication, Oracle/Pi rollout, and disarmed propeller-free
 hardware acceptance are **still separate mandatory release gates**.
