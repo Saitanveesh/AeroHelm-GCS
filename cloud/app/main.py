@@ -517,6 +517,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             db.flush()
             return show_mission(db, mission)
 
+    @app.get("/api/v1/missions")
+    def list_missions(limit: int = 50, offset: int = 0,
+                      p: Principal = Depends(identity),
+                      db: Session = Depends(database)):
+        p.require("fleet:read")
+        if not 1 <= limit <= 100 or not 0 <= offset <= MAX_MISSIONS_PER_TENANT:
+            raise HTTPException(422, "Invalid bounded mission page")
+        query = (select(Mission).where(Mission.tenant == p.tenant)
+                 .order_by(Mission.created_at.desc(), Mission.id.desc())
+                 .limit(limit).offset(offset))
+        records = list(db.scalars(query).all())
+        return {
+            "missions": [{
+                "id": row.id, "status": row.status,
+                "plan_sha256": row.digest,
+                "created_at": row.created_at, "updated_at": row.updated_at,
+                "execution_target": "VIRTUAL_SIMULATOR_ONLY",
+            } for row in records],
+            "limit": limit, "offset": offset,
+            "physical_flight_authorized": False,
+        }
+
     @app.get("/api/v1/missions/{mission_id}")
     def get_mission(mission_id: uuid.UUID, p: Principal = Depends(identity),
                     db: Session = Depends(database)):
