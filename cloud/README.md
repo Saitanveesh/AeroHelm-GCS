@@ -24,6 +24,8 @@ navigation, airspace approval or safety-case acceptance.
 | `app/security.py` | Signed RS256 OIDC tokens in production; test-only HS256 prohibited in production |
 | `app/scheduler.py` | Database expiry sweeper; never automatically requeues an expired job |
 | `tools/sim_edge.py` | Workflow-only fake edge ACKs; no flight dynamics or FC access |
+| `tools/virtual_world.py` | Bounded multi-UAV virtual route interpolation and sequential telemetry; **not** SITL or actual flight |
+| `tools/doctor.py` | Safe non-deploying local unit, disposable PostgreSQL and image verification |
 | `tools/telemetry_uplink.py` | HTTPS normalized observation sidecar for existing Pi UART-owner; never replays stale samples |
 | `migrations/` | Alembic schema revision with explicit startup version pinning |
 | `compose.yaml` | Private reference PostgreSQL/API/scheduler environment, not Internet-facing |
@@ -43,8 +45,12 @@ In the repository root, install dependencies into a private Python venv:
 python -m venv .venv-cloud
 . .venv-cloud/bin/activate
 python -m pip install -r cloud/requirements.txt
-python -m pytest -q cloud/tests
+python -m cloud.tools.doctor --mode unit
 ```
+
+For disposable PostgreSQL concurrency tests and a cloud Docker image build,
+see [the cloud acceptance runbook](ACCEPTANCE_RUNBOOK.md).
+Do not run PostgreSQL schema tests against an operational database.
 
 Tests never talk to an aircraft. They use SQLite-in-memory or a temporary
 SQLite file as a **test-only** substitute for PostgreSQL. Real deployment
@@ -129,6 +135,7 @@ marks telemetry stale after five seconds without new accepted samples.
 | POST | `/api/v1/vehicles/{id}/lease` | fleet:operate |
 | POST | `/api/v1/vehicles/{id}/lease/renew` | fleet:operate |
 | POST | `/api/v1/missions` | mission:write |
+| GET | `/api/v1/missions` | fleet:read (bounded tenant pagination) |
 | POST | `/api/v1/missions/{id}/approve` | mission:approve |
 | POST | `/api/v1/missions/{id}/start` | mission:execute |
 | POST | `/api/v1/missions/{id}/abort` | mission:execute |
