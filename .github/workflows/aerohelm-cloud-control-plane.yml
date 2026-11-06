@@ -65,11 +65,11 @@ jobs:
       - name: Validate example private Compose wiring
         run: |
           mkdir -p cloud/secrets
-          printf 'CI_ONLY_NOT_PRODUCTION_ADMIN_PASSWORD_123456\\n' > cloud/secrets/db_admin_password.txt
-          printf 'CI_ONLY_NOT_PRODUCTION_APP_PASSWORD_123456\\n' > cloud/secrets/db_app_password.txt
-          printf 'CI_ONLY_NOT_PRODUCTION_MIGRATOR_PASSWORD_123456\\n' > cloud/secrets/db_migrator_password.txt
-          printf 'postgresql+psycopg://aerohelm_app:CI_ONLY_NOT_PRODUCTION_APP_PASSWORD_123456@database:5432/aerohelm\\n' > cloud/secrets/app_database_url.txt
-          printf 'postgresql+psycopg://aerohelm_migrator:CI_ONLY_NOT_PRODUCTION_MIGRATOR_PASSWORD_123456@database:5432/aerohelm\\n' > cloud/secrets/migrator_database_url.txt
+          echo 'CI_ONLY_NOT_PRODUCTION_ADMIN_PASSWORD_123456' > cloud/secrets/db_admin_password.txt
+          echo 'CI_ONLY_NOT_PRODUCTION_APP_PASSWORD_123456' > cloud/secrets/db_app_password.txt
+          echo 'CI_ONLY_NOT_PRODUCTION_MIGRATOR_PASSWORD_123456' > cloud/secrets/db_migrator_password.txt
+          echo 'postgresql+psycopg://aerohelm_app:CI_ONLY_NOT_PRODUCTION_APP_PASSWORD_123456@database:5432/aerohelm' > cloud/secrets/app_database_url.txt
+          echo 'postgresql+psycopg://aerohelm_migrator:CI_ONLY_NOT_PRODUCTION_MIGRATOR_PASSWORD_123456@database:5432/aerohelm' > cloud/secrets/migrator_database_url.txt
           cp cloud/.env.example cloud/.env
           docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml config --quiet
           rm -rf cloud/secrets cloud/.env
