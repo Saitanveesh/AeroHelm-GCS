@@ -22,6 +22,8 @@ namespace AeroHelm.GcsCloud
         private readonly Label linkStatus = new Label();
         private readonly Button refreshStatus = new Button();
         private readonly Label liveBridgeStatus = new Label();
+        private readonly Label pilotRadioStatus = new Label();
+        private readonly Button pilotRadioButton = new Button();
         private readonly ToolTip bridgeDiagnosticsTip = new ToolTip();
         private readonly System.Windows.Forms.Timer bridgeStatusTimer =
             new System.Windows.Forms.Timer();
@@ -37,10 +39,17 @@ namespace AeroHelm.GcsCloud
             "OPS", "SECURITY", "FLEET",
             "LINK", "ANALYTICS", "SETTINGS"
         };
+        // Human-readable cues stay visible for large touch tiles. They are
+        // labels only, never assumptions about installed cloud capabilities.
+        private static readonly string[] Descriptions = {
+            "Choose data path", "Native mission map", "Camera monitor",
+            "Operator workflow", "Identity and audit", "Aircraft overview",
+            "Connection diagnostics", "Read-only reports", "Workspace options"
+        };
 
         public AeroHelmTouchPanel()
         {
-            Text = "AeroHelm — Windows Control Workspace (0.3.0 RC1 PATHS / " +
+            Text = "AeroHelm — Pilot workspace / cloud observations (" +
                 AeroHelmReleaseIdentity.BuildId + ")";
             Width = 1100;
             Height = 800;
@@ -56,7 +65,7 @@ namespace AeroHelm.GcsCloud
             // A restrained exit route is essential: close HOME to reveal the
             // unmodified native Mission Planner controls and recovery UI.
             var top = new TableLayoutPanel {
-                Dock = DockStyle.Top, Height = 64, ColumnCount = 3,
+                Dock = DockStyle.Top, Height = 72, ColumnCount = 3,
                 BackColor = BackColor, Padding = new Padding(14, 8, 14, 5)
             };
             top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
@@ -70,9 +79,9 @@ namespace AeroHelm.GcsCloud
             back.FlatAppearance.BorderSize = 0;
             back.Click += (s, e) => Close();
             var heading = new Label {
-                Text = "AEROHELM", Dock = DockStyle.Fill,
+                Text = "AEROHELM  /  PILOT WORKSPACE", Dock = DockStyle.Fill,
                 TextAlign = Drawing.ContentAlignment.MiddleCenter,
-                Font = new Drawing.Font("Segoe UI Semibold", 18f, Drawing.FontStyle.Bold)
+                Font = new Drawing.Font("Segoe UI Semibold", 16f, Drawing.FontStyle.Bold)
             };
             var close = new Button {
                 Text = "CLOSE  ×", Dock = DockStyle.Fill,
@@ -102,12 +111,48 @@ namespace AeroHelm.GcsCloud
                 bridgeDiagnosticsTip.SetToolTip(liveBridgeStatus,
                     bridge == null ? "Use LINK for cloud diagnostics." : bridge.Summary);
             };
-            bridgeStatusTimer.Start();
+            // Begin polling only when this workspace is visible; modal
+            // screens and minimized windows do not need duplicate requests.
             // Keep stale data stale: refresh the cloud's read-only observations
             // every five seconds, even when the operator never presses refresh.
             cloudHealthTimer.Interval = 5000;
             cloudHealthTimer.Tick += async (s,e) => await RefreshCloudStatusAsync();
 
+            // Pilot radio is a separate, deliberate local-control path.
+            // We cannot infer a connected/flight-ready radio from cloud or
+            // localhost TCP status, so this label never displays LIVE.
+            var pilotBar = new TableLayoutPanel {
+                Dock = DockStyle.Bottom, Height = 60, ColumnCount = 2,
+                BackColor = Drawing.Color.FromArgb(25,23,19),
+                Padding = new Padding(16,5,16,5)
+            };
+            pilotBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,70));
+            pilotBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,30));
+            pilotRadioStatus.Dock = DockStyle.Fill;
+            pilotRadioStatus.Text = "PILOT RADIO / MANUAL CHECK REQUIRED — never auto-failover";
+            pilotRadioStatus.TextAlign = Drawing.ContentAlignment.MiddleLeft;
+            pilotRadioStatus.ForeColor = Drawing.Color.FromArgb(244,210,161);
+            pilotRadioStatus.Font = new Drawing.Font("Segoe UI Semibold",10f,
+                Drawing.FontStyle.Bold);
+            pilotRadioStatus.AutoEllipsis = true;
+            pilotRadioStatus.Padding = new Padding(12,0,8,0);
+            pilotRadioStatus.AccessibleName = "Independent pilot radio status not verified";
+            pilotRadioButton.Text = "CHECK RADIO  F10";
+            pilotRadioButton.Dock = DockStyle.Fill;
+            pilotRadioButton.FlatStyle = FlatStyle.Flat;
+            pilotRadioButton.FlatAppearance.BorderSize = 0;
+            pilotRadioButton.BackColor = Drawing.Color.FromArgb(71,60,43);
+            pilotRadioButton.ForeColor = Drawing.Color.White;
+            pilotRadioButton.AccessibleName = "Open independent pilot radio connection panel";
+            pilotRadioButton.AccessibleDescription =
+                "Requires manual on-site connection. Never transfers authority automatically.";
+            pilotRadioButton.Click += (s,e) => Activate("PILOT");
+            pilotBar.Controls.Add(pilotRadioStatus,0,0);
+            pilotBar.Controls.Add(pilotRadioButton,1,0);
+            bridgeDiagnosticsTip.SetToolTip(pilotRadioStatus,
+                "The direct USB/telemetry-radio link has not been verified by this " +
+                "workspace. The pilot must inspect and connect it explicitly.");
+            
             var linkBar = new TableLayoutPanel {
                 Dock = DockStyle.Bottom, Height = 56, ColumnCount = 2,
                 BackColor = Drawing.Color.FromArgb(14,14,14),
@@ -116,13 +161,14 @@ namespace AeroHelm.GcsCloud
             linkBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,72));
             linkBar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,28));
             linkStatus.Dock = DockStyle.Fill;
-            linkStatus.Text = "CLOUD STATUS / UNKNOWN — no verified telemetry";
+            linkStatus.Text = "CLOUD VIEW / UNKNOWN — no verified telemetry";
             linkStatus.ForeColor = Drawing.Color.FromArgb(185,185,185);
             linkStatus.Font = new Drawing.Font("Segoe UI Semibold",10f,Drawing.FontStyle.Bold);
             linkStatus.TextAlign = Drawing.ContentAlignment.MiddleLeft;
             linkStatus.AutoEllipsis = true;
             linkStatus.Padding = new Padding(12,0,8,0);
-            refreshStatus.Text = "REFRESH LINK";
+            refreshStatus.Text = "REFRESH CLOUD";
+            refreshStatus.AccessibleName = "Refresh cloud read-only telemetry status";
             refreshStatus.Dock = DockStyle.Fill;
             refreshStatus.FlatStyle = FlatStyle.Flat;
             refreshStatus.FlatAppearance.BorderSize = 0;
@@ -148,22 +194,52 @@ namespace AeroHelm.GcsCloud
             for (int i = 0; i < Names.Length; i++)
             {
                 var name = Names[i];
-                var tile = new AeroHelmTileButton(name) {
-                    Dock = DockStyle.Fill, Margin = new Padding(5)
+                var tile = new AeroHelmTileButton(name,Descriptions[i]) {
+                    Dock = DockStyle.Fill, Margin = new Padding(5),
+                    TabIndex = i + 3
                 };
                 tile.Click += (sender, args) => Activate(name);
+                bridgeDiagnosticsTip.SetToolTip(tile,
+                    name + " — " + Descriptions[i] + " (F" + (i+1) + ")");
                 tiles.Controls.Add(tile, i % 3, i / 3);
             }
             Controls.Add(tiles);
             Controls.Add(liveBridgeStatus);
             Controls.Add(linkBar);
+            Controls.Add(pilotBar);
             Controls.Add(top);
             Shown += async (s,e) => {
+                bridgeStatusTimer.Start();
                 cloudHealthTimer.Start();
                 await RefreshCloudStatusAsync();
             };
             KeyDown += (s, e) => {
-                if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; }
+                if (e.KeyCode == Keys.Escape)
+                {
+                    Close(); e.Handled = true; e.SuppressKeyPress = true;
+                    return;
+                }
+                if (e.KeyCode == Keys.F10)
+                {
+                    Activate("PILOT"); e.Handled = true; e.SuppressKeyPress = true;
+                    return;
+                }
+                if (e.KeyCode >= Keys.F1 && e.KeyCode <= Keys.F9)
+                {
+                    Activate(Names[(int)e.KeyCode-(int)Keys.F1]);
+                    e.Handled = true; e.SuppressKeyPress = true;
+                }
+            };
+            Resize += (s,e) => {
+                if (WindowState != FormWindowState.Minimized || IsDisposed) return;
+                cloudHealthTimer.Stop();
+                bridgeStatusTimer.Stop();
+            };
+            Activated += (s,e) => {
+                if (IsDisposed || Disposing || WindowState == FormWindowState.Minimized)
+                    return;
+                bridgeStatusTimer.Start();
+                cloudHealthTimer.Start();
             };
             FormClosed += (s,e) => {
                 bridgeStatusTimer.Stop();
@@ -179,7 +255,8 @@ namespace AeroHelm.GcsCloud
         // failure states are visible; no last-known-good state is reused.
         private async Task RefreshCloudStatusAsync()
         {
-            if (refreshingStatus || IsDisposed || Disposing) return;
+            if (refreshingStatus || IsDisposed || Disposing || !Visible ||
+                WindowState == FormWindowState.Minimized) return;
             refreshingStatus = true;
             refreshStatus.Enabled = false;
             cloudHeartbeatLive = null;
@@ -242,8 +319,8 @@ namespace AeroHelm.GcsCloud
                     }
                     else if (heartbeatLive == true && attitudeLive == true)
                     {
-                        linkStatus.Text = "CLOUD / REAL HB + ATTITUDE — " +
-                            aircraft + "  |  " + age + " ms";
+                        linkStatus.Text = "CLOUD VIEW / HB + ATTITUDE VERIFIED — " +
+                            aircraft + "  |  " + age + " ms  |  VIEW ONLY";
                         linkStatus.ForeColor = Drawing.Color.FromArgb(197,231,197);
                     }
                     else
@@ -327,6 +404,12 @@ namespace AeroHelm.GcsCloud
                     case "SETTINGS":
                         OpenChild(new AeroHelmTouchSettingsWindow());
                         break;
+                    case "PILOT":
+                        var currentGcs = MainV2.instance;
+                        if (currentGcs == null || currentGcs.IsDisposed)
+                            throw new InvalidOperationException("Native Mission Planner unavailable.");
+                        OpenChild(new AeroHelmPilotDirectWindow(currentGcs));
+                        break;
                 }
             }
             catch (Exception ex)
@@ -349,7 +432,26 @@ namespace AeroHelm.GcsCloud
 
         private void OpenChild(Form form)
         {
-            using (form) form.ShowDialog(this);
+            // Modal children run their own event loop; stop polling behind
+            // them to save network, CPU and WinForms work.
+            bridgeStatusTimer.Stop();
+            cloudHealthTimer.Stop();
+            try { using (form) form.ShowDialog(this); }
+            finally
+            {
+                if (!IsDisposed && !Disposing && Visible &&
+                    WindowState != FormWindowState.Minimized)
+                {
+                    bridgeStatusTimer.Start();
+                    cloudHealthTimer.Start();
+                    // The next scheduled refresh starts from UNKNOWN/STALE,
+                    // not from an obsolete pre-modal heartbeat observation.
+                    cloudStatusCheckedUtc = DateTime.MinValue;
+                    cloudHeartbeatLive = null;
+                    linkStatus.Text = "CLOUD VIEW / RECHECKING — NO FLIGHT AUTHORITY";
+                    linkStatus.ForeColor = Drawing.Color.FromArgb(244,210,161);
+                }
+            }
         }
     }
 
@@ -358,14 +460,16 @@ namespace AeroHelm.GcsCloud
     internal sealed class AeroHelmTileButton : Button
     {
         private readonly Drawing.Bitmap icon;
+        private readonly string subtitle;
         private bool hovered;
         private bool pressed;
 
-        public AeroHelmTileButton(string name)
+        public AeroHelmTileButton(string name,string description)
         {
             Text = name;
+            subtitle = description ?? "";
             AccessibleName = name + " AeroHelm workspace";
-            AccessibleDescription = "Open the " + name + " module";
+            AccessibleDescription = "Open " + name + ". " + subtitle;
             BackColor = Drawing.Color.FromArgb(7,7,7);
             ForeColor = Drawing.Color.FromArgb(248,248,248);
             FlatStyle = FlatStyle.Flat;
@@ -426,7 +530,11 @@ namespace AeroHelm.GcsCloud
             int textSize = Math.Max(10, Math.Min(18, Height / 14));
             int gap = Math.Max(5, Math.Min(15, Height / 12));
             int labelHeight = textSize + 11;
-            int blockTop = (Height - (iconSize + gap + labelHeight)) / 2;
+            bool showSubtitle = Height >= 156 && Width >= 180 &&
+                !string.IsNullOrEmpty(subtitle);
+            int subtitleHeight = showSubtitle ? 25 : 0;
+            int blockTop = Math.Max(5,
+                (Height - (iconSize + gap + labelHeight + subtitleHeight)) / 2);
             g.DrawImage(icon, (Width-iconSize)/2, blockTop, iconSize, iconSize);
             using (var font = new Drawing.Font("Segoe UI Semibold",textSize,
                        Drawing.FontStyle.Bold,Drawing.GraphicsUnit.Pixel))
@@ -436,6 +544,20 @@ namespace AeroHelm.GcsCloud
                        LineAlignment = Drawing.StringAlignment.Center })
                 g.DrawString(Text,font,brush,
                     new Drawing.RectangleF(7,blockTop+iconSize+gap,Width-14,labelHeight),format);
+            if (showSubtitle)
+            {
+                using (var captionFont = new Drawing.Font("Segoe UI",11f,
+                           Drawing.FontStyle.Regular,Drawing.GraphicsUnit.Pixel))
+                using (var captionBrush = new Drawing.SolidBrush(
+                           Drawing.Color.FromArgb(191,195,201)))
+                using (var captionFormat = new Drawing.StringFormat {
+                           Alignment = Drawing.StringAlignment.Center,
+                           LineAlignment = Drawing.StringAlignment.Center,
+                           Trimming = Drawing.StringTrimming.EllipsisCharacter })
+                    g.DrawString(subtitle,captionFont,captionBrush,
+                        new Drawing.RectangleF(8,blockTop+iconSize+gap+
+                            labelHeight,Width-16,subtitleHeight),captionFormat);
+            }
         }
 
         private static Drawing2D.GraphicsPath RoundedRectangle(
