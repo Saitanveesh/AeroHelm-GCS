@@ -12,6 +12,7 @@ on:
       - feat/gcs-research-cybershield-twin-ui
       - feat/aerohelm-cloud-link-quality-v1
       - feat/aerohelm-duplex-link-console
+      - feat/gcs-touch-ux-readonly-fleet-r1
       - feat/aerohelm-windows-integration
       - feat/aerohelm-windows-pages-v1
       - feat/aerohelm-windows-readiness-v2
@@ -47,6 +48,7 @@ on:
       - "Tools/AeroHelmSurveyTests/**"
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
+      - "Tools/test_aerohelm_touch_ux.py"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
       - "scripts/Update-AeroHelmLatest.ps1"
       - "Tools/fixtures/physics_lab_hover.json"
@@ -86,6 +88,7 @@ on:
       - "Plugins/AeroHelmCloud/**"
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
+      - "Tools/test_aerohelm_touch_ux.py"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
       - "scripts/Update-AeroHelmLatest.ps1"
       - "Tools/fixtures/physics_lab_hover.json"
@@ -112,7 +115,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Portable offline GCS safety, icons and TCP policy tests
-        run: python -m unittest -v Tools.test_aerohelm_offline_gcs
+        run: python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_aerohelm_touch_ux
 
   plugin-build:
     runs-on: windows-latest
