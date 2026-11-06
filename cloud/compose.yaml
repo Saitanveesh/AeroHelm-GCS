@@ -36,6 +36,24 @@ services:
     tmpfs: ["/tmp"]
     networks: [private]
     # HTTPS terminator must be private/authenticated, with allowlisted forwarding.
+  scheduler:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    command: ["python", "-m", "cloud.app.scheduler"]
+    restart: unless-stopped
+    env_file: .env
+    secrets:
+      - app_database_url
+    depends_on:
+      database:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [private]
 networks:
   private:
     internal: true
