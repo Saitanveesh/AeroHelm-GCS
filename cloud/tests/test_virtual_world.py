@@ -62,3 +62,62 @@ def test_virtual_worker_refuses_real_identity_even_with_valid_bearer():
             home=VehicleProfile(home_lat=12.97, home_lon=77.59,
                                 energy_wh=100, reserve_fraction=.3,
                                 energy_wh_per_km=20))
+
+
+def test_virtual_route_network_failure_never_fabricates_completion(monkeypatch):
+    import httpx
+    from sqlalchemy.orm import Session
+    from sqlalchemy import select
+    from cloud.app.models import Job
+    import time
+
+    monkeypatch.setenv("AEROHELM_VIRTUAL_DISPATCH_ENABLED", "true")
+    with TestClient(create_app(config())) as client:
+        register(client, "SIM-A", 12.97)
+        plan = {"request_id":"d"*32, "vehicle_ids":["SIM-A"], "tasks":[{
+            "key":"TASK-ONE","latitude":12.9701,"longitude":77.5901,
+            "relative_altitude_m":30,"required_energy_wh":3,"priority":5,
+        }]}
+        mission = draft(client, plan=plan).json()
+        approve(client, mission)
+        acquire(client, "SIM-A")
+        start(client, mission)
+
+        class UnreliableClient:
+            def __init__(self, inner):
+                self.inner = inner
+                self.sent = 0
+
+            def post(self, path, **kwargs):
+                if path == "/api/v1/device/telemetry":
+                    self.sent += 1
+                    if self.sent == 2:
+                        return httpx.Response(
+                            503, request=httpx.Request("POST", "https://offline.invalid/"),
+                            json={"detail":"network interrupted"},
+                        )
+                return self.inner.post(path, **kwargs)
+
+        unreliable = UnreliableClient(client)
+        worker = VirtualRouteWorker(
+            unreliable, device_id="SIM-A", bearer=virtual_token("SIM-A"),
+            home=VehicleProfile(home_lat=12.97, home_lon=77.59,
+                                energy_wh=180, reserve_fraction=.3,
+                                energy_wh_per_km=25),
+        )
+        with pytest.raises(httpx.HTTPStatusError):
+            worker.execute_one()
+        assert unreliable.sent == 2
+        current = client.get("/api/v1/missions/" + mission["id"],
+                             headers=jwt_header()).json()
+        assert current["status"] == "RUNNING_SIM"
+        assert current["jobs"][0]["status"] == "ACCEPTED_SIM"
+        with Session(client.app.state.engine) as session:
+            with session.begin():
+                row = session.get(Job, current["jobs"][0]["id"])
+                row.deadline = time.time()-1
+        client.post("/api/v1/internal/sweep", headers=jwt_header())
+        terminal = client.get("/api/v1/missions/" + mission["id"],
+                              headers=jwt_header()).json()
+        assert terminal["status"] == "FAILED_SIM"
+        assert terminal["jobs"][0]["status"] == "TIMED_OUT"
