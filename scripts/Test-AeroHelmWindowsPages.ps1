@@ -49,7 +49,13 @@ function Require-Text([string]$content, [string]$needle, [string]$reason) {
 }
 $touch = Read-Source 'plugins/AeroHelmTouchPanel.cs'
 $paths = Read-Source 'plugins/AeroHelmLinkSelector.cs'
+$pilotDirect = Read-Source 'plugins/AeroHelmPilotDirectWindow.cs'
 $observedAttitude = Read-Source 'plugins/AeroHelmCloudAttitudeWindow.cs'
+# Separate PILOT DIRECT radio module must remain a human-authorized native link.
+Require-Text $pilotDirect 'SerialPort.GetPortNames()' 'PILOT DIRECT must enumerate Windows physical COM ports.'
+Require-Text $pilotDirect 'MessageBoxButtons.YesNo' 'PILOT DIRECT requires explicit on-site authorization.'
+Require-Text $pilotDirect 'main.doConnect(MainV2.comPort,port,baud,true,true)' 'PILOT DIRECT must use native Mission Planner transport.'
+
 $directBackup = Read-Source 'scripts/Start-AeroHelm-DirectBackup.ps1'
 $pages = Read-Source 'plugins/AeroHelmReadOnlyPages.cs'
 $twinLab = Read-Source 'plugins/AeroHelmTwinLabWindow.cs'
