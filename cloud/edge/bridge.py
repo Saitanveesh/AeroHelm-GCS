@@ -70,7 +70,8 @@ class PrivateCloud:
         self.opener = opener or secure_opener(cafile)
 
     def post(self, path: str, data: dict) -> dict:
-        if not path.startswith("/api/v1/device/telemetry"):
+        if path not in ("/api/v1/device/telemetry",
+                        "/api/v1/device/telemetry/session"):
             raise ValueError("Pi observation bridge cannot send control requests")
         body = json.dumps(data, allow_nan=False, separators=(",", ":")).encode()
         if len(body) > MAX_BYTES:
@@ -129,7 +130,7 @@ class ObservationBridge:
         if normalized is None:
             self.dropped += 1
             return False
-        entry = (now_ms, normalized)
+        entry = (raw["captured_at_ms"], normalized)
         if self.samples.full():
             try:
                 self.samples.get_nowait()  # Drop OLDEST, never backpressure FC.
