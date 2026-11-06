@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/cloud-fleet-control-plane-r1
+      - feat/cloud-analytics-offload-r1
     paths:
       - 'cloud/**'
       - '.github/workflows/aerohelm-cloud-control-plane.yml'
