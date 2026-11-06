@@ -227,8 +227,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                    (job.deadline is None or job.deadline <= timestamp)
                    for job in jobs):
                 for job in jobs:
-                    if job.status in ("CLAIMED_SIM", "ACCEPTED_SIM") and job.deadline <= timestamp:
+                    if (job.status in ("CLAIMED_SIM", "ACCEPTED_SIM") and
+                            (job.deadline is None or job.deadline <= timestamp)):
                         job.status = "TIMED_OUT"
+                        job.updated_at = timestamp
                 release(db, mission, "FAILED_SIM")
                 emit(db, mission.tenant, "mission.timeout", mission.id, "system")
 
