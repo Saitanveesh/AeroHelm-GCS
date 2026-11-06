@@ -266,3 +266,17 @@ def test_persistent_state_survives_api_restart(tmp_path, monkeypatch):
                             headers=jwt_header()).json()
         assert loaded["status"] == "DRAFT"
         assert loaded["plan_sha256"] == mission["plan_sha256"]
+
+
+def test_tampered_database_plan_cannot_be_approved_or_dispatched(client):
+    make_two(client)
+    mission = draft(client).json()
+    with Session(client.app.state.engine) as session:
+        with session.begin():
+            record = session.get(Mission, mission["id"])
+            specification = dict(record.specification)
+            specification["execution_target"] = "UNTRUSTED_MUTATION"
+            record.specification = specification
+    assert approve(client, mission).status_code == 409
+    # The approval API checks the persisted specification digest,
+    # not just a client-supplied plan hash.
