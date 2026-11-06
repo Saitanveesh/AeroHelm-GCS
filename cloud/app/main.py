@@ -33,6 +33,7 @@ from .models import (AckRecord, Base, Job, Lease, Mission, OutboxEvent,
                      RequestRecord, TelemetryLatest, Vehicle)
 from .planner import MissionSpec, VehicleProfile, allocate, digest
 from .security import IDENTIFIER, Principal, TokenVerifier
+from .analytics import register_cloud_compute
 
 security = HTTPBearer(auto_error=False)
 RUNNING = "RUNNING_SIM"
@@ -41,7 +42,7 @@ CLAIM_SECONDS = 10
 ACCEPT_SECONDS = 30
 MAX_VEHICLES_PER_TENANT = 128
 MAX_MISSIONS_PER_TENANT = 2048
-EXPECTED_MIGRATION = "0001_initial"
+EXPECTED_MIGRATION = "0002_cloud_compute"
 
 
 class VehicleCreate(BaseModel):
@@ -122,7 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             with engine.connect() as connection:
                 for name in ("vehicles", "missions", "jobs", "control_leases",
                              "idempotency", "job_ack_inbox", "event_outbox",
-                             "telemetry_latest"):
+                             "telemetry_latest", "cloud_compute_jobs"):
                     connection.execute(text("SELECT 1 FROM " + name + " LIMIT 1"))
                 version = connection.scalar(text("SELECT version_num FROM alembic_version"))
                 if version != EXPECTED_MIGRATION:
@@ -787,6 +788,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with db.begin():
             sweep(db)
         return {"sweep": "completed", "physical_control_enabled": False}
+
+    # Read-only cloud computation runs in separate authenticated worker
+    # processes. The thin GCS submits/polls, never processes fleet analytics.
+    register_cloud_compute(
+        app, database=database, identity=identity, now=now,
+        tenant_write_lock=tenant_write_lock, emit=emit,
+    )
 
     # Expose the *same* transactional expiry routine to the dedicated
     # scheduler process. It never sends commands to a vehicle or requeues jobs.
