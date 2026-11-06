@@ -42,7 +42,10 @@ Initialize only DB, then migrate as a **separate least-privileged migrator**:
 docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml up -d database
 docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml --profile migrate run --rm migrate
 docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml up -d api scheduler compute
-curl --fail --silent --show-error http://127.0.0.1:18080/health/ready
+# Replace the Host header with your actual allowed Tailscale FQDN:
+curl --fail --silent --show-error \
+  -H 'Host: YOUR-REAL-TAILNET-NODE.ts.net' \
+  http://127.0.0.1:18080/health/ready
 ```
 
 The `migrate` service is opt-in and is not started by normal `up`; it
