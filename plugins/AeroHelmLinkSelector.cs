@@ -56,6 +56,7 @@ namespace AeroHelm.GcsCloud
                 "CLOUD VIEW — receive-only / Tailscale HTTPS + localhost",
                 "Requires a real Pixhawk HEARTBEAT/ATTITUDE over the Pi→Oracle path. " +
                 "No parameter writes, missions, calibration or commands can pass.");
+            cloud.BackColor = Drawing.Color.FromArgb(29,48,62);
             cloud.Click += (sender,args)=>Select(AeroHelmLinkPath.CloudReadOnly);
             layout.Controls.Add(cloud,0,1);
 
@@ -64,6 +65,9 @@ namespace AeroHelm.GcsCloud
                 "Use Mission Planner's normal COM port and baud controls; " +
                 "hardware radio must be independently wired and bench-tested. " +
                 "This selection does NOT connect or arm automatically.");
+            // Amber distinguishes deliberate local pilot authority from the
+            // blue receive-only cloud viewer; neither color asserts readiness.
+            direct.BackColor = Drawing.Color.FromArgb(70,55,34);
             direct.Click += (sender,args)=>Select(AeroHelmLinkPath.PilotDirect);
             layout.Controls.Add(direct,0,2);
             var preview=Action(
@@ -83,6 +87,7 @@ namespace AeroHelm.GcsCloud
             cloudEvidence.Text="Cloud link assessment: checking authenticated path...";
             cloudEvidence.ForeColor=Drawing.Color.FromArgb(205,205,205);
             cloudEvidence.AutoEllipsis=true;
+            cloudEvidence.AccessibleName="Cloud diagnostic evidence; not flight control authorization";
             layout.Controls.Add(cloudEvidence,0,5);
             Shown+=async(sender,args)=>await RefreshEvidenceAsync();
             var cancel=new Button {
@@ -93,6 +98,14 @@ namespace AeroHelm.GcsCloud
             };
             layout.Controls.Add(cancel,0,6);
             CancelButton=cancel;
+            KeyPreview=true;
+            KeyDown+=(s,e)=>{
+                if(e.KeyCode==Keys.Escape)
+                {
+                    DialogResult=DialogResult.Cancel;
+                    Close();e.Handled=true;e.SuppressKeyPress=true;
+                }
+            };
         }
 
         private async Task RefreshEvidenceAsync()
@@ -141,7 +154,10 @@ namespace AeroHelm.GcsCloud
                 BackColor=Drawing.Color.FromArgb(31,31,31),
                 Font=new Drawing.Font("Segoe UI",11f),
                 Padding=new Padding(18,8,12,8),
-                UseVisualStyleBackColor=false
+                UseVisualStyleBackColor=false,
+                AccessibleName=title,
+                AccessibleDescription=details,
+                TabStop=true
             };
             button.FlatAppearance.BorderColor=Drawing.Color.FromArgb(82,82,82);
             button.FlatAppearance.BorderSize=1;
