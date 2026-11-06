@@ -111,8 +111,8 @@ namespace AeroHelm.GcsCloud
                 long hbAge = AgeMs(tick, lastHeartbeat);
                 long attAge = AgeMs(tick, lastAttitude);
                 return new AeroHelmQualitySnapshot(
-                    lastHeartbeat != Missing && hbAge <= 5000,
-                    lastAttitude != Missing && attAge <= 5000,
+                    hbAge >= 0 && hbAge <= 5000,
+                    attAge >= 0 && attAge <= 5000,
                     f / (double)WindowSeconds, h / (double)WindowSeconds,
                     a / (double)WindowSeconds, hbAge, attAge,
                     attitudeGaps, largestAttitudeGapMs, rejectedEvidence);
