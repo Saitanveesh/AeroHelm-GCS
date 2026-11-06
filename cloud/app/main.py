@@ -644,14 +644,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not virtual_dispatch:
             raise HTTPException(503, "Virtual dispatch feature gate is off")
         with db.begin():
-            # Establish mission/vehicle authority freshness before accepting
-            # any ACK; expiry never re-enqueues a previously claimed job.
+            # Lock consistently: mission -> vehicle -> job. Never hold a job
+            # lock while waiting for its mission, avoiding deadlocks with
+            # concurrent start/abort/scheduler state transitions.
             sweep(db)
+            known = db.scalar(select(Job).where(Job.id == str(job_id),
+                                                Job.tenant == p.tenant))
+            if known is None:
+                raise HTTPException(404, "Job not found")
+            mission = scoped_mission(db, p.tenant, known.mission_id, lock=True)
+            vehicle = scoped_vehicle(db, p.tenant, p.vehicle_id, lock=True)
             job = db.scalar(select(Job).where(Job.id == str(job_id),
                 Job.tenant == p.tenant).with_for_update())
             if job is None:
                 raise HTTPException(404, "Job not found")
-            vehicle = scoped_vehicle(db, p.tenant, p.vehicle_id, lock=True)
             if job.vehicle_id != vehicle.id or vehicle.kind != "virtual":
                 raise HTTPException(403, "Device is not the assigned virtual vehicle")
             if not job.claim_digest or not hmac.compare_digest(
@@ -666,7 +672,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raise HTTPException(409, "ACK event ID reused with different contents")
                 return {"job_id": job.id, "status": existing.phase,
                         "duplicate": True, "physical_command_authorized": False}
-            mission = scoped_mission(db, p.tenant, job.mission_id, lock=True)
             lease = db.get(Lease, vehicle.id)
             timestamp = now(db)
             if (mission.status != RUNNING or
