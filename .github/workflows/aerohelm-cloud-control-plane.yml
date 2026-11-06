@@ -37,6 +37,18 @@ jobs:
           if grep -REn 'mavutil|mavlink_connection|command_long_send|param_set_send|Serial\(' cloud/app; then
             echo "Forbidden aircraft IO primitive in cloud authority path"; exit 1
           fi
+  dependency_audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Audit pinned cloud Python dependencies
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          python -m pip_audit --strict -r cloud/requirements.txt
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15
