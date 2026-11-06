@@ -14,7 +14,17 @@ depends_on = None
 
 
 def upgrade():
-    Base.metadata.create_all(bind=op.get_bind(), checkfirst=True)
+    # An initial schema revision must remain immutable as models evolve.
+    # New tables belong to later revisions; never create future models here.
+    initial_tables = (
+        "vehicles", "control_leases", "missions", "jobs",
+        "idempotency", "job_ack_inbox", "event_outbox", "telemetry_latest",
+    )
+    Base.metadata.create_all(
+        bind=op.get_bind(),
+        tables=[Base.metadata.tables[name] for name in initial_tables],
+        checkfirst=True,
+    )
 
 
 def downgrade():
