@@ -17,6 +17,8 @@ on:
     paths:
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmReceiveOnlyBridge.cs"
+      - "plugins/AeroHelmPilotDirectWindow.cs"
+      - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmCloudAttitudeWindow.cs"
       - "scripts/Start-AeroHelm-DirectBackup.ps1"
@@ -58,6 +60,8 @@ on:
       - "scripts/Test-AeroHelmPluginRoundtrip.ps1"
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmReceiveOnlyBridge.cs"
+      - "plugins/AeroHelmPilotDirectWindow.cs"
+      - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmCloudAttitudeWindow.cs"
       - "scripts/Start-AeroHelm-DirectBackup.ps1"
