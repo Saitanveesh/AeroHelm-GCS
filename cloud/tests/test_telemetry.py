@@ -119,3 +119,23 @@ def test_cross_tenant_observation_never_leaks():
                           headers=jwt_header(tenant="TENANT-B")).status_code == 404
         assert client.post("/api/v1/device/telemetry/session",
                            headers=dev("SIM-A", tenant="TENANT-B")).status_code == 404
+
+
+def test_reported_battery_and_gnss_risks_are_advisory_only():
+    with TestClient(create_app(config())) as client:
+        assert register(client, "PIX-01", kind="hardware").status_code == 201
+        epoch = client.post("/api/v1/device/telemetry/session",
+                            headers=dev("PIX-01")).json()["session_epoch"]
+        reported = {**sample(epoch, 1), "battery_pct": 12.0,
+                    "gps_fix_type": 1}
+        assert client.post("/api/v1/device/telemetry", headers=dev("PIX-01"),
+                           json=reported).status_code == 202
+        state = client.get("/api/v1/vehicles/PIX-01/telemetry",
+                           headers=jwt_header()).json()
+        assert set(state["advisory_risks"]) == {
+            "REPORTED_BATTERY_LOW", "REPORTED_GNSS_DEGRADED",
+        }
+        assert state["flight_ready"] is False
+        assert client.post("/api/v1/vehicles/PIX-01/lease",
+                           headers=jwt_header(), json={
+                               "duration_seconds":30}).status_code == 403
