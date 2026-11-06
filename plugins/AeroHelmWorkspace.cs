@@ -104,7 +104,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmSurveyWindow()
         {
-            Text = "AeroHelm SURVEY — Offline autonomous mission draft";
+            Text = VihangaVedikaProduct.Name + " — Survey Planning";
             StartPosition = FormStartPosition.CenterParent;
             Width = 820;
             Height = 680;
@@ -236,7 +236,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmVisionWindow()
         {
-            Text = "AeroHelm VISION — Private cameras";
+            Text = VihangaVedikaProduct.Name + " — Private Cameras";
             Width = 760;
             Height = 405;
             MinimumSize = new Drawing.Size(620,360);
@@ -437,7 +437,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmLinkWindow()
         {
-            Text = "AeroHelm LINK — Cloud link diagnostics";
+            Text = VihangaVedikaProduct.Name + " — Connection Diagnostics";
             Width = 870; Height = 580;
             MinimumSize = new Drawing.Size(700,480);
             StartPosition = FormStartPosition.CenterParent;
@@ -669,7 +669,7 @@ namespace AeroHelm.GcsCloud
             check.Enabled = false;
             freshness.Text = "LINK / CHECKING — no data confirmed";
             freshness.ForeColor = Drawing.Color.FromArgb(212,212,212);
-            output.Text = "Connecting to private AeroHelm Cloud...";
+            output.Text = "Connecting to private cloud service...";
             try
             {
                 var address = AeroHelmWorkspaceSettings.CheckedPrivateUrl(url.Text);
