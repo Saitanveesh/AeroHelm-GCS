@@ -55,6 +55,25 @@ services:
     read_only: true
     tmpfs: ["/tmp"]
     networks: [private]
+  compute:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    command: ["python", "-m", "cloud.app.compute_worker"]
+    restart: unless-stopped
+    env_file: .env
+    secrets:
+      - app_database_url
+    depends_on:
+      database:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [private]
+    # Read-only analytic DB workload; no public/API or flight-controller access.
 networks:
   private:
     internal: true
