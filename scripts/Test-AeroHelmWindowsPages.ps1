@@ -92,6 +92,7 @@ $mainNative = Read-Source 'MainV2.cs'
 $integratedBuild = Read-Source 'scripts/Build-Integrated-AeroHelm.ps1'
 $consolidation = Read-Source 'scripts/Consolidate-AeroHelmWindows.ps1'
 $moduleAudit = Read-Source 'scripts/Audit-AeroHelmModules.ps1'
+$generatedCleanup = Read-Source 'scripts/Cleanup-AeroHelmGenerated.ps1'
 $legacyNativeLauncher = Read-Source 'scripts/Start-AeroHelm-NativeCloud.ps1'
 
 foreach ($row in @(
