@@ -9,5 +9,6 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="../../plugins/AeroHelmReceiveOnlyBridge.cs" Link="AeroHelmReceiveOnlyBridge.cs" />
+    <Compile Include="../../plugins/AeroHelmLinkQuality.cs" Link="AeroHelmLinkQuality.cs" />
   </ItemGroup>
 </Project>
