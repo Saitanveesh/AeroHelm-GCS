@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="260" viewBox="0 0 1320 260" role="img" aria-labelledby="title desc"><title id="title">AeroHelm virtual fleet lifecycle</title><desc id="desc">Enroll, observe, plan, approve, lease, simulate, verify and recover. Cloud mission workflow does not authorize physical aircraft commands.</desc>
+<rect width="1320" height="260" rx="12" fill="#102330"/><text x="32" y="41" fill="#f4f8f8" font-size="22" font-family="Arial" font-weight="700">MULTI-UAV COORDINATION / VIRTUAL SAFETY GATES</text><text x="32" y="68" fill="#a0bdcc" font-size="14" font-family="Arial">Fleet state is durable; physical command execution is deliberately excluded from cloud R1.</text>
+<g font-family="Arial" text-anchor="middle">
+<rect x="24" y="104" width="145" height="92" rx="8" fill="#1d3c4b" stroke="#66aab8"/><text x="97" y="134" fill="#8be0d1" font-size="12">IDENTITY</text><text x="97" y="165" fill="#fff" font-size="18" font-weight="700">ENROLL</text>
+<rect x="184" y="104" width="145" height="92" rx="8" fill="#1d3c4b" stroke="#66aab8"/><text x="256" y="134" fill="#8be0d1" font-size="12">TELEMETRY</text><text x="256" y="165" fill="#fff" font-size="18" font-weight="700">OBSERVE</text>
+<rect x="344" y="104" width="145" height="92" rx="8" fill="#1d3c4b" stroke="#66aab8"/><text x="416" y="134" fill="#8be0d1" font-size="12">TASKS</text><text x="416" y="165" fill="#fff" font-size="18" font-weight="700">PLAN</text>
+<rect x="504" y="104" width="145" height="92" rx="8" fill="#1d3c4b" stroke="#66aab8"/><text x="576" y="134" fill="#8be0d1" font-size="12">TWO-PERSON</text><text x="576" y="165" fill="#fff" font-size="18" font-weight="700">APPROVE</text>
+<rect x="664" y="104" width="145" height="92" rx="8" fill="#1d3c4b" stroke="#66aab8"/><text x="736" y="134" fill="#8be0d1" font-size="12">FENCED</text><text x="736" y="165" fill="#fff" font-size="18" font-weight="700">LEASE</text>
+<rect x="824" y="104" width="145" height="92" rx="8" fill="#3b2c29" stroke="#ec9a6f"/><text x="896" y="134" fill="#f2b38b" font-size="12">VIRTUAL ONLY</text><text x="896" y="165" fill="#fff" font-size="18" font-weight="700">SIMULATE</text>
+<rect x="984" y="104" width="145" height="92" rx="8" fill="#1d3c4b" stroke="#66aab8"/><text x="1056" y="134" fill="#8be0d1" font-size="12">AUDIT</text><text x="1056" y="165" fill="#fff" font-size="18" font-weight="700">VERIFY</text>
+<rect x="1144" y="104" width="150" height="92" rx="8" fill="#1d3c4b" stroke="#66aab8"/><text x="1219" y="134" fill="#8be0d1" font-size="12">BOUNDED</text><text x="1219" y="165" fill="#fff" font-size="18" font-weight="700">RECOVER</text></g>
+<path d="M170 149h12m148 0h12m148 0h12m148 0h12m148 0h12m148 0h12m148 0h12" stroke="#77c3c5" stroke-width="2"/>
+<text x="660" y="235" fill="#adcbd5" font-family="Arial" font-size="13" text-anchor="middle">Operator identity · Source freshness · Exclusive leases · No automatic replay · Explicit pilot authority</text>
+</svg>
