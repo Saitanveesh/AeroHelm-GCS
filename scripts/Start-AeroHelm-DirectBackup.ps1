@@ -20,8 +20,8 @@ $latest=Join-Path $PSScriptRoot 'Consolidate-AeroHelmWindows.ps1'
 if ($LASTEXITCODE -ne 0) {
     throw 'Verified AeroHelm desktop build required for offline pilot backup.'
 }
-$touch=Join-Path $PSScriptRoot 'Start-AeroHelm-Touch.ps1'
-$flags=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$touch,
+$nativeLauncher=Join-Path $PSScriptRoot 'Start-VihangaVedika-GCS.ps1'
+$flags=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$nativeLauncher,
          '-NoInternalBridge','-NoAutoTcp','-LocalDirectBackup')
 if ($ShowNativeToolbar) {$flags+='-ShowNativeToolbar'}
 Write-Host 'OFFLINE DIRECT: Oracle/KDC login not required, no cloud WebSocket receiver.'
