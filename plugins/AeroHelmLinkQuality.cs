@@ -16,7 +16,6 @@ namespace AeroHelm.GcsCloud
         private readonly int[] frames = new int[BucketCount];
         private readonly int[] heartbeats = new int[BucketCount];
         private readonly int[] attitudes = new int[BucketCount];
-        private long firstTick;
         private long lastTick;
         private long lastHeartbeat;
         private long lastAttitude;
@@ -35,7 +34,7 @@ namespace AeroHelm.GcsCloud
                     seconds[i] = Missing;
                     frames[i] = heartbeats[i] = attitudes[i] = 0;
                 }
-                firstTick = lastTick = lastHeartbeat = lastAttitude = Missing;
+                lastTick = lastHeartbeat = lastAttitude = Missing;
                 attitudeGaps = largestAttitudeGapMs = rejectedEvidence = 0;
             }
         }
@@ -51,7 +50,6 @@ namespace AeroHelm.GcsCloud
             {
                 if (lastTick != Missing && tick < lastTick)
                     return; // a backwards sample cannot revive telemetry
-                if (firstTick == Missing) firstTick = tick;
                 lastTick = tick;
                 long second = tick / Stopwatch.Frequency;
                 int slot = (int)(second % BucketCount);
