@@ -4,7 +4,11 @@ WORKDIR /srv
 COPY cloud/requirements.txt /srv/cloud/requirements.txt
 RUN pip install --no-cache-dir -r /srv/cloud/requirements.txt \
  && groupadd --system aerohelm && useradd --system --gid aerohelm aerohelm
-COPY cloud /srv/cloud
+# Keep Mission Planner, native Windows binaries, dev tests, virtual models
+# and downloaded artifacts out of the production cloud image.
+COPY cloud/app /srv/cloud/app
+COPY cloud/migrations /srv/cloud/migrations
+COPY cloud/alembic.ini /srv/cloud/alembic.ini
 USER aerohelm
 EXPOSE 8080
 # Migrate separately with: alembic -c cloud/alembic.ini upgrade head
