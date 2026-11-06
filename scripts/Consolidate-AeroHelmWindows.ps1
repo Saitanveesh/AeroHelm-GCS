@@ -15,9 +15,9 @@ $plugins=Join-Path $runtime 'plugins'
 $plugin=Join-Path $plugins 'AeroHelm.Cloud.Plugin.Validation.dll'
 $logRoot=Join-Path $root 'build-logs'
 $manifestPath=Join-Path $logRoot 'aerohelm-consolidated-release.json'
-$expectedBranch='feat/gcs-touch-ux-readonly-fleet-r1'
-$modules=@('FLIGHT','PLAN','VISION','OPS','SECURITY','FLEET','LINK','ANALYTICS','SETTINGS')
-$toolbar=@('CLOUD','SURVEY','VISION','LINK','OPS','INTEL','TOUCH','PATHS')
+$expectedBranch='feat/vihanga-vedika-toolbar-ops-intel-phase3'
+$modules=@('CLOUD','PATHS','SURVEY','VISION','LINK','FLEET','OPS','INTEL')
+$toolbar=@('CLOUD','PATHS','SURVEY','VISION','LINK','FLEET','OPS','INTEL')
 
 function Hash([string]$path) {
     if(-not (Test-Path -LiteralPath $path -PathType Leaf)){return $null}
@@ -73,14 +73,14 @@ function Assert-PluginLayout {
     }
 }
 $commit=Assert-Git
-# Every release path runs the same nine-panel and toolbar static audit.
+# Every release path runs the native toolbar and safety contract audit.
 & (Join-Path $PSScriptRoot 'Audit-AeroHelmModules.ps1')
 Write-Host "AeroHelm source: $expectedBranch @ $($commit.Substring(0,12))"
 Write-Host "Runtime: $runtime"
 Write-Host "Native EXE SHA-256: $(Hash $exe)"
 Write-Host "Compiled plugin SHA-256: $(Hash $plugin)"
-Write-Host "Nine panels: $($modules -join ', ')"
-Write-Host "Eight AeroHelm toolbar modules: $($toolbar -join ', ')"
+Write-Host "Native toolbar entries: $($modules -join ', ')"
+Write-Host "Vihanga Vedika toolbar modules: $($toolbar -join ', ')"
 if(Test-Path -LiteralPath $plugins -PathType Container){
     $items=@(Get-ChildItem -LiteralPath $plugins -File |
         Where-Object {$_.Name -like 'AeroHelm*'} |
@@ -204,7 +204,7 @@ try{
     Write-Host "CONSOLIDATED BUILD COMPLETE: $manifestPath" -ForegroundColor Green
     Write-Host "Backup retained: $snapshot"
     Write-Host "Compiled plugin fingerprint: $($newHash.Substring(0,16))"
-    Write-Host 'Run -Stage Verify before launching the touch console.'
+    Write-Host 'Run -Stage Verify before starting Vihanga Vedika.'
 }
 catch {
     $failure=$_
