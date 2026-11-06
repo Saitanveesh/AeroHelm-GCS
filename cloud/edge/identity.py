@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import stat
 import ssl
 import time
 from urllib import error, parse, request
@@ -22,11 +24,16 @@ def validated_https_url(value: str, *, permit_path: bool = True) -> str:
     if not isinstance(value, str) or value != value.strip():
         raise ValueError("Cloud/OIDC URL must be a clean HTTPS URL")
     uri = parse.urlsplit(value)
+    try:
+        port = uri.port  # force validation of malformed port strings
+    except ValueError:
+        raise ValueError("Invalid HTTPS port") from None
     if (uri.scheme != "https" or not uri.hostname or uri.username or
             uri.password or uri.query or uri.fragment or
             (not permit_path and uri.path not in ("", "/")) or
-            not uri.netloc or "\\"
-            in value):
+            not uri.netloc or "\\" in value or
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", uri.hostname) or
+            (port is not None and not 1 <= port <= 65535)):
         raise ValueError("Only credential-free HTTPS origins are allowed")
     return value
 
@@ -61,13 +68,17 @@ class DeviceTokenProvider:
     def get(self) -> str:
         if self._jwt and self.clock() < self._valid_to:
             return self._jwt
-        st = os.stat(self.client_secret_file)
-        if st.st_mode & 0o077:
-            raise ValueError("OIDC device secret must be accessible only to owner")
-        with open(self.client_secret_file, encoding="utf-8") as handle:
-            secret = handle.read().strip()
-        if len(secret) < 24:
-            raise ValueError("OIDC device credential is missing or weak")
+        # O_NOFOLLOW+fstat prevent the credentials path being swapped to a
+        # symlink/non-regular file between permission check and open.
+        fd = os.open(self.client_secret_file,
+                     os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            st = os.fstat(handle.fileno())
+            if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o077:
+                raise ValueError("OIDC device secret must be owner-only regular file")
+            secret = handle.read(257).strip()
+        if not 24 <= len(secret) <= 256:
+            raise ValueError("OIDC device credential missing or invalid length")
         form = parse.urlencode({
             "grant_type": "client_credentials",
             "client_id": self.client_id,
