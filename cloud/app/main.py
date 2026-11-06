@@ -150,7 +150,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Serialize quota-sensitive tenant writes across PostgreSQL API workers.
         # Lock key is namespace-scoped; it is not held after transaction commit.
         if db.bind.dialect.name == "postgresql":
-            db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:name))"),
+            db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:name, 0))"),
                        {"name": "aerohelm-fleet:" + tenant})
 
     def scoped_vehicle(db: Session, tenant: str, ident: str, *, lock=False) -> Vehicle:
@@ -721,4 +721,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             sweep(db)
         return {"sweep": "completed", "physical_control_enabled": False}
 
+    # Expose the *same* transactional expiry routine to the dedicated
+    # scheduler process. It never sends commands to a vehicle or requeues jobs.
+    app.state.sweep_expired_work = sweep
     return app
