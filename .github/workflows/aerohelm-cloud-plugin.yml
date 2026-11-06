@@ -13,6 +13,7 @@ on:
       - feat/aerohelm-cloud-link-quality-v1
       - feat/aerohelm-duplex-link-console
       - feat/gcs-touch-ux-readonly-fleet-r1
+      - feat/vihanga-vedika-toolbar-ops-intel-phase3
       - feat/aerohelm-windows-integration
       - feat/aerohelm-windows-pages-v1
       - feat/aerohelm-windows-readiness-v2
@@ -29,10 +30,10 @@ on:
       - "AeroHelmStartupGate.cs"
       - "plugins/AeroHelmTwinLabWindow.cs"
       - "plugins/AeroHelmFleetLabWindow.cs"
-      - "plugins/AeroHelmTouchPanel.cs"
-      - "plugins/AeroHelmReadOnlyPages.cs"
+      - "plugins/VihangaVedikaPresentation.cs"
+      - "plugins/VihangaVedikaCloudR2.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
-      - "scripts/Start-AeroHelm-Touch.ps1"
+      - "scripts/Start-VihangaVedika-GCS.ps1"
       - "scripts/Start-AeroHelm-Session.ps1"
       - "scripts/Repair-AeroHelmWindows.ps1"
       - "scripts/Install-AeroHelmCloud.ps1"
@@ -48,7 +49,7 @@ on:
       - "Tools/AeroHelmSurveyTests/**"
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
-      - "Tools/test_aerohelm_touch_ux.py"
+      - "Tools/test_vihanga_toolbar.py"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
       - "scripts/Update-AeroHelmLatest.ps1"
       - "Tools/fixtures/physics_lab_hover.json"
@@ -75,12 +76,12 @@ on:
       - "AeroHelmStartupGate.cs"
       - "plugins/AeroHelmTwinLabWindow.cs"
       - "plugins/AeroHelmFleetLabWindow.cs"
-      - "plugins/AeroHelmReadOnlyPages.cs"
-      - "plugins/AeroHelmTouchPanel.cs"
+      - "plugins/VihangaVedikaCloudR2.cs"
+      - "plugins/VihangaVedikaPresentation.cs"
       - "plugins/AeroHelmOperations.cs"
       - "plugins/AeroHelmWorkspace.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
-      - "scripts/Start-AeroHelm-Touch.ps1"
+      - "scripts/Start-VihangaVedika-GCS.ps1"
       - "scripts/Start-AeroHelm-Session.ps1"
       - "scripts/Repair-AeroHelmWindows.ps1"
       - "scripts/Test-AeroHelmWindowsPages.ps1"
@@ -89,7 +90,7 @@ on:
       - "Plugins/AeroHelmCloud/**"
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
-      - "Tools/test_aerohelm_touch_ux.py"
+      - "Tools/test_vihanga_toolbar.py"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
       - "scripts/Update-AeroHelmLatest.ps1"
       - "Tools/fixtures/physics_lab_hover.json"
@@ -117,7 +118,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Portable offline GCS safety, icons and TCP policy tests
-        run: python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_aerohelm_touch_ux
+        run: python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_vihanga_toolbar
 
   plugin-build:
     runs-on: windows-latest
