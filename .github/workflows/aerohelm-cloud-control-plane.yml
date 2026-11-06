@@ -110,4 +110,4 @@ jobs:
       - name: Validate initial migration repeatability
         run: python -m alembic -c cloud/alembic.ini upgrade head
       - name: PostgreSQL concurrent vehicle authority regression
-        run: python -m pytest -q cloud/tests/test_postgres_races.py
+        run: python -m pytest -q cloud/tests/test_postgres_races.py cloud/tests/test_analytics_postgres.py
