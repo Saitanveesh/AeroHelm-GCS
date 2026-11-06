@@ -288,21 +288,20 @@ namespace AeroHelm.GcsCloud
                 switch (selected)
                 {
                     case "FLIGHT":
-                        // Separate advisory cloud viewing from the pilot's
-                        // independent local telemetry/radio connection.
-                        // Neither source can seize control of the other.
-                        AeroHelmLinkPath chosen;
-                        using(var picker=new AeroHelmLinkSelector())
+                        AeroHelmLinkPath selection;
+                        using (var selector = new AeroHelmLinkSelector())
                         {
-                            if(picker.ShowDialog(this)!=DialogResult.OK)
+                            if (selector.ShowDialog(this) != DialogResult.OK)
                                 return;
-                            chosen=picker.Selection;
+                            selection = selector.Selection;
                         }
-                        bool? heartbeat = cloudHeartbeatLive;
-                        if ((DateTime.UtcNow-cloudStatusCheckedUtc).TotalSeconds >= 8)
-                            heartbeat = null; // No stale readiness decisions.
-                        OpenNative(main=>AeroHelmLinkNavigation.Open(
-                            main,chosen,heartbeat));
+                        bool knownMissingHeartbeat = cloudHeartbeatLive == false &&
+                            (DateTime.UtcNow-cloudStatusCheckedUtc).TotalSeconds < 8;
+                        var nativeMain = MainV2.instance;
+                        Close();
+                        if (nativeMain != null && !nativeMain.IsDisposed)
+                            OpenSelectedFlightPath(selection, nativeMain,
+                                                   knownMissingHeartbeat);
                         break;
                     case "PLAN":
                         OpenNative(main => main.MenuFlightPlanner.PerformClick());
@@ -336,6 +335,97 @@ namespace AeroHelm.GcsCloud
                     "AeroHelm", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             finally { opening = false; }
+        }
+
+        // Explicit dual-path decision, shared by FLIGHT and the PATHS toolbar.
+        // The independent physical telemetry-radio/USB connection is handled
+        // entirely by native Mission Planner; we never auto-open a port or send
+        // commands on cloud failure.
+        internal static void OpenSelectedFlightPath(
+            AeroHelmLinkPath selected, MainV2 main, bool heartbeatKnownMissing = false)
+        {
+            if (main == null || main.IsDisposed || selected == AeroHelmLinkPath.Cancel)
+                return;
+            if (selected == AeroHelmLinkPath.PilotDirect)
+            {
+                main.MenuFlightData.PerformClick();
+                MessageBox.Show(main,
+                    "PILOT BACKUP — native Mission Planner USB / telemetry-radio mode." +
+                    Environment.NewLine + Environment.NewLine +
+                    "Use Mission Planner's existing COM and baud selectors to connect" +
+                    " your independently configured telemetry radio. Verify the" +
+                    " radio, FC heartbeat, actual attitude and pilot control" +
+                    " authority locally before use." +
+                    Environment.NewLine + Environment.NewLine +
+                    "Cloud loss does not authorize an automatic takeover." +
+                    " If another Mission Planner connection is already active," +
+                    " disconnect it deliberately before selecting the direct radio.",
+                    "AeroHelm — manual radio backup", MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                main.Activate();
+                return;
+            }
+            // A stale or blocked listener can be retried after the port is
+            // freed. No process is killed, no public port is ever opened.
+            var bridge = AeroHelmCloudPlugin.ActiveNativeBridge;
+            if (bridge == null || (!bridge.IsListening && !bridge.Start()))
+            {
+                MessageBox.Show(main,
+                    "Cloud viewer not ready. Confirm operator login, " +
+                    "private Tailscale access and that TCP 5760 is free. " +
+                    "Use PATHS > PILOT BACKUP for manual native radio access." +
+                    Environment.NewLine +
+                    "No real aircraft connection has been established.",
+                    "AeroHelm — receive-only bridge unavailable",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return;
+            }
+            if (heartbeatKnownMissing)
+            {
+                MessageBox.Show(main,
+                    "Oracle reports NO verified recent real Pixhawk HEARTBEAT. " +
+                    "Cloud frames alone cannot create a working native HUD. " +
+                    "Use LINK to inspect genuine ID 0 / ID 30 counters. " +
+                    "The radio backup remains available; no fake packets are generated.",
+                    "AeroHelm — real HEARTBEAT missing",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return;
+            }
+            main.MenuFlightData.PerformClick();
+            if (MainV2.comPort.BaseStream.IsOpen)
+            {
+                MessageBox.Show(main,
+                    "A native Mission Planner connection is already active." +
+                    " Disconnect it deliberately before changing paths.",
+                    "AeroHelm — existing connection",
+                    MessageBoxButtons.OK,MessageBoxIcon.Information);
+                return;
+            }
+            if (!string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_AUTO_NATIVE_TCP"),"1",StringComparison.Ordinal))
+            {
+                MessageBox.Show(main,
+                    "Cloud auto-connect is disabled in this session. " +
+                    "Use the verified launcher for read-only localhost TCP. " +
+                    "Do not send commands through the cloud bridge.",
+                    "AeroHelm — cloud viewer disabled",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                return;
+            }
+            try
+            {
+                main.doConnect(MainV2.comPort,"TCP","57600",false,false);
+            }
+            catch(Exception ex)
+            {
+                MessageBox.Show(main,
+                    "Native cloud viewer did not connect. " +
+                    "Check LINK for genuine FC heartbeat/attitude, or choose " +
+                    "manual USB/radio backup. No flight commands were transmitted." +
+                    Environment.NewLine + ex.GetType().Name,
+                    "AeroHelm — HUD not verified",
+                    MessageBoxButtons.OK,MessageBoxIcon.Warning);
+            }
         }
 
         private void OpenNative(Action<MainV2> action)
