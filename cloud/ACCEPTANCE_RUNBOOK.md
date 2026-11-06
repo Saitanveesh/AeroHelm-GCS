@@ -18,7 +18,7 @@ git fetch origin
 git switch feat/cloud-fleet-control-plane-r1
 python3.12 -m venv .venv-cloud
 . .venv-cloud/bin/activate
-python -m pip install -r cloud/requirements.txt
+python -m pip install -r cloud/requirements-dev.txt
 python -m cloud.tools.doctor --mode unit
 ```
 
