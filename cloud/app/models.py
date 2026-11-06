@@ -111,3 +111,22 @@ class TelemetryLatest(Base):
     received_at: Mapped[float | None] = mapped_column(Float)
     observation: Mapped[dict | None] = mapped_column(JSON)
     __table_args__ = (Index("ix_telemetry_tenant", "tenant"),)
+
+
+class CloudComputeJob(Base):
+    """Tenant-scoped durable cloud-side analytics (never flight commands)."""
+    __tablename__ = "cloud_compute_jobs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    tenant: Mapped[str] = mapped_column(String(64), nullable=False)
+    owner: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    result: Mapped[dict | None] = mapped_column(JSON)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    finished_at: Mapped[float | None] = mapped_column(Float)
+    __table_args__ = (
+        UniqueConstraint("tenant", "owner", "request_id"),
+        Index("ix_cloud_compute_queue", "status", "created_at"),
+        Index("ix_cloud_compute_tenant", "tenant", "owner"),
+    )
