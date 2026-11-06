@@ -330,6 +330,76 @@ namespace AeroHelm.GcsCloud
         }
 
 
+        // Adapt the new standalone cloud control plane's *reported* fleet
+        // telemetry for the existing small WinForms table. This is NOT an
+        // FC/flight readiness adapter: simulated and stale sources are labeled
+        // explicitly, and old measurements are never presented as live.
+        private static string CloudV1FleetSnapshot(string cloudJson)
+        {
+            var decoder = new JavaScriptSerializer { MaxJsonLength = 131072 };
+            var root = decoder.DeserializeObject(cloudJson) as Dictionary<string,object>;
+            if (root == null || !(Value(root,"cloud_flight_authorized") is bool) ||
+                (bool)Value(root,"cloud_flight_authorized"))
+                throw new InvalidOperationException(
+                    "Cloud fleet response lacks the expected view-only safety boundary.");
+            var source = Array(Value(root,"vehicles"));
+            if (source.Length > 128)
+                throw new InvalidOperationException(
+                    "Cloud fleet response exceeds the bounded 128-vehicle view.");
+            var mapped = new List<Dictionary<string,object>>();
+            foreach (var entry in source)
+            {
+                var row = AsObject(entry);
+                string id = Value(row,"vehicle_id") as string;
+                string kind = Value(row,"kind") as string;
+                if (string.IsNullOrEmpty(id) ||
+                    !Regex.IsMatch(id,@"\A[A-Za-z0-9_-]{3,64}\z",
+                                   RegexOptions.CultureInvariant) ||
+                    (kind != "virtual" && kind != "hardware"))
+                    continue;
+                if (Value(row,"physical_control_enabled") is bool &&
+                    (bool)Value(row,"physical_control_enabled"))
+                    throw new InvalidOperationException(
+                        "Cloud fleet reports unexpected physical control capability.");
+                var telemetry = AsObject(Value(row,"telemetry"));
+                var observation = AsObject(Value(telemetry,"observation"));
+                double age = 0;
+                var ageString = Convert.ToString(Value(telemetry,"age_s"),
+                                                  CultureInfo.InvariantCulture);
+                bool ageKnown = double.TryParse(ageString,NumberStyles.Float,
+                    CultureInfo.InvariantCulture,out age) &&
+                    !double.IsNaN(age) && !double.IsInfinity(age) &&
+                    age >= 0 && age <= 300;
+                bool fresh = Value(telemetry,"fresh") is bool &&
+                    (bool)Value(telemetry,"fresh") &&
+                    ageKnown && age <= 5 &&
+                    Value(telemetry,"session_epoch") != null &&
+                    Value(telemetry,"observation") != null;
+                var risks = Array(Value(telemetry,"advisory_risks"));
+                object[] flags = !fresh ?
+                    new object[] { "TELEMETRY STALE/UNAVAILABLE" } :
+                    risks.Length == 0 ?
+                        new object[] { "NONE REPORTED; NOT FLIGHT-CLEARED" } : risks;
+                mapped.Add(new Dictionary<string,object> {
+                    { "vehicle_id", id },
+                    { "kind", kind },
+                    { "online", fresh },
+                    { "last_sample_age_s", ageKnown ?
+                        (object)Math.Round(age,1) : null },
+                    { "mode", fresh ? Value(observation,"mode") : null },
+                    { "armed", fresh ? Value(observation,"armed") : null },
+                    { "battery_pct", fresh ? Value(observation,"battery_pct") : null },
+                    { "satellites", fresh && Value(observation,"gps_fix_type") != null ?
+                        (object)("FIX TYPE " + Display(Value(observation,"gps_fix_type"))) :
+                        null },
+                    { "risks", flags }
+                });
+            }
+            return decoder.Serialize(new Dictionary<string,object> {
+                { "vehicles", mapped }
+            });
+        }
+
         // The deployed M1 Oracle returns a JSON array from GET /api/v1/vehicles,
         // while FLEET/ANALYTICS v2 expects {"vehicles":[...]}. Convert only the
         // registry view. Unknown risk/security/history data stays unavailable.
