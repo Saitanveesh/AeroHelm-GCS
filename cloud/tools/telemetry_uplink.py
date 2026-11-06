@@ -36,6 +36,10 @@ class ObservationUplink:
         return {"Authorization": "Bearer " + token}
 
     def begin_session(self):
+        # Session open has ambiguous delivery semantics on timeout too; a
+        # previously held epoch can never survive a failed re-handshake.
+        self.epoch = None
+        self.sequence = 0
         response = self.client.post("/api/v1/device/telemetry/session",
                                     headers=self.headers())
         response.raise_for_status()
@@ -65,7 +69,7 @@ class ObservationUplink:
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
             self.epoch = None
             raise
-        if accepted["accepted"] is not True:
+        if not isinstance(accepted, dict) or accepted.get("accepted") is not True:
             self.epoch = None
             raise ValueError("Cloud did not accept observation")
         self.sequence += 1
