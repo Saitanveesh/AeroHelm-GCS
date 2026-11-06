@@ -397,12 +397,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if state is None or state.received_at is None:
             return {"vehicle_id": vehicle.name, "fresh": False,
                     "age_s": None, "session_epoch": state.epoch if state else None,
-                    "observation": None, "flight_ready": False}
+                    "observation": None, "advisory_risks": ["TELEMETRY_UNAVAILABLE"],
+                    "flight_ready": False}
         age = max(0.0, now(db) - state.received_at)
-        return {"vehicle_id": vehicle.name, "fresh": age <= 5.0,
+        fresh = age <= 5.0
+        risks = []
+        observation = state.observation or {}
+        if not fresh:
+            risks.append("TELEMETRY_STALE")
+        if (observation.get("battery_pct") is not None and
+                observation["battery_pct"] <= 20):
+            risks.append("REPORTED_BATTERY_LOW")
+        if (observation.get("gps_fix_type") is not None and
+                observation["gps_fix_type"] < 3):
+            risks.append("REPORTED_GNSS_DEGRADED")
+        return {"vehicle_id": vehicle.name, "fresh": fresh,
                 "age_s": round(age, 3), "session_epoch": state.epoch,
                 "last_sequence": state.sequence, "observation": state.observation,
-                "flight_ready": False}
+                "advisory_risks": sorted(risks), "flight_ready": False}
 
     @app.get("/api/v1/vehicles/{vehicle_id}/telemetry")
     def latest_telemetry(vehicle_id: str, p: Principal = Depends(identity),
