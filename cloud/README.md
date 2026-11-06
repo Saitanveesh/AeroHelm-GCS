@@ -23,12 +23,14 @@ navigation, airspace approval or safety-case acceptance.
 | `app/models.py` | Durable PostgreSQL fleet, mission, job, ACK and telemetry state |
 | `app/security.py` | Signed RS256 OIDC tokens in production; test-only HS256 prohibited in production |
 | `app/scheduler.py` | Database expiry sweeper; never automatically requeues an expired job |
+| `app/analytics.py` | Cloud-side, tenant-scoped fleet and mission analysis requests and durable results |
+| `app/compute_worker.py` | Separate isolated analytics processor; no GCS or FC dependencies |
 | `tools/sim_edge.py` | Workflow-only fake edge ACKs; no flight dynamics or FC access |
 | `tools/virtual_world.py` | Bounded multi-UAV virtual route interpolation and sequential telemetry; **not** SITL or actual flight |
 | `tools/doctor.py` | Safe non-deploying local unit, disposable PostgreSQL and image verification |
 | `tools/telemetry_uplink.py` | HTTPS normalized observation sidecar for existing Pi UART-owner; never replays stale samples |
 | `migrations/` | Alembic schema revision with explicit startup version pinning |
-| `compose.yaml` | Private reference PostgreSQL/API/scheduler environment, not Internet-facing |
+| `compose.yaml` | Private reference PostgreSQL/API/scheduler/compute environment, not Internet-facing |
 | `tests/` | Safety, tenant isolation, epoch fencing, state transitions, persistence and replay contracts |
 
 ## Prerequisites
@@ -44,7 +46,7 @@ In the repository root, install dependencies into a private Python venv:
 ```bash
 python -m venv .venv-cloud
 . .venv-cloud/bin/activate
-python -m pip install -r cloud/requirements.txt
+python -m pip install -r cloud/requirements-dev.txt
 python -m cloud.tools.doctor --mode unit
 ```
 
@@ -116,6 +118,14 @@ redelivered to an aircraft. Every device claim carries a random, one-time
 capability, an expiry and the current vehicle lease epoch. A device ACK
 cannot be used as an FC execution acknowledgment.
 
+Analytics and compute are cloud-owned: clients with `analytics:submit` scope POST
+`/api/v1/cloud-compute/jobs` with `fleet_health` or `mission_portfolio`,
+then read their own report using `GET /api/v1/cloud-compute/jobs/{id}`.
+The queue is PostgreSQL-backed; an isolated worker processes at most 16 queued
+jobs per tenant, with 512 retained results per tenant. Both request and output
+are read-only, strictly bounded, and never authorize flight commands. See
+[thin-client offload contract](THIN_CLIENT_OFFLOAD.md).
+
 Telemetry sessions are independent: the server issues a monotonically
 increasing epoch per vehicle; client sequence must increase.
 The provided `ObservationUplink` creates explicit cloud sessions, uses
@@ -142,6 +152,8 @@ marks telemetry stale after five seconds without new accepted samples.
 | GET | `/api/v1/missions/{id}` | fleet:read |
 | POST | `/api/v1/device/jobs/claim` | device jobs:claim |
 | POST | `/api/v1/device/jobs/{job}/ack` | device jobs:ack |
+| POST | `/api/v1/cloud-compute/jobs` | analytics:submit (cloud background reporting) |
+| GET | `/api/v1/cloud-compute/jobs/{id}` | fleet:read (requesting operator only) |
 | POST | `/api/v1/device/telemetry/session` | device telemetry:write |
 | POST | `/api/v1/device/telemetry` | device telemetry:write |
 | GET | `/api/v1/fleet/status` | fleet:read |
