@@ -53,9 +53,11 @@ testing. A crash before commit safely leaves a **read-only analysis** in
 queue for recomputation, unlike an unsafe uncertain aircraft command.
 
 Bounded quotas: at most 16 outstanding reports and 512 retained reports
-per tenant. At quota exhaustion, request fails 429; it never pushes
-computation to the GCS. Archive/pruning must be implemented and reviewed
-before quota exhaustion becomes an operational problem.
+per tenant. A dedicated worker prunes only completed reports after 24 hours,
+preserving durable mission state and outbox events; until pruning occurs,
+quota exhaustion returns HTTP 429. The GCS never becomes the computation
+fallback. This retention policy requires data-governance review before
+real operator deployments.
 
 ## Infrastructure, size and isolation
 
