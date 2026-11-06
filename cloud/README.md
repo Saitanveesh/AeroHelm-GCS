@@ -33,7 +33,8 @@ navigation, airspace approval or safety-case acceptance.
 
 Python 3.12, PostgreSQL 17, a trusted OIDC identity provider issuing RS256
 tokens with pinned issuer/audience/JWKS, a reviewed private TLS gateway,
-secret-manager provisioned database URL, encrypted backups, audit retention,
+secret-manager provisioned database URL, explicit `AEROHELM_ALLOWED_HOSTS`
+private-host allowlist, encrypted backups, audit retention,
 network firewall/mesh ACLs and a trained on-site flight safety authority.
 
 In the repository root, install dependencies into a private Python venv:
