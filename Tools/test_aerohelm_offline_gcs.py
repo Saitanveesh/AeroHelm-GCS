@@ -285,6 +285,21 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("string.Equals(ssoOrigin,address,StringComparison.OrdinalIgnoreCase)", gate)
         self.assertIn("Kerberos gateway must share the exact cloud HTTPS origin.", gate)
 
+    def test_persistent_cloud_watchdog_never_auto_switches_pilot_link(self):
+        toolbar = source("plugins/AeroHelmCloud.cs")
+        self.assertIn("_cloudLinkWatchdog.Interval=5000", toolbar)
+        self.assertIn("async Task CheckCloudLinkAsync()", toolbar)
+        self.assertIn('OperationsApi.Request(', toolbar)
+        self.assertIn('"GET","api/v1/mavlink/health"', toolbar)
+        self.assertIn("NO automatic failover", toolbar)
+        self.assertIn("PILOT DIRECT is independent", toolbar)
+        self.assertIn("_cloudLinkWatchdog.Dispose()", toolbar)
+        method = toolbar.split("private async Task CheckCloudLinkAsync()",1)[1]
+        method = method.split("private static ToolStripButton NewToolbarButton",1)[0]
+        for forbidden in ("main.doConnect", "Stop-Process", "ws.SendAsync",
+                          "MAV_CMD", "PARAM_SET"):
+            self.assertNotIn(forbidden, method)
+
     def test_login_modal_cannot_be_hidden_by_topmost_splash(self):
         program = source("Program.cs")
         gate = source("AeroHelmStartupGate.cs")
