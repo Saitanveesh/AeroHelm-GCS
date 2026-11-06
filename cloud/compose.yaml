@@ -24,6 +24,8 @@ services:
       dockerfile: cloud/Dockerfile
     restart: unless-stopped
     env_file: .env
+    secrets:
+      - app_database_url
     depends_on:
       database:
         condition: service_healthy
@@ -42,3 +44,6 @@ volumes:
 secrets:
   db_password:
     file: ./secrets/db_password.txt
+
+  app_database_url:
+    file: ./secrets/app_database_url.txt
