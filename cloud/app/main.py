@@ -523,7 +523,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             mission = scoped_mission(db, p.tenant, str(mission_id), lock=True)
             if p.subject == mission.creator:
                 raise HTTPException(403, "Two-person approval required")
-            if not hmac.compare_digest(mission.digest, body.plan_sha256):
+            if (not hmac.compare_digest(mission.digest, body.plan_sha256) or
+                    not hmac.compare_digest(mission.digest,
+                                            digest(mission.specification))):
                 raise HTTPException(409, "Mission digest differs from reviewed plan")
             previous = request_seen(db, p, body.request_id, "approve", payload_sha)
             if previous:
@@ -553,6 +555,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return show_mission(db, mission)
             if mission.status != "APPROVED_SIM":
                 raise HTTPException(409, "Mission not approved")
+            if not hmac.compare_digest(mission.digest, digest(mission.specification)):
+                raise HTTPException(409, "Approved mission content failed integrity verification")
             ids = {}
             active_names = sorted({item["vehicle_id"]
                                    for item in mission.specification["assignments"]})
