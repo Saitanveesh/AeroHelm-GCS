@@ -27,6 +27,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _survey;
         private ToolStripButton _vision;
         private ToolStripButton _link;
+        private ToolStripButton _paths;
         private ToolStripButton _ops;
         private ToolStripButton _intel;
         private ToolStripButton _touch;
@@ -98,6 +99,15 @@ namespace AeroHelm.GcsCloud
                     window.ShowDialog(MainV2.instance);
             };
             menu.Items.Insert(at++, _link);
+
+            _paths = NewToolbarButton("PATHS", "Cloud receive-only observation or deliberate pilot telemetry-radio/USB backup");
+            _paths.Click += delegate
+            {
+                using (var window = new AeroHelmLinkSelector())
+                    if (window.ShowDialog(MainV2.instance) == DialogResult.OK)
+                        AeroHelmTouchPanel.OpenSelectedFlightPath(window.Selection, MainV2.instance);
+            };
+            menu.Items.Insert(at++, _paths);
 
             _ops = NewToolbarButton("OPS", "Simulation mission execution and supervised bench calibration");
             _ops.Click += delegate
@@ -255,6 +265,7 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_survey);
                     main.MainMenu.Items.Remove(_vision);
                     main.MainMenu.Items.Remove(_link);
+                    main.MainMenu.Items.Remove(_paths);
                     main.MainMenu.Items.Remove(_ops);
                     main.MainMenu.Items.Remove(_intel);
                     main.MainMenu.Items.Remove(_touch);
@@ -264,7 +275,7 @@ namespace AeroHelm.GcsCloud
                 // symbols when the plugin is unloaded; do not leak WinForms
                 // GDI handles across repeated plugin lifecycle tests.
                 foreach(var item in new ToolStripButton[]{
-                    _button,_survey,_vision,_link,_ops,_intel,_touch,_paths
+                    _button,_survey,_vision,_link,_paths,_ops,_intel,_touch,_paths
                 })
                 {
                     if(item.Image!=null)
@@ -279,6 +290,7 @@ namespace AeroHelm.GcsCloud
                 _survey = null;
                 _vision = null;
                 _link = null;
+                _paths = null;
                 _ops = null;
                 _intel = null;
                 _touch = null;
