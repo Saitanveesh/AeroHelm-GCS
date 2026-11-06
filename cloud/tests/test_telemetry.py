@@ -47,6 +47,7 @@ def test_real_hardware_is_observable_but_never_actuated():
         assert state["fresh"] is True
         assert state["observation"]["battery_pct"] == 78
         assert state["flight_ready"] is False
+        assert state["observation_source"] == "DEVICE_REPORTED_UNVERIFIED"
         assert client.get("/api/v1/fleet/status", headers=jwt_header()).json()[
             "cloud_flight_authorized"] is False
         assert client.post("/api/v1/vehicles/PIX-01/lease",
