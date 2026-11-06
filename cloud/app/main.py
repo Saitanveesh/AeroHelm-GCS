@@ -38,6 +38,9 @@ RUNNING = "RUNNING_SIM"
 JOB_TERMINAL = {"COMPLETED_SIM", "REJECTED_SIM", "TIMED_OUT", "LEASE_LOST", "CANCELLED_SIM"}
 CLAIM_SECONDS = 10
 ACCEPT_SECONDS = 30
+MAX_VEHICLES_PER_TENANT = 128
+MAX_MISSIONS_PER_TENANT = 2048
+EXPECTED_MIGRATION = "0001_initial"
 
 
 class VehicleCreate(BaseModel):
@@ -111,6 +114,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                              "idempotency", "job_ack_inbox", "event_outbox",
                              "telemetry_latest"):
                     connection.execute(text("SELECT 1 FROM " + name + " LIMIT 1"))
+                version = connection.scalar(text("SELECT version_num FROM alembic_version"))
+                if version != EXPECTED_MIGRATION:
+                    raise RuntimeError("Cloud schema migration differs from application version")
         try:
             yield
         finally:
@@ -139,6 +145,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Transactional outbox; no credentials, token claims or raw UAV data.
         db.add(OutboxEvent(tenant=tenant, at=now(db), event_type=typ,
                            aggregate_id=aggregate, body={"actor": actor, "mode": "SIM_ONLY"}))
+
+    def tenant_write_lock(db: Session, tenant: str):
+        # Serialize quota-sensitive tenant writes across PostgreSQL API workers.
+        # Lock key is namespace-scoped; it is not held after transaction commit.
+        if db.bind.dialect.name == "postgresql":
+            db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:name))"),
+                       {"name": "aerohelm-fleet:" + tenant})
 
     def scoped_vehicle(db: Session, tenant: str, ident: str, *, lock=False) -> Vehicle:
         q = select(Vehicle).where(Vehicle.tenant == tenant, Vehicle.name == ident)
@@ -261,11 +274,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "deployment_readiness": "REQUIRES_INDEPENDENT_ACCEPTANCE",
         }
 
+    @app.get("/api/v1/fleet/metrics")
+    def fleet_metrics(p: Principal = Depends(identity),
+                      db: Session = Depends(database)):
+        p.require("fleet:read")
+        vehicles = list(db.scalars(select(Vehicle).where(
+            Vehicle.tenant == p.tenant)).all())
+        missions = list(db.scalars(select(Mission.status).where(
+            Mission.tenant == p.tenant)).all())
+        queued = db.scalar(select(func.count(Job.id)).where(
+            Job.tenant == p.tenant, Job.status == "QUEUED_SIM"))
+        latest = {r.vehicle_id: r for r in db.scalars(select(TelemetryLatest).where(
+            TelemetryLatest.tenant == p.tenant)).all()}
+        cutoff = now(db) - 5
+        return {
+            "vehicles": len(vehicles),
+            "virtual_vehicles": sum(v.kind == "virtual" for v in vehicles),
+            "hardware_observation_only": sum(v.kind == "hardware" for v in vehicles),
+            "fresh_telemetry_sources": sum(
+                (latest.get(v.id) is not None and
+                 latest[v.id].received_at is not None and
+                 latest[v.id].received_at >= cutoff) for v in vehicles),
+            "missions_by_state": {
+                state: missions.count(state) for state in sorted(set(missions))
+            },
+            "queued_virtual_jobs": queued,
+            "physical_control_enabled": False,
+        }
+
     @app.post("/api/v1/vehicles", status_code=201)
     def register_vehicle(body: VehicleCreate, p: Principal = Depends(identity),
                          db: Session = Depends(database)):
         p.require("fleet:admin")
         with db.begin():
+            tenant_write_lock(db, p.tenant)
             prior = db.scalar(select(Vehicle).where(
                 Vehicle.tenant == p.tenant, Vehicle.name == body.vehicle_id))
             if prior:
@@ -273,6 +315,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if (body.kind == "virtual" and not
                     body.vehicle_id.startswith(("SIM-", "AH-SIM-"))):
                 raise HTTPException(422, "Virtual vehicle requires a SIM- namespace")
+            count = db.scalar(select(func.count(Vehicle.id)).where(
+                Vehicle.tenant == p.tenant))
+            if count >= MAX_VEHICLES_PER_TENANT:
+                raise HTTPException(429, "Tenant vehicle quota reached")
             vehicle = Vehicle(id=str(uuid.uuid4()), tenant=p.tenant, name=body.vehicle_id,
                               kind=body.kind, profile=body.profile.model_dump(),
                               created_at=now(db))
@@ -417,9 +463,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload = body.model_dump(mode="json")
         payload_sha = digest(payload)
         with db.begin():
+            tenant_write_lock(db, p.tenant)
             previous = request_seen(db, p, body.request_id, "create", payload_sha)
             if previous:
                 return show_mission(db, scoped_mission(db, p.tenant, previous.resource))
+            count = db.scalar(select(func.count(Mission.id)).where(
+                Mission.tenant == p.tenant))
+            if count >= MAX_MISSIONS_PER_TENANT:
+                raise HTTPException(429, "Tenant mission quota reached")
             profiles = {}
             vehicles = {}
             for ident in sorted(body.vehicle_ids):
