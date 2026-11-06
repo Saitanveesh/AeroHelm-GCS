@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class VehicleProfile(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     home_lat: float = Field(ge=-85, le=85)
     home_lon: float = Field(ge=-180, le=180)
     energy_wh: float = Field(gt=0, le=5000)
@@ -21,7 +21,7 @@ class VehicleProfile(BaseModel):
 
 
 class TaskSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     key: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     latitude: float = Field(ge=-85, le=85)
     longitude: float = Field(ge=-180, le=180)
@@ -31,7 +31,7 @@ class TaskSpec(BaseModel):
 
 
 class MissionSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     request_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     vehicle_ids: list[str] = Field(min_length=1, max_length=8)
     tasks: list[TaskSpec] = Field(min_length=1, max_length=64)
