@@ -15,7 +15,7 @@ $plugins=Join-Path $runtime 'plugins'
 $plugin=Join-Path $plugins 'AeroHelm.Cloud.Plugin.Validation.dll'
 $logRoot=Join-Path $root 'build-logs'
 $manifestPath=Join-Path $logRoot 'aerohelm-consolidated-release.json'
-$expectedBranch='feat/gcs-research-cybershield-twin-ui'
+$expectedBranch='feat/gcs-touch-ux-readonly-fleet-r1'
 $modules=@('FLIGHT','PLAN','VISION','OPS','SECURITY','FLEET','LINK','ANALYTICS','SETTINGS')
 $toolbar=@('CLOUD','SURVEY','VISION','LINK','OPS','INTEL','TOUCH','PATHS')
 
