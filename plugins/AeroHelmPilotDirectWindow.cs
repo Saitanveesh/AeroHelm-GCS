@@ -143,7 +143,7 @@ namespace AeroHelm.GcsCloud
         {
             string port=ports.SelectedItem as string;
             string baud=baudrates.SelectedItem as string;
-            if(port==null || !Regex.IsMatch(port,@"^COM[0-9]{1,4}$") ||
+            if(port==null || !Regex.IsMatch(port,@"^COM[0-9]{1,4}$",RegexOptions.IgnoreCase) ||
                baud==null || !Regex.IsMatch(baud,@"^[0-9]{4,6}$"))
             {
                 MessageBox.Show(this,"Select a valid observed COM port and baud rate.",
