@@ -24,7 +24,7 @@ namespace AeroHelm.GcsCloud
 
         internal AeroHelmCloudAttitudeWindow()
         {
-            Text="AeroHelm — Cloud attitude OBSERVATION ONLY";
+            Text=VihangaVedikaProduct.Name + " — Cloud Attitude (Observation Only)";
             Width=820; Height=650;
             MinimumSize=new Drawing.Size(570,470);
             StartPosition=FormStartPosition.CenterParent;
