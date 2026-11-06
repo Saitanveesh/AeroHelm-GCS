@@ -1,0 +1,71 @@
+name: AeroHelm Cloud Control Plane
+on:
+  push:
+    branches:
+      - feat/cloud-fleet-control-plane-r1
+    paths:
+      - 'cloud/**'
+      - '.github/workflows/aerohelm-cloud-control-plane.yml'
+  pull_request:
+    paths:
+      - 'cloud/**'
+      - '.github/workflows/aerohelm-cloud-control-plane.yml'
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: cloud/requirements.txt
+      - name: Install cloud test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r cloud/requirements.txt alembic
+      - name: Compile Python modules
+        run: python -m compileall -q cloud/app cloud/tests cloud/migrations
+      - name: Run cloud API and adversarial regression suite
+        run: python -m pytest -q cloud/tests
+      - name: Check no GCS/serial command imports
+        run: |
+          if grep -REn 'mavutil|mavlink_connection|command_long_send|param_set_send|Serial\(' cloud/app; then
+            echo "Forbidden aircraft IO primitive in cloud authority path"; exit 1
+          fi
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: aerohelm_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d aerohelm_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+    env:
+      AEROHELM_DATABASE_URL: postgresql+psycopg://ci:ci_password@localhost:5432/aerohelm_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r cloud/requirements.txt alembic
+      - name: Apply durable PostgreSQL migration
+        run: python -m alembic -c cloud/alembic.ini upgrade head
+      - name: Verify migratable schema and production settings
+        run: |
+          AEROHELM_CLOUD_MODE=production \
+          AEROHELM_OIDC_ISSUER=https://issuer.example.invalid \
+          AEROHELM_OIDC_JWKS_URL=https://issuer.example.invalid/jwks \
+          python -c 'from cloud.app.main import create_app; app=create_app(); print(app.title)'
+      - name: Validate initial migration repeatability
+        run: python -m alembic -c cloud/alembic.ini upgrade head
