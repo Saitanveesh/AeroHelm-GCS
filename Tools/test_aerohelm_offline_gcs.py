@@ -154,6 +154,25 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("no token or ticket created", pages)
         self.assertIn("requires a provisioned KDC, SPNEGO gateway", pages)
 
+    def test_explicit_cloud_and_pilot_radio_backup_paths(self):
+        selector = source("plugins/AeroHelmLinkSelector.cs")
+        panel = source("plugins/AeroHelmTouchPanel.cs")
+        plugin = source("plugins/AeroHelmCloud.cs")
+        csproj = source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
+        self.assertIn("AeroHelmLinkPath { Cancel, CloudReadOnly, PilotDirect }", selector)
+        self.assertIn("NO AUTO-FAILOVER", selector)
+        self.assertIn("normal COM port and baud controls", selector)
+        self.assertIn("new AeroHelmLinkSelector()", panel)
+        self.assertIn("OpenSelectedFlightPath(", panel)
+        self.assertIn("bridge == null || (!bridge.IsListening && !bridge.Start())", panel)
+        self.assertIn("main.MenuFlightData.PerformClick();", panel)
+        self.assertIn("doConnect(MainV2.comPort", panel)
+        self.assertIn('NewToolbarButton("PATHS"', plugin)
+        self.assertIn("AeroHelmTouchPanel.OpenSelectedFlightPath", plugin)
+        self.assertIn("AeroHelmLinkSelector.cs", csproj)
+        self.assertNotIn("Stop-Process", selector)
+        self.assertNotIn("command_long_send", selector)
+
     def test_session_launcher_has_one_unbroken_port_and_login_flow(self):
         session = source("scripts/Start-AeroHelm-Session.ps1")
         self.assertEqual(session.count("AEROHELM_VISION_AUTO_OPEN"), 1)
