@@ -81,8 +81,8 @@ class AckIn(BaseModel):
 class TelemetryObservation(BaseModel):
     """Normalized observation only; no raw MAVLink, firmware or command fields."""
     model_config = ConfigDict(extra="forbid")
-    epoch: int = Field(ge=1)
-    sequence: int = Field(ge=1)
+    epoch: int = Field(ge=1, le=2147483647)
+    sequence: int = Field(ge=1, le=2147483647)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     altitude_m: float | None = Field(default=None, ge=-1000, le=30000)
@@ -372,6 +372,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                         received_at=None, observation=None)
                 db.add(state)
             else:
+                if state.epoch >= 2147483647:
+                    raise HTTPException(409, "Telemetry epoch exhausted; device re-enrollment required")
                 state.epoch += 1  # fencing: stale sessions cannot revive a link
                 state.sequence = 0
                 state.received_at = None
@@ -468,6 +470,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                  holder=p.subject, epoch=1, expires_at=timestamp + body.duration_seconds)
                 db.add(existing)
             else:
+                if existing.epoch >= 2147483647:
+                    raise HTTPException(409, "Vehicle lease epoch exhausted")
                 existing.holder = p.subject
                 existing.epoch += 1  # fence all previously issued claims
                 existing.expires_at = timestamp + body.duration_seconds
