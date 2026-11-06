@@ -336,6 +336,7 @@ namespace AeroHelm.GcsCloud
         private readonly TextBox _username = new TextBox();
         private readonly TextBox _password = new TextBox();
         private readonly Button _login = new Button();
+        private readonly Button _issuedToken = new Button();
         private readonly Button _refresh = new Button();
         private readonly Button _connect = new Button();
         private readonly Button _disconnect = new Button();
@@ -349,6 +350,7 @@ namespace AeroHelm.GcsCloud
         private string _connectionId;
         private List<AircraftInfo> _aircraftData = new List<AircraftInfo>();
         private bool _busy;
+        private bool _cloudR2;
 
         // Neutral, high-contrast interface; deliberately separate from legacy
         // Mission Planner button theming. Hardware actions remain unavailable.
@@ -392,7 +394,11 @@ namespace AeroHelm.GcsCloud
             _username.Dock = DockStyle.Fill;
             _password.UseSystemPasswordChar = true;
             _password.Dock = DockStyle.Fill;
-            _login.Text = "Sign in & list aircraft";
+            _login.Text = "Legacy sign in";
+            _issuedToken.Text = "Use issued cloud token";
+            _issuedToken.AutoSize = true;
+            _issuedToken.ToolTipText = "Paste a short-lived operator token in the masked credential field. " +
+                "The configured cloud server validates its signature, scopes, issuer and audience.";
             _refresh.Text = "Refresh aircraft";
             _connect.Text = "Connect view";
             _disconnect.Text = "Disconnect view";
@@ -401,7 +407,10 @@ namespace AeroHelm.GcsCloud
             AddLine(grid, 1, "Username", _username);
             AddLine(grid, 2, "Password", _password);
             var loginRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = false };
+            loginRow.WrapContents = false;
+            loginRow.AutoScroll = true;
             loginRow.Controls.Add(_login);
+            loginRow.Controls.Add(_issuedToken);
             loginRow.Controls.Add(_refresh);
             _login.AutoSize = true;
             _refresh.AutoSize = true;
@@ -421,7 +430,8 @@ namespace AeroHelm.GcsCloud
 
             var caveat = new Label
             {
-                Text = "Connect opens a cloud telemetry-view session only. It does NOT connect Mission Planner's MAVLink stream or grant flight-control authority.",
+                Text = "Legacy login uses username and password. Cloud R2 requires an issued operator token in the masked field. " +
+                       "Neither session grants flight authority.",
                 Dock = DockStyle.Fill,
                 AutoEllipsis = true,
                 ForeColor = FrameworkDrawing::System.Drawing.Color.DarkRed
@@ -435,6 +445,7 @@ namespace AeroHelm.GcsCloud
             grid.SetColumnSpan(_status, 2);
 
             _login.Click += async (s, e) => await LoginAsync();
+            _issuedToken.Click += async (s, e) => await UseIssuedTokenAsync();
             _refresh.Click += async (s, e) => await RefreshAsync();
             _connect.Click += async (s, e) => await ConnectAsync();
             _disconnect.Click += async (s, e) => await DisconnectAsync();
@@ -446,10 +457,24 @@ namespace AeroHelm.GcsCloud
                 _baseUrl = Program.AeroHelmCloudOrigin;
                 _accessToken = Program.AeroHelmOperatorToken;
                 _tokenDeadline = Program.AeroHelmTokenExpiresUtc;
-                _status.Text = "Authenticated at AeroHelm startup. Refreshing aircraft...";
-                Shown += async (s,e) => { try { await RefreshInternalAsync(); }
-                    catch (Exception ex) { _status.Text = ex.Message; }
-                    finally { UpdateButtons(); } };
+                _status.Text = "Startup operator session detected. Verifying service capability...";
+                Shown += async (sender,args) => {
+                    try
+                    {
+                        var capability = await Task.Run(() => Request(
+                            _baseUrl, "/api/v1/capabilities", "GET", _accessToken, null));
+                        var doc = _json.Deserialize<Dictionary<string,object>>(capability);
+                        _cloudR2 = IsR2ViewOnly(doc);
+                        await RefreshInternalAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        _cloudR2 = false;
+                        _status.Text = "Startup session unavailable for Cloud R2: " +
+                            SafeCloudError(ex);
+                    }
+                    finally { UpdateButtons(); }
+                };
             }
             UpdateButtons();
         }
@@ -471,13 +496,16 @@ namespace AeroHelm.GcsCloud
         private void UpdateButtons()
         {
             _login.Enabled = !_busy;
+            _issuedToken.Enabled = !_busy;
             _refresh.Enabled = !_busy && Authenticated;
             bool selected = _aircraft.SelectedIndex >= 0 && _aircraft.SelectedIndex < _aircraftData.Count;
             bool onlineHardware = selected &&
                                   _aircraftData[_aircraft.SelectedIndex].source == "hardware" &&
                                   _aircraftData[_aircraft.SelectedIndex].connection == "online";
-            _connect.Enabled = !_busy && Authenticated && onlineHardware && string.IsNullOrEmpty(_connectionId);
-            _disconnect.Enabled = !_busy && Authenticated && !string.IsNullOrEmpty(_connectionId);
+            _connect.Enabled = !_busy && !_cloudR2 && Authenticated &&
+                onlineHardware && string.IsNullOrEmpty(_connectionId);
+            _disconnect.Enabled = !_busy && !_cloudR2 && Authenticated &&
+                !string.IsNullOrEmpty(_connectionId);
         }
 
         private void SetBusy(bool busy, string message)
@@ -548,6 +576,87 @@ namespace AeroHelm.GcsCloud
             }
         }
 
+        private static bool IsR2ViewOnly(Dictionary<string,object> document)
+        {
+            if(document==null)return false;
+            object fleet,hardware,durable;
+            if(!document.TryGetValue("cloud_fleet_control_plane",out fleet) ||
+               !document.TryGetValue("physical_aircraft_dispatch",out hardware) ||
+               !document.TryGetValue("durable_state",out durable))
+                return false;
+            return fleet is bool && (bool)fleet &&
+                   hardware is bool && !(bool)hardware &&
+                   durable is bool && (bool)durable;
+        }
+
+        private static string SafeCloudError(Exception ex)
+        {
+            // Never include HTTP payloads or bearer tokens in the operator UI.
+            var message=ex as InvalidOperationException;
+            if(message!=null && message.Message.StartsWith("Cloud request failed (HTTP ",
+                StringComparison.Ordinal))
+                return message.Message;
+            return "Request unavailable; inspect the private origin, token validity and service.";
+        }
+
+        private async Task UseIssuedTokenAsync()
+        {
+            if(_busy)return;
+            string value=_password.Text.Trim();
+            _password.Clear();
+            string origin;
+            try
+            {
+                origin=ParseServer(_server.Text).GetLeftPart(UriPartial.Authority);
+                if(value.Length<64 || value.Length>8192 || value.Split('.').Length!=3)
+                    throw new InvalidOperationException(
+                        "Paste a valid, short-lived operator JWT issued by the trusted identity provider.");
+            }
+            catch(Exception)
+            {
+                value=null;
+                _status.Text="A trusted private origin and issued operator JWT are required.";
+                return;
+            }
+            SetBusy(true,"Verifying the issued token with the private cloud...");
+            try
+            {
+                string candidate=value;
+                var response=await Task.Run(()=>Request(origin,"/api/v1/capabilities",
+                    "GET",candidate,null));
+                if(!IsR2ViewOnly(_json.Deserialize<Dictionary<string,object>>(response)))
+                    throw new InvalidOperationException(
+                        "Cloud R2 did not confirm the observation-only capability boundary.");
+                // An issued token is not generated or signed by the GCS. The
+                // cloud verified it; the GCS caps in-memory use to 15 minutes.
+                _baseUrl=origin;
+                _accessToken=candidate;
+                _tokenDeadline=DateTime.UtcNow.AddMinutes(15);
+                _connectionId=null;
+                _cloudR2=true;
+                _aircraftData.Clear();
+                _aircraft.Items.Clear();
+                Program.AeroHelmOperatorToken=candidate;
+                Program.AeroHelmTokenExpiresUtc=_tokenDeadline;
+                Program.AeroHelmCloudOrigin=origin;
+                try{AeroHelmWorkspaceSettings.Save("cloud-url",origin);}
+                catch(IOException){}
+                catch(UnauthorizedAccessException){}
+                await RefreshInternalAsync();
+            }
+            catch(Exception ex)
+            {
+                _cloudR2=false;
+                _accessToken=null;
+                _status.Text="Cloud R2 sign-in unavailable: "+SafeCloudError(ex);
+            }
+            finally
+            {
+                value=null;
+                SetBusy(false,_status.Text);
+            }
+        }
+
         private async Task LoginAsync()
         {
             if (_busy) return;
@@ -565,6 +674,7 @@ namespace AeroHelm.GcsCloud
             // Do not retain password in the UI beyond this request.
             _password.Text = "";
             _accessToken = null;
+            _cloudR2 = false;
             _connectionId = null;
             _aircraftData.Clear();
             _aircraft.Items.Clear();
@@ -582,6 +692,7 @@ namespace AeroHelm.GcsCloud
                 catch (IOException) { }
                 catch (UnauthorizedAccessException) { }
                 _accessToken = parsed.access_token;
+                _cloudR2 = false;
                 Program.AeroHelmOperatorToken = _accessToken;
                 Program.AeroHelmCloudOrigin = origin;
                 Program.AeroHelmTokenExpiresUtc = DateTime.UtcNow.AddSeconds(
@@ -609,22 +720,90 @@ namespace AeroHelm.GcsCloud
 
         private async Task RefreshInternalAsync()
         {
-            if (!Authenticated)
-                throw new InvalidOperationException("Sign in again; cloud session expired.");
-            string body = await Task.Run(() => Request(_baseUrl, "/api/v1/vehicles", "GET", _accessToken, null));
-            var devices = _json.Deserialize<List<AircraftInfo>>(body) ?? new List<AircraftInfo>();
-            _aircraftData = devices;
+            if(!Authenticated)
+                throw new InvalidOperationException("Cloud session expired; sign in again.");
+            List<AircraftInfo> devices;
+            if(_cloudR2)
+            {
+                string body=await Task.Run(()=>Request(_baseUrl,"/api/v1/fleet/status",
+                    "GET",_accessToken,null));
+                if(body.Length>131072)
+                    throw new InvalidOperationException("Fleet response exceeds size limit.");
+                var state=_json.Deserialize<Dictionary<string,object>>(body);
+                object authorized;
+                if(state==null || !state.TryGetValue("cloud_flight_authorized",out authorized) ||
+                   !(authorized is bool) || (bool)authorized)
+                    throw new InvalidOperationException(
+                        "Cloud fleet response lacks observation-only assurance.");
+                object entries;
+                var rows=state.TryGetValue("vehicles",out entries) ?
+                    entries as object[] : null;
+                if(rows==null || rows.Length>128)
+                    throw new InvalidOperationException("Cloud fleet response exceeds the 128-vehicle limit.");
+                devices=new List<AircraftInfo>();
+                foreach(var item in rows)
+                {
+                    var row=item as Dictionary<string,object>;
+                    if(row==null)continue;
+                    object id,kind,limit;
+                    if(!row.TryGetValue("vehicle_id",out id) || !(id is string) ||
+                       !row.TryGetValue("kind",out kind) || !(kind is string))
+                        continue;
+                    if(row.TryGetValue("physical_control_enabled",out limit) &&
+                       (!(limit is bool) || (bool)limit))
+                        throw new InvalidOperationException(
+                            "Cloud fleet advertised unexpected physical command authority.");
+                    string vehicle=(string)id,vehicleKind=(string)kind;
+                    if(vehicle.Length<3 || vehicle.Length>64 ||
+                       (vehicleKind!="virtual" && vehicleKind!="hardware"))
+                        continue;
+                    object telemetryValue;
+                    var telemetry=row.TryGetValue("telemetry",out telemetryValue) ?
+                        telemetryValue as Dictionary<string,object> : null;
+                    object ageValue,freshValue,obsValue,sessionValue;
+                    double age=0;
+                    bool ageOk=telemetry!=null && telemetry.TryGetValue("age_s",out ageValue) &&
+                        ageValue!=null && double.TryParse(Convert.ToString(ageValue,
+                          System.Globalization.CultureInfo.InvariantCulture),
+                          System.Globalization.NumberStyles.Float,
+                          System.Globalization.CultureInfo.InvariantCulture,out age) &&
+                        !double.IsInfinity(age) && !double.IsNaN(age) && age>=0 && age<=5;
+                    bool recent=ageOk && telemetry.TryGetValue("fresh",out freshValue) &&
+                        freshValue is bool && (bool)freshValue &&
+                        telemetry.TryGetValue("session_epoch",out sessionValue) &&
+                        sessionValue!=null && telemetry.TryGetValue("observation",out obsValue) &&
+                        obsValue is Dictionary<string,object>;
+                    var obs=recent?(Dictionary<string,object>)obsValue:null;
+                    object mode;
+                    devices.Add(new AircraftInfo {
+                        vehicle_id=vehicle,
+                        source=vehicleKind,
+                        connection=recent?"reported fresh":"STALE / NO DATA",
+                        mode=obs!=null && obs.TryGetValue("mode",out mode)?
+                            Convert.ToString(mode):"UNKNOWN",
+                    });
+                }
+            }
+            else
+            {
+                string body=await Task.Run(()=>Request(_baseUrl,
+                    "/api/v1/vehicles","GET",_accessToken,null));
+                devices=_json.Deserialize<List<AircraftInfo>>(body) ?? new List<AircraftInfo>();
+            }
+            _aircraftData=devices;
             _aircraft.Items.Clear();
-            foreach (var d in devices)
-                _aircraft.Items.Add(d.vehicle_id + " | " + d.source + " | " + d.connection + " | " + (d.mode ?? "—"));
-            _status.Text = devices.Count == 0
-                ? "No live aircraft reported by the cloud. Start the Pi agent first."
-                : devices.Count + " aircraft registered (live state may expire).";
+            foreach(var entry in devices)
+                _aircraft.Items.Add(entry.vehicle_id+" | "+
+                   (entry.source=="virtual"?"SIMULATED":entry.source)+" | "+
+                   entry.connection+" | "+(entry.mode??"UNKNOWN"));
+            _status.Text=devices.Count==0 ?
+                "No observed vehicles. Check registered device identity and telemetry freshness." :
+                devices.Count+" vehicles listed; telemetry is not flight authorization.";
         }
 
         private async Task ConnectAsync()
         {
-            if (_busy || !Authenticated) return;
+            if (_busy || !Authenticated || _cloudR2) return;
             int index = _aircraft.SelectedIndex;
             if (index < 0 || index >= _aircraftData.Count) return;
             var d = _aircraftData[index];
@@ -646,7 +825,7 @@ namespace AeroHelm.GcsCloud
 
         private async Task DisconnectAsync()
         {
-            if (_busy || string.IsNullOrEmpty(_connectionId)) return;
+            if (_busy || _cloudR2 || string.IsNullOrEmpty(_connectionId)) return;
             string session = _connectionId;
             SetBusy(true, "Closing view session...");
             try
