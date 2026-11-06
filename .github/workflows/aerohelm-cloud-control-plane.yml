@@ -24,11 +24,13 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: cloud/requirements.txt
+          cache-dependency-path: |
+            cloud/requirements.txt
+            cloud/requirements-dev.txt
       - name: Install cloud test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r cloud/requirements.txt alembic
+          python -m pip install -r cloud/requirements-dev.txt
       - name: Compile Python modules
         run: python -m compileall -q cloud/app cloud/tests cloud/migrations
       - name: Run cloud API and adversarial regression suite
@@ -49,7 +51,7 @@ jobs:
       - name: Audit pinned cloud Python dependencies
         run: |
           python -m pip install --upgrade pip pip-audit
-          python -m pip_audit --strict -r cloud/requirements.txt
+          python -m pip_audit --strict -r cloud/requirements-dev.txt
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -58,7 +60,7 @@ jobs:
       - name: Build cloud-only container
         run: docker build -f cloud/Dockerfile -t aerohelm-cloud:ci .
       - name: Verify isolated cloud module imports
-        run: docker run --rm --entrypoint python aerohelm-cloud:ci -c "from cloud.app.main import create_app; from cloud.app.scheduler import run_forever; print('cloud image imports OK')"
+        run: docker run --rm --entrypoint python aerohelm-cloud:ci -c "import importlib.util; from cloud.app.main import create_app; from cloud.app.scheduler import run_forever; from cloud.app.compute_worker import run_forever as cloud_compute; assert importlib.util.find_spec('pytest') is None; print('cloud image imports OK, dev tests excluded')"
       - name: Validate example private Compose wiring
         run: |
           mkdir -p cloud/secrets
@@ -89,7 +91,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -r cloud/requirements.txt alembic
+      - run: python -m pip install -r cloud/requirements-dev.txt
       - name: Apply durable PostgreSQL migration
         run: python -m alembic -c cloud/alembic.ini upgrade head
       - name: Verify migratable schema and production settings
