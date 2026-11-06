@@ -1,0 +1,44 @@
+# Reference private deployment. Requires reviewed reverse proxy TLS, OIDC, secrets,
+# backups and ingress policy. Does NOT expose app/DB on public host ports.
+services:
+  database:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aerohelm
+      POSTGRES_USER: aerohelm
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - aerohelm-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aerohelm -d aerohelm"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+    networks: [private]
+  api:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      database:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [private]
+    # HTTPS terminator must be private/authenticated, with allowlisted forwarding.
+networks:
+  private:
+    internal: true
+volumes:
+  aerohelm-postgres:
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
