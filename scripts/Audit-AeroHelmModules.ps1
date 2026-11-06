@@ -1,69 +1,79 @@
-# Static release audit of the nine GCS workspaces and toolbar integrations.
-# No cloud requests, passwords, drone I/O, deletions or configuration writes.
+# Source-only Vihanga Vedika native toolbar and safety audit.
+# No network calls, UAV connections, source deletion or configuration writes.
 param([switch]$Export)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$touch=Get-Content -LiteralPath (Join-Path $root 'plugins\AeroHelmTouchPanel.cs') -Raw
 $toolbar=Get-Content -LiteralPath (Join-Path $root 'plugins\AeroHelmCloud.cs') -Raw
 $project=Get-Content -LiteralPath (Join-Path $root 'Plugins\AeroHelmCloud\AeroHelmCloud.Plugin.csproj') -Raw
 
 $bindings=@(
-    @{name='FLIGHT'; token='new AeroHelmLinkSelector()'; source='plugins\AeroHelmLinkSelector.cs'; purpose='Explicit cloud or pilot COM telemetry path'},
-    @{name='PLAN'; token='main.MenuFlightPlanner.PerformClick()'; source='MainV2.cs'; purpose='Native Mission Planner mission drafting'},
-    @{name='VISION'; token='new AeroHelmVisionWindow()'; source='plugins\AeroHelmWorkspace.cs'; purpose='Private camera viewer'},
-    @{name='OPS'; token='new AeroHelmOpsWindow()'; source='plugins\AeroHelmOperations.cs'; purpose='Bench and mission planning UI'},
-    @{name='SECURITY'; token='new AeroHelmReadOnlyPage("SECURITY")'; source='plugins\AeroHelmReadOnlyPages.cs'; purpose='Authenticated security/CyberShield views'},
-    @{name='FLEET'; token='new AeroHelmReadOnlyPage("FLEET")'; source='plugins\AeroHelmReadOnlyPages.cs'; purpose='Fleet registry and offline task lab'},
-    @{name='LINK'; token='new AeroHelmLinkWindow()'; source='plugins\AeroHelmWorkspace.cs'; purpose='Cloud, Pi and MAVLink diagnostics'},
-    @{name='ANALYTICS'; token='new AeroHelmReadOnlyPage("ANALYTICS")'; source='plugins\AeroHelmReadOnlyPages.cs'; purpose='History, digital shadow and twin lab'},
-    @{name='SETTINGS'; token='new AeroHelmTouchSettingsWindow()'; source='plugins\AeroHelmTouchPanel.cs'; purpose='Local account and privacy settings'}
+    @{name='CLOUD';   source='plugins\AeroHelmCloud.cs'; token='new CloudWindow()'; purpose='Private cloud sign-in and view sessions'},
+    @{name='PATHS';   source='plugins\AeroHelmLinkSelector.cs'; token='new AeroHelmLinkSelector()'; purpose='Explicit cloud viewer or pilot radio selection'},
+    @{name='SURVEY';  source='plugins\AeroHelmSurveyPlanner.cs'; token='new AeroHelmSurveyWindow()'; purpose='Local survey planning and draft export'},
+    @{name='VISION';  source='plugins\AeroHelmWorkspace.cs'; token='new AeroHelmVisionWindow()'; purpose='Private camera viewer'},
+    @{name='LINK';    source='plugins\AeroHelmWorkspace.cs'; token='new AeroHelmLinkWindow()'; purpose='Link quality and telemetry diagnostics'},
+    @{name='FLEET';   source='plugins\AeroHelmPlatformV2.cs'; token='new AeroHelmIntelWindow("FLEET")'; purpose='Cloud fleet observation'},
+    @{name='OPS';     source='plugins\AeroHelmOperations.cs'; token='new AeroHelmOpsWindow()'; purpose='Virtual mission workflow and native SITL'},
+    @{name='INTEL';   source='plugins\AeroHelmPlatformV2.cs'; token='new AeroHelmIntelWindow()'; purpose='Parameters, history, audit and cloud reports'}
 )
 $records=@()
+$missing=@()
 foreach($entry in $bindings){
-    $exists=Test-Path -LiteralPath (Join-Path $root $entry.source) -PathType Leaf
-    $wired=$touch.Contains($entry.token)
-    $builtInPlugin=$entry.source -like 'plugins\*'
-    $listed= -not $builtInPlugin -or $project.Contains([IO.Path]::GetFileName($entry.source))
-    $status=if($exists -and $wired -and $listed){'SOURCE WIRED'}else{'SOURCE INCOMPLETE'}
-    $records+= [pscustomobject]@{
-        workspace=$entry.name
-        source_status=$status
-        native_windows_runtime='NOT TESTED'
-        physical_hardware='NOT TESTED'
-        backend_capabilities='M1 deployed; M2/V3 requires separate activation/verification'
+    $path=Join-Path $root $entry.source
+    $exists=Test-Path -LiteralPath $path -PathType Leaf
+    $sourceText=if($exists){Get-Content -LiteralPath $path -Raw}else{''}
+    $built=$project.Contains([IO.Path]::GetFileName($entry.source))
+    # Some entry points belong in the toolbar plugin but the callable type
+    # is implemented in another compiled source file.
+    $wired=$toolbar.Contains($entry.token) -and
+           ($sourceText.Contains('class ') -or $entry.name -eq 'CLOUD')
+    $status=if($exists -and $wired -and $built){'SOURCE WIRED'}else{'SOURCE INCOMPLETE'}
+    if($entry.name -eq 'CLOUD'){$wired=$toolbar.Contains('new CloudWindow()')}
+    $records+=[pscustomobject]@{
+        module=$entry.name; source_status=$status;
+        windows_runtime='NOT TESTED'; aircraft='NOT TESTED';
         purpose=$entry.purpose
     }
+    if($status -ne 'SOURCE WIRED'){$missing+=$entry.name}
 }
-$toolbarEntries=@('CLOUD','SURVEY','VISION','LINK','OPS','INTEL','TOUCH','PATHS')
-$toolbarMissing=@()
-foreach($item in $toolbarEntries){
-    if($item -eq 'CLOUD'){
-        if(-not $toolbar.Contains('AeroHelmCloudButton')){$toolbarMissing+=$item}
-    }elseif(-not $toolbar.Contains('NewToolbarButton("'+$item+'"')){
-        $toolbarMissing+=$item
-    }
+foreach($module in @('PATHS','SURVEY','VISION','LINK','FLEET','OPS','INTEL')){
+    if(-not $toolbar.Contains('NewToolbarButton("'+$module+'"')){$missing+=$module}
 }
-Write-Host 'Nine-panel static source audit (NOT runtime certification):'
-$records | Format-Table workspace,source_status,native_windows_runtime -AutoSize | Out-Host
-Write-Host "Toolbar modules expected: $($toolbarEntries -join ', ')"
-Write-Host "Toolbar modules missing from source: $($toolbarMissing -join ', ')"
-Write-Host 'Cloud M2/V3 research services are staged and cannot be marked live by source checks.'
-Write-Host 'Real native Windows compilation, DLL loading, cloud auth and HUD remain test gates.'
+foreach($required in @('VihangaVedikaPresentation.cs','VihangaVedikaCloudR2.cs',
+                        'AeroHelmOperations.cs','AeroHelmPlatformV2.cs')){
+    if(-not $project.Contains($required)){$missing+=$required}
+}
+if($project.Contains('AeroHelmTouchPanel.cs') -or
+   $project.Contains('AeroHelmReadOnlyPages.cs') -or
+   $toolbar.Contains('NewToolbarButton("TOUCH"') -or
+   $toolbar.Contains('AEROHELM_TOUCH_STARTUP')){
+    $missing+='Redundant TOUCH UI remains enabled'
+}
+if(-not $toolbar.Contains('main.MenuSimulation.Visible = false') -or
+   -not $toolbar.Contains('"AEROHELM_REDUCED_TOOLBAR"), "1"')){
+    $missing+='Native SITL visibility is not explicit/opt-in'
+}
+$nativeBridge=Get-Content -LiteralPath (Join-Path $root 'plugins\AeroHelmReceiveOnlyBridge.cs') -Raw
+if($nativeBridge.Contains('ws.SendAsync(') -or
+   -not $nativeBridge.Contains('DrainGcsAsync')){
+    $missing+='Cloud bridge transmit guard'
+}
+Write-Host 'Vihanga Vedika native toolbar audit (source only):'
+$records | Format-Table module,source_status,windows_runtime -AutoSize | Out-Host
 if($Export){
-    $target=Join-Path $root 'build-logs\aerohelm-module-audit.json'
-    New-Item -Path (Split-Path -Parent $target) -ItemType Directory -Force | Out-Null
+    $output=Join-Path $root 'build-logs\vihanga-module-audit.json'
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Null
     [ordered]@{
-        schema='aerohelm.module-audit.v1'
-        audited_utc=[DateTime]::UtcNow.ToString('o')
+        schema='vihanga.gcs.module-audit.v2'
+        checked_utc=[DateTime]::UtcNow.ToString('o')
         source_only=$true
-        toolbar_missing=$toolbarMissing
-        workspace_records=$records
-        physical_flight_authorized=$false
-    } | ConvertTo-Json -Depth 8 |
-        Set-Content -LiteralPath $target -Encoding UTF8
-    Write-Host "Static audit report: $target"
+        modules=$records
+        failures=$missing
+        aircraft_control_authorized=$false
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $output -Encoding UTF8
+    Write-Host "Audit report: $output"
 }
-if(@($records | Where-Object {$_.source_status -ne 'SOURCE WIRED'}).Count -gt 0 -or
-   $toolbarMissing.Count -gt 0){
-    throw 'Missing GCS sources/bindings. Do NOT attempt to install an incomplete plugin.'
+if($missing.Count -gt 0){
+    throw "Incomplete native toolbar or safety contract: $($missing -join ', ')"
 }
+Write-Host 'PASS: native toolbar sources present. Windows compilation and aircraft acceptance remain independent.'
