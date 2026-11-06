@@ -5,6 +5,7 @@ on:
     branches:
       - feat/cloud-fleet-control-plane-r1
       - feat/cloud-analytics-offload-r1
+      - feat/cloud-oci-private-edge-r2
     paths:
       - 'cloud/**'
       - '.github/workflows/aerohelm-cloud-control-plane.yml'
@@ -32,9 +33,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r cloud/requirements-dev.txt
       - name: Compile Python modules
-        run: python -m compileall -q cloud/app cloud/tests cloud/migrations
+        run: python -m compileall -q cloud/app cloud/tests cloud/migrations cloud/edge cloud/deploy
       - name: Run cloud API and adversarial regression suite
-        run: python -m pytest -q cloud/tests
+        run: python -m pytest -q cloud/tests cloud/deploy/oci/test_staging_contract.py
       - name: Check no GCS/serial command imports
         run: |
           if grep -REn 'mavutil|mavlink_connection|command_long_send|param_set_send|Serial\(' cloud/app; then
@@ -64,11 +65,42 @@ jobs:
       - name: Validate example private Compose wiring
         run: |
           mkdir -p cloud/secrets
-          printf 'CI_ONLY_NOT_PRODUCTION\\n' > cloud/secrets/db_password.txt
-          printf 'postgresql+psycopg://aerohelm:CI_ONLY_NOT_PRODUCTION@database:5432/aerohelm\\n' > cloud/secrets/app_database_url.txt
+          printf 'CI_ONLY_NOT_PRODUCTION_ADMIN_PASSWORD_123456\\n' > cloud/secrets/db_admin_password.txt
+          printf 'CI_ONLY_NOT_PRODUCTION_APP_PASSWORD_123456\\n' > cloud/secrets/db_app_password.txt
+          printf 'CI_ONLY_NOT_PRODUCTION_MIGRATOR_PASSWORD_123456\\n' > cloud/secrets/db_migrator_password.txt
+          printf 'postgresql+psycopg://aerohelm_app:CI_ONLY_NOT_PRODUCTION_APP_PASSWORD_123456@database:5432/aerohelm\\n' > cloud/secrets/app_database_url.txt
+          printf 'postgresql+psycopg://aerohelm_migrator:CI_ONLY_NOT_PRODUCTION_MIGRATOR_PASSWORD_123456@database:5432/aerohelm\\n' > cloud/secrets/migrator_database_url.txt
           cp cloud/.env.example cloud/.env
-          docker compose -f cloud/compose.yaml config --quiet
+          docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml config --quiet
           rm -rf cloud/secrets cloud/.env
+  oci_database_bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Create disposable test credentials
+        run: |
+          python -m cloud.deploy.oci.bootstrap_secrets
+          cp cloud/.env.example cloud/.env
+      - name: Fresh-volume least-privilege schema migration smoke
+        env:
+          COMPOSE_PROJECT_NAME: aerohelm-oci-ci
+        run: |
+          set -eu
+          trap 'docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml --profile migrate down -v --remove-orphans' EXIT
+          docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml config --quiet
+          docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml up -d database
+          docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml --profile migrate run --rm migrate
+          docker compose -f cloud/compose.yaml -f cloud/compose.oci.yaml exec -T database bash -ec '
+            export PGPASSWORD="$(cat /run/secrets/db_app_password)"
+            RESULT="$(psql -h 127.0.0.1 -U aerohelm_app -d aerohelm -Atc "SELECT rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname=current_user")"
+            test "$RESULT" = "f|f|f"
+            psql -h 127.0.0.1 -U aerohelm_app -d aerohelm -Atc "SELECT count(*) FROM missions;" >/dev/null
+            psql -h 127.0.0.1 -U aerohelm_app -d aerohelm -Atc "SELECT version_num FROM alembic_version;" | grep -qx 0002_cloud_compute
+          '
   postgres:
     runs-on: ubuntu-latest
     timeout-minutes: 15
