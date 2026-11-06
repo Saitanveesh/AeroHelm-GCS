@@ -12,6 +12,7 @@
     <Compile Include="..\..\plugins\AeroHelmCloud.cs" Link="AeroHelmCloud.cs" />
     <Compile Include="..\..\plugins\AeroHelmReceiveOnlyBridge.cs" Link="AeroHelmReceiveOnlyBridge.cs" />
     <Compile Include="..\..\plugins\AeroHelmLinkSelector.cs" Link="AeroHelmLinkSelector.cs" />
+    <Compile Include="..\..\plugins\AeroHelmLinkSelector.cs" Link="AeroHelmLinkSelector.cs" />
     <Compile Include="..\..\plugins\AeroHelmCloudAttitudeWindow.cs" Link="AeroHelmCloudAttitudeWindow.cs" />
     <Compile Include="..\..\plugins\AeroHelmWorkspace.cs" Link="AeroHelmWorkspace.cs" />
     <Compile Include="..\..\plugins\AeroHelmSurveyPlanner.cs" Link="AeroHelmSurveyPlanner.cs" />
