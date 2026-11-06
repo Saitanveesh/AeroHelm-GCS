@@ -72,7 +72,8 @@ namespace AeroHelm.GcsCloud
             top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
             var back = new Button {
-                Text = "← MISSION PLANNER", Dock = DockStyle.Fill,
+                Text = "← NATIVE GCS", Dock = DockStyle.Fill,
+                AccessibleName = "Close AeroHelm workspace and return to native Mission Planner",
                 BackColor = Drawing.Color.FromArgb(36,36,36),
                 ForeColor = Drawing.Color.White, FlatStyle = FlatStyle.Flat
             };
@@ -85,6 +86,7 @@ namespace AeroHelm.GcsCloud
             };
             var close = new Button {
                 Text = "CLOSE  ×", Dock = DockStyle.Fill,
+                AccessibleName = "Close AeroHelm pilot workspace",
                 BackColor = Drawing.Color.FromArgb(36,36,36),
                 ForeColor = Drawing.Color.White, FlatStyle = FlatStyle.Flat
             };
