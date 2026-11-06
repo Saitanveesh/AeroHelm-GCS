@@ -264,6 +264,27 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn('private async Task Login()',gate)
         self.assertNotIn('cache.Add(url,"Basic"',gate)
 
+    def test_direct_pilot_module_is_compiled_and_never_auto_fails_over(self):
+        direct = source("plugins/AeroHelmPilotDirectWindow.cs")
+        selector = source("plugins/AeroHelmLinkSelector.cs")
+        project = source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
+        self.assertIn("AeroHelmPilotDirectWindow.cs", project)
+        self.assertIn("new AeroHelmPilotDirectWindow(main)", selector)
+        self.assertIn("NO AUTO-FAILOVER", selector)
+        self.assertIn("SerialPort.GetPortNames()", direct)
+        self.assertIn("MessageBoxButtons.YesNo", direct)
+        self.assertIn("MessageBoxDefaultButton.Button2", direct)
+        self.assertIn("main.doConnect(MainV2.comPort,port,baud,true,true)", direct)
+        self.assertIn("MainV2.comPort.BaseStream.IsOpen", direct)
+        self.assertNotIn("Stop-Process", direct)
+        self.assertNotIn("ws.SendAsync(", direct)
+        self.assertNotIn("autoReconnect = true", direct)
+
+    def test_kerberos_sso_uses_exact_cloud_origin(self):
+        gate = source("AeroHelmStartupGate.cs")
+        self.assertIn("string.Equals(ssoOrigin,address,StringComparison.OrdinalIgnoreCase)", gate)
+        self.assertIn("Kerberos gateway must share the exact cloud HTTPS origin.", gate)
+
     def test_login_modal_cannot_be_hidden_by_topmost_splash(self):
         program = source("Program.cs")
         gate = source("AeroHelmStartupGate.cs")
