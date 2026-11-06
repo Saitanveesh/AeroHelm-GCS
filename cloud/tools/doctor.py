@@ -57,7 +57,8 @@ def main(argv: list[str] | None = None) -> int:
                  "upgrade", "head"]):
             return 1
         return call([sys.executable, "-m", "pytest", "-q",
-                     "cloud/tests/test_postgres_races.py"])
+                     "cloud/tests/test_postgres_races.py",
+                     "cloud/tests/test_analytics_postgres.py"])
     print("Building the cloud-only container; no deploy, no registry push.")
     return call(["docker", "build", "-f", "cloud/Dockerfile",
                  "-t", "aerohelm-cloud:test-local", "."])
