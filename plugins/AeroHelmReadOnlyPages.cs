@@ -694,7 +694,12 @@ namespace AeroHelm.GcsCloud
                     availableAircraft.Items.Add(id);
                     bool fresh = Value(vehicle,"online") is bool &&
                                  (bool)Value(vehicle,"online");
-                    var row = table.Rows.Add(id,fresh ? "FRESH (<5s)" : "STALE / OFF",
+                    string kind = Convert.ToString(Value(vehicle,"kind"),
+                        CultureInfo.InvariantCulture);
+                    string freshness = !fresh ? "STALE / OFF" :
+                        string.Equals(kind,"virtual",StringComparison.OrdinalIgnoreCase) ?
+                            "SIMULATED / FRESH" : "DEVICE REPORTED";
+                    var row = table.Rows.Add(id,freshness,
                         Display(Value(vehicle,"last_sample_age_s")),
                         Display(Value(vehicle,"risks")));
                     if (!fresh) table.Rows[row].DefaultCellStyle.ForeColor =
@@ -710,7 +715,8 @@ namespace AeroHelm.GcsCloud
                     "Multiple aircraft found. Choose an aircraft from the dropdown" +
                     Environment.NewLine + "before requesting a report or history.";
                 detail.Text += Environment.NewLine +
-                    "Fleet freshness is not aircraft flight readiness.";
+                    "Fleet freshness is not aircraft flight readiness. " +
+                    "Simulated samples are not physical aircraft evidence.";
             }
             else if (operation == "fleet")
             {
