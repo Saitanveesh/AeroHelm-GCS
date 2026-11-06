@@ -54,14 +54,19 @@ class ObservationUplink:
         payload = TelemetryObservation.model_validate({
             **observation, "epoch": self.epoch, "sequence": self.sequence + 1,
         })
-        reply = self.client.post("/api/v1/device/telemetry",
-                                 headers=self.headers(),
-                                 json=payload.model_dump(mode="json"))
-        # On transport failure: do NOT retry or replay an old frame. The
-        # caller may submit a newly captured observation after recovery.
-        reply.raise_for_status()
-        accepted = reply.json()
+        try:
+            reply = self.client.post("/api/v1/device/telemetry",
+                                     headers=self.headers(),
+                                     json=payload.model_dump(mode="json"))
+            # On timeout the server may have committed the observation. Treat
+            # result as ambiguous: never reuse a sequence or auto replay.
+            reply.raise_for_status()
+            accepted = reply.json()
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            self.epoch = None
+            raise
         if accepted["accepted"] is not True:
+            self.epoch = None
             raise ValueError("Cloud did not accept observation")
         self.sequence += 1
         return self.sequence
