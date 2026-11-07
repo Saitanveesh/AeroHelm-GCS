@@ -98,7 +98,7 @@ namespace AeroHelm.GcsCloud
                     "HEARTBEAT RECEIVED; ATTITUDE (ID 30) NOT FRESH." :
                     "Connected; waiting for genuine MAVLink HEARTBEAT and ATTITUDE.") +
                     Environment.NewLine + counts +
-                    Environment.NewLine + "ID 30 not received: inspect FC-to-Pi stream rates, then M1 relay.";
+                    Environment.NewLine + "ID 30 missing: verify Pi-port MAVn_EXTRA1/SRx_EXTRA1, then Oracle relay.";
             }
             else
             {
