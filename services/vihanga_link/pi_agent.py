@@ -12,6 +12,7 @@ from collections import Counter
 from dataclasses import dataclass
 import fcntl
 import hashlib
+import json
 import logging
 import os
 from pathlib import Path
@@ -165,6 +166,13 @@ class Publisher:
         self.sent_counts: Counter[int] = Counter()
         self.foreign_system_dropped = 0
         self.dropped = 0
+        self._state_lock = threading.Lock()
+        self._seen_armed = False
+        self._last_disarmed_heartbeat = -1.0
+        self._attitude_seen = False
+        self._remote_probe_count = 0
+        self._remote_probe_requested_at = -1.0
+        self._remote_probe_pending = threading.Event()
         self.port = None
         self._uart_thread = None
         self._loop = None
@@ -175,6 +183,56 @@ class Publisher:
             self.queue.get_nowait()
             self.dropped += 1
         self.queue.put_nowait((time.monotonic(), raw))
+
+    def queue_disarmed_telemetry_request(self, message) -> dict | None:
+        """Translate a single fixed cloud intent into a local UART bench probe.
+
+        No raw MAVLink/command/rate originates from Windows or the relay.
+        An identified, fresh disarmed FC heartbeat is mandatory, with a
+        permanent armed-observed latch for this agent lifetime.
+        """
+        if not isinstance(message, dict) or message.get("type") != "disarmed_stream_probe":
+            return None
+        if message.get("vehicle_id") != self.cfg.vehicle_id:
+            return None
+        request_id = message.get("request_id")
+        if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{32}", request_id):
+            return None
+        status = "QUEUED"
+        with self._state_lock:
+            now = time.monotonic()
+            if not self.cfg.stream_probe:
+                status = "REFUSED_DISABLED"
+            elif self._seen_armed or self._last_disarmed_heartbeat < 0 or \
+                    now - self._last_disarmed_heartbeat > 3.0:
+                status = "REFUSED_DISARM_REQUIRED"
+            elif self._attitude_seen:
+                status = "REFUSED_ALREADY_STREAMING"
+            elif self._remote_probe_pending.is_set() or self._remote_probe_count >= 2 or (
+                    self._remote_probe_requested_at >= 0 and
+                    now - self._remote_probe_requested_at < 15.0):
+                status = "REFUSED_RATE_LIMIT"
+            else:
+                self._remote_probe_count += 1
+                self._remote_probe_requested_at = now
+                self._remote_probe_pending.set()
+        return {"type": "disarmed_stream_probe_ack", "request_id": request_id,
+                "status": status, "fc_stream_confirmed": False,
+                "flight_control_enabled": False}
+
+    async def _receive_private_requests(self, ws) -> None:
+        """Only fixed telemetry intent can be accepted from the private relay."""
+        while not self.stop.is_set():
+            raw = await ws.recv()
+            if not isinstance(raw, str) or len(raw) > 300:
+                continue
+            try:
+                message = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            ack = self.queue_disarmed_telemetry_request(message)
+            if ack is not None:
+                await ws.send(json.dumps(ack, separators=(",", ":")))
 
     def _read_uart(self) -> None:
         stream_probe_attempts = 0
@@ -218,17 +276,30 @@ class Publisher:
                 self.counts[mid] += 1
                 if mid == 30:
                     attitude_seen = True
+                    with self._state_lock:
+                        self._attitude_seen = True
                 if msg.get_type() == "HEARTBEAT" and \
                         msg.get_srcSystem() == self.cfg.system_id and \
                         msg.get_srcComponent() == 1:
                     armed = bool(msg.base_mode &
                         mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
                     seen_armed = seen_armed or armed
+                    with self._state_lock:
+                        self._seen_armed = self._seen_armed or armed
+                        if is_disarmed_autopilot_heartbeat(msg, self.cfg.system_id) and \
+                                not self._seen_armed:
+                            self._last_disarmed_heartbeat = time.monotonic()
                     # Never start stream reconfiguration if this session has
                     # EVER observed an armed FC. An onboard operator must
                     # explicitly restart a disarmed maintenance session.
                     if not seen_armed:
-                        if stream_probe_due(
+                        remote_issued = False
+                        if self._remote_probe_pending.is_set():
+                            self._remote_probe_pending.clear()
+                            if not attitude_seen and self.cfg.stream_probe:
+                                remote_issued = request_streams_once(
+                                    self.port, msg, self.cfg)
+                        if not remote_issued and stream_probe_due(
                                 self.cfg, seen_armed=seen_armed,
                                 attitude_seen=attitude_seen,
                                 attempts=stream_probe_attempts,
@@ -284,6 +355,7 @@ class Publisher:
                     # After an outage, do not replay buffered old telemetry.
                     while not self.queue.empty():
                         self.queue.get_nowait()
+                    self._remote_probe_pending.clear()
                     async with websockets.connect(
                         self.cfg.url, additional_headers={
                             "Authorization": "Bearer " + token
@@ -291,21 +363,15 @@ class Publisher:
                         ping_timeout=10, open_timeout=12) as ws:
                         backoff = 1
                         LOG.info("Private device WSS connected; UART remains sole owned")
-                        while not self.stop.is_set():
-                            try:
-                                collected_at, frame = await asyncio.wait_for(
-                                    self.queue.get(), timeout=2.0)
-                            except asyncio.TimeoutError:
-                                if self._uart_thread and not self._uart_thread.is_alive():
-                                    raise RuntimeError("UART reader terminated")
-                                continue
-                            if time.monotonic() - collected_at <= 1.5:
-                                await ws.send(frame)
-                                mid = (frame[5] if frame[0] == 0xFE else
-                                       frame[7] | frame[8] << 8 | frame[9] << 16)
-                                self.sent_counts[mid] += 1
-                            else:
-                                self.dropped += 1
+                        request_reader = asyncio.create_task(self._receive_private_requests(ws))
+                        try:
+                            await self._publish_over_ws(ws, request_reader)
+                        finally:
+                            # An interrupted WSS session must not leave an
+                            # unexecuted cloud request pending on physical UART.
+                            self._remote_probe_pending.clear()
+                            request_reader.cancel()
+                            await asyncio.gather(request_reader, return_exceptions=True)
                 except (OSError, websockets.WebSocketException, TimeoutError) as ex:
                     LOG.warning("Private WSS disconnected (%s); retrying", type(ex).__name__)
                 if not self.stop.is_set():
@@ -325,6 +391,26 @@ class Publisher:
                 "UART publisher stopped; observed %s; sent %s; queue drops %d; foreign SYSID drops %d",
                 dict(self.counts), dict(self.sent_counts), self.dropped,
                 self.foreign_system_dropped)
+
+    async def _publish_over_ws(self, ws, request_reader) -> None:
+        """Publish real frames; detect loss of the independent intent reader."""
+        while not self.stop.is_set():
+            if request_reader.done():
+                raise OSError("Private telemetry request channel disconnected")
+            try:
+                collected_at, frame = await asyncio.wait_for(
+                    self.queue.get(), timeout=2.0)
+            except asyncio.TimeoutError:
+                if self._uart_thread and not self._uart_thread.is_alive():
+                    raise RuntimeError("UART reader terminated")
+                continue
+            if time.monotonic() - collected_at <= 1.5:
+                await ws.send(frame)
+                mid = (frame[5] if frame[0] == 0xFE else
+                       frame[7] | frame[8] << 8 | frame[9] << 16)
+                self.sent_counts[mid] += 1
+            else:
+                self.dropped += 1
 
 
 async def main() -> None:

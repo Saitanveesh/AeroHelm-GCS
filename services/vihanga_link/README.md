@@ -17,9 +17,14 @@ The relay verifies MAVLink X25/CRC-extra for every recognized ArduPilot dialect
 message and rejects unknown or damaged packets before forwarding intact frames.
 NaN, infinite or out-of-range ATTITUDE angles cannot mark the HUD live.
 MAVLink2 frame CRC does not authenticate an optional MAVLink2 signature.
-The cloud relay never receives data from the Windows GCS for forwarding to the flight
-controller. Its viewer tokens are restricted to one aircraft and expire
-after ten minutes. A dropped connection cannot replay old queued telemetry.
+The relay never forwards arbitrary Windows MAVLink to the aircraft. An
+**explicitly opt-in disarmed telemetry-request duplex** can carry only a
+fixed `disarmed_stream_probe` intent to the authenticated Pi, where a
+fresh identified DISARMED heartbeat, a permanent armed-observed latch and
+request quotas independently guard local nonpersistent stream negotiation.
+Device ACK means the Pi queued an intent, **not** that ATTITUDE or position
+arrived. Its viewer tokens are restricted to one aircraft and expire after
+ten minutes. A dropped connection cannot replay old queued telemetry.
 
 ## Relay provisioning (not automatic)
 
@@ -39,6 +44,7 @@ The service requires these variables from a protected private environment:
 - VIHANGA_OPERATOR_PASSWORD_HASH: Argon2id password hash, NOT plaintext
 - VIHANGA_JWT_KEY: independent cryptographically random key, 32+ bytes
 - VIHANGA_DEVICE_TOKEN_SHA256: hex SHA-256 of random Pi-only device secret
+- VIHANGA_ALLOW_DISARMED_STREAM_REQUEST=1: **optional** allow a signed-in operator to request preset disarmed telemetry streams via the private device WSS; default 0 denies all requests
 
 Generate the operator hash without exposing the password in process arguments:
 
@@ -55,6 +61,7 @@ The process binds 127.0.0.1:8765. Proxy these routes at a single exact host:
 - /api/v1/auth/login
 - /api/v1/mavlink/health
 - /api/v1/mavlink/paths
+- /api/v1/vehicles/{vehicle_id}/telemetry/probe (opt-in, POST, JWT, bounded)
 - /ws/mavlink/device/{vehicle_id}
 - /ws/mavlink/view/{vehicle_id}
 
@@ -99,6 +106,15 @@ Any observed ID30 or armed heartbeat disables further probes in that
 session. It never changes persistent parameters or accepts cloud-originated
 flight commands. Enable this feature only for an approved, disarmed bench.
 
+The Pi accepts only the named `disarmed_stream_probe` JSON intent over the
+private device WSS; any `COMMAND_LONG`, arming, mission, calibration,
+parameter-set or raw GCS MAVLink payload is ignored and never decoded into
+an FC write. After explicit operator consent, the PI local UART thread may
+issue one preconfigured volatile set of stream-rate requests while disarmed.
+At most two remote intents are queued per process, with a 15-second cooldown;
+loss of disarmed heartbeat or any observed arming refuses them. No automatic
+flight authorization is provided.
+
 The UART owner logs measured 10-second HEARTBEAT (ID 0), ATTITUDE (ID 30),
 position, GPS and HUD windows together with the forwarded WSS counts, queue
 drops and foreign-system rejections. If the Pi counts HEARTBEAT but no ID 30,
@@ -116,8 +132,9 @@ owner, an FC that ignores interval requests, or a missing relay deployment.
 
 Close all Mission Planner/Vihanga processes before rebuilding:
 
-    cd "$HOME\Vihanga-GCS"
-    git pull --ff-only origin feat/vihanga-phase3-native-toolbar
+    cd "$HOME\AeroHelm-GCS"
+    git switch master
+    git pull --ff-only origin master
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-VihangaVerified.ps1 -Apply
 
 Launch the verified build with the new dedicated private relay origin:
@@ -128,14 +145,19 @@ This does not replace Oracle M1 authentication. The PATHS connection
 prompts for a separate new relay login when LinkOrigin is configured.
 The simplified operator toolbar retains native DATA / PLAN / SETUP /
 CONFIG plus PATHS / CAMERA / TOOLS. PATHS has just two connection choices:
-Cloud telemetry and Direct USB/radio. Independent cloud ATTITUDE, LINK,
-SURVEY and Settings live under TOOLS. Simulation mission previews appear
+Cloud telemetry and Direct USB/radio. LINK diagnostics, SURVEY and Settings live under TOOLS. The separate
+ATTITUDE canvas is confined to the explicit engineering tools profile;
+native Mission Planner DATA/Quick is the primary flight display. Simulation mission previews appear
 under TOOLS only when a dedicated relay origin is configured.
 Experimental Operations and Fleet/INTEL pages are hidden by default;
 they can be inspected in a development profile by setting
 VIHANGA_ADVANCED_TOOLS=1 before launching.
-Open TOOLS -> Attitude monitor to observe actual message IDs. Then
-choose PATHS -> Cloud telemetry to connect the native HUD. Disconnect
+Open TOOLS -> Link diagnostics to inspect `message_ids`, live stream ages,
+real HB/ATT frames and the last Pi telemetry-request ACK. When configured,
+use `Request real FC streams` **only for a physically disarmed, propeller-free
+bench**, after explicit operator confirmation. The relay's accepted/queued
+response is not evidence of any FC sample; wait for rising real ID30/33/74
+counts. Then choose PATHS -> Cloud telemetry to connect the native HUD. Disconnect
 a previous USB/radio connection deliberately; automatic link transfer
 is disabled.
 
@@ -173,9 +195,13 @@ Acceptance gates:
 4. Zero replay of stale frames after a drop/reconnect; exclusive UART
    ownership, no auto-radio switchover, and JWT expiration enforced.
 5. Windows compiled EXE/DLL and source commit match the release manifest.
-6. Arming, mission upload, parameter mutation, actuator commands,
+6. Demonstrate that unauthenticated probe requests, armed/stale FC state,
+   excess quota, foreign system ID and arbitrary raw MAVLink commands are
+   rejected without FC actuation. The ACK and a fresh real ID30/33/74 count
+   must be checked separately.
+7. Arming, mission upload, parameter mutation, actuator commands,
    automatic flight authority and autonomous flight are NOT enabled
-   by this telemetry-only development service.
+   by this diagnostic-duplex development service.
 
 Providing full USB-equivalent COMMAND and AUTONOMY authority requires
 separate supervised, audited bidirectional control with onboard failsafe,

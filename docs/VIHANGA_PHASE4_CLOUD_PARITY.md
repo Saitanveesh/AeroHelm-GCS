@@ -42,6 +42,27 @@ development source under services/vihanga_link.
   re-request of missing indices, deterministic snapshot provenance across
   FC reboot, mission download and direct USB comparison on hardware.
 
+### B1 — Disarmed telemetry-request duplex (source implementation; not deployed)
+
+- Private relay implements an authenticated POST for a **fixed telemetry-stream
+  request only**, gated by a separate relay feature flag, fresh physical
+  HEARTBEAT, per-session quota and 15-second cooldown.
+- The authenticated Pi device WebSocket receives the fixed intent and returns
+  a correlated ACK. The Pi independently requires its local disarmed-only
+  stream-probe opt-in, a fresh ArduPilot SYSID/COMPID heartbeat and a permanent
+  armed-observed deny latch, then requests only preset volatile FC stream rates.
+- ACK means an intent was queued on the device link; genuine rising FC
+  message 30 (attitude), 33 (position), 74 (VFR HUD), 1 (system status) and
+  24 (GPS) must be observed separately. No synthetic Quick/HUD output.
+- The native LINK diagnostics page shows real Quick-feed completeness and
+  offers an operator-confirmed bench request only for the explicitly selected
+  independent private relay. The legacy Oracle M1 cannot use this endpoint.
+- This is **not** a transparent MAVLink TCP duplex, param-write path or flight
+  command channel. Those remain subject to the independent Phase C gates.
+- Acceptance: compile and hardware bench validation on a propeller-free,
+  identified disarmed FC, request accepted/refused/ACK and actual native
+  Mission Planner DATA/Quick movement on verified fresh telemetry.
+
 ### C — Supervised command and mission authority (physical: not implemented)
 
 - Separate, mutually authenticated command plane. Independent role-scoped

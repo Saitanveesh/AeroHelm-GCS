@@ -10,11 +10,13 @@ from collections import Counter, deque
 from dataclasses import dataclass, field
 import hashlib
 import hmac
+import json
 import math
 import os
 import re
 import struct
 import time
+import uuid
 from typing import Any
 
 from argon2 import PasswordHasher
@@ -45,6 +47,7 @@ class Config:
     device_token_sha256: str
     allowed_hosts: tuple[str, ...]
     fc_system_id: int = 1
+    allow_disarmed_telemetry_requests: bool = False
 
     @staticmethod
     def from_env() -> "Config":
@@ -57,6 +60,8 @@ class Config:
             allowed_hosts=tuple(x.strip() for x in
                 os.getenv("VIHANGA_ALLOWED_HOSTS", "").split(",") if x.strip()),
             fc_system_id=int(os.getenv("VIHANGA_FC_SYSID", "1")),
+            allow_disarmed_telemetry_requests=(
+                os.getenv("VIHANGA_ALLOW_DISARMED_STREAM_REQUEST", "0") == "1"),
         )
         cfg.validate()
         return cfg
@@ -145,9 +150,15 @@ class LinkState:
     foreign_system_frames: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     connected: bool = False
+    device_socket: WebSocket | None = None
+    probe_request_count: int = 0
+    probe_requested_at: float = -1.0
+    probe_request_id: str = ""
+    probe_status: str = "NOT_REQUESTED"
     epoch: int = 0
     viewers: set[asyncio.Queue[tuple[float, bytes]]] = field(default_factory=set)
     counters: Counter[int] = field(default_factory=Counter)
+    last_message_by_id: dict[int, float] = field(default_factory=dict)
     recent_frames: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
     recent_heartbeats: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
     recent_attitudes: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
@@ -163,10 +174,15 @@ class LinkState:
 
     def clear_session(self) -> None:
         self.counters.clear()
+        self.last_message_by_id.clear()
         self.recent_frames.clear()
         self.recent_heartbeats.clear()
         self.recent_attitudes.clear()
         self.frames = self.rejected = self.foreign_system_frames = 0
+        self.probe_request_count = 0
+        self.probe_requested_at = -1.0
+        self.probe_request_id = ""
+        self.probe_status = "NOT_REQUESTED"
         self.last_frame = self.last_heartbeat = self.last_attitude = -1.0
         self.parameter_frames.clear()
         self.parameter_expected = 0
@@ -196,6 +212,7 @@ class LinkState:
         now = time.monotonic()
         self.frames += 1
         self.counters[msg_id] += 1
+        self.last_message_by_id[msg_id] = now
         self.last_frame = now
         self.recent_frames.append(now)
         if msg_id == 0:
@@ -220,6 +237,48 @@ class LinkState:
             if queue.full():
                 queue.get_nowait()  # Drop stale frames, never stall Pi uplink.
             queue.put_nowait((now, packet))
+
+    async def request_stream_probe(self, vehicle_id: str) -> dict[str, Any]:
+        """Authenticated, bounded diagnostic intent, NEVER arbitrary MAVLink."""
+        async with self.lock:
+            if not self.connected or not self.fresh(self.last_heartbeat) or \
+                    self.device_socket is None:
+                raise HTTPException(status_code=409, detail="Fresh physical FC HEARTBEAT and Pi link required")
+            now = time.monotonic()
+            if self.probe_request_count >= 2 or (self.probe_requested_at >= 0 and
+                    now - self.probe_requested_at < 15.0):
+                raise HTTPException(status_code=429, detail="Disarmed stream request cooldown or session quota")
+            request_id = uuid.uuid4().hex
+            # No native TCP command, raw MAVLink or user-supplied rate crosses
+            # the network. The Pi independently decides whether it is safe.
+            try:
+                await self.device_socket.send_json({
+                    "type": "disarmed_stream_probe", "vehicle_id": vehicle_id,
+                    "request_id": request_id,
+                })
+            except (RuntimeError, OSError) as ex:
+                raise HTTPException(status_code=503, detail="Pi diagnostic channel unavailable") from ex
+            self.probe_request_count += 1
+            self.probe_requested_at = now
+            self.probe_request_id = request_id
+            self.probe_status = "QUEUED_ON_PRIVATE_LINK"
+            return {"status": self.probe_status, "request_id": request_id,
+                    "fc_stream_confirmed": False, "flight_control_enabled": False}
+
+    def observe_probe_ack(self, text: str) -> None:
+        """A Pi reply confirms transport, not arrival of real FC telemetry."""
+        try:
+            ack = json.loads(text)
+            if (isinstance(ack, dict) and self.probe_request_id and
+                    self.probe_status == "QUEUED_ON_PRIVATE_LINK" and
+                    ack.get("type") == "disarmed_stream_probe_ack" and
+                    ack.get("request_id") == self.probe_request_id and
+                    ack.get("status") in ("QUEUED", "REFUSED_DISARM_REQUIRED",
+                                          "REFUSED_DISABLED", "REFUSED_RATE_LIMIT",
+                                          "REFUSED_ALREADY_STREAMING")):
+                self.probe_status = ack["status"]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
 
     def fresh(self, timestamp: float) -> bool:
         return self.connected and timestamp >= 0 and (
@@ -294,6 +353,16 @@ class LinkState:
             "frames": self.frames,
             "real_heartbeat_frames": self.counters[0],
             "real_attitude_frames": self.counters[30],
+            "native_quick_data_ready": (self.fresh(self.last_message_by_id.get(0, -1)) and
+                                        self.fresh(self.last_message_by_id.get(30, -1)) and
+                                        (self.fresh(self.last_message_by_id.get(33, -1)) or
+                                         self.fresh(self.last_message_by_id.get(74, -1)))),
+            "flight_data_streams": {
+                str(mid): {"frames": self.counters[mid],
+                           "fresh": self.fresh(self.last_message_by_id.get(mid, -1)),
+                           "age_ms": age_ms(self.last_message_by_id.get(mid, -1))}
+                for mid in (0, 1, 24, 30, 33, 74, 147)
+            },
             "frame_age_ms": age_ms(self.last_frame),
             "heartbeat_age_ms": age_ms(self.last_heartbeat),
             "attitude_age_ms": age_ms(self.last_attitude),
@@ -308,6 +377,10 @@ class LinkState:
             "epoch": self.epoch,
             "parameter_snapshot": self.parameter_status(),
             "flight_control_enabled": False,
+            "telemetry_probe": {"request_count": self.probe_request_count,
+                                 "status": self.probe_status,
+                                 "request_id": self.probe_request_id,
+                                 "fc_stream_confirmed": self.fresh(self.last_attitude)},
         }
 
 
@@ -404,6 +477,19 @@ def create_app(config: Config | None = None) -> FastAPI:
         except ValueError as ex:
             raise HTTPException(status_code=409, detail=str(ex)) from ex
 
+    @app.post("/api/v1/vehicles/{vehicle_id}/telemetry/probe")
+    async def telemetry_probe(
+            vehicle_id: str,
+            authorization: str = Header(default="")) -> dict[str, Any]:
+        token = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if not viewer_expiration(token):
+            raise HTTPException(status_code=401, detail="Private operator session required")
+        if vehicle_id != cfg.vehicle_id:
+            raise HTTPException(status_code=404, detail="Unknown aircraft")
+        if not cfg.allow_disarmed_telemetry_requests:
+            raise HTTPException(status_code=403, detail="Disarmed telemetry requests disabled on relay")
+        return await state.request_stream_probe(vehicle_id)
+
     @app.post("/api/v1/sim/mission/preview")
     async def preview_mission(
             request: PreviewRequest,
@@ -437,15 +523,24 @@ def create_app(config: Config | None = None) -> FastAPI:
         try:
             # A failed handshake must release the reserved publisher slot.
             await ws.accept()
+            async with state.lock:
+                state.device_socket = ws
             while True:
-                # A dead Pi session may not monopolize the sole device slot.
-                packet = await asyncio.wait_for(ws.receive_bytes(), timeout=12)
-                await state.publish(packet)
+                # Device ACK messages are not MAVLink and never reach the HUD.
+                event = await asyncio.wait_for(ws.receive(), timeout=12)
+                if event.get("type") == "websocket.disconnect":
+                    break
+                packet = event.get("bytes")
+                if isinstance(packet, bytes):
+                    await state.publish(packet)
+                elif isinstance(event.get("text"), str):
+                    state.observe_probe_ack(event["text"])
         except (WebSocketDisconnect, asyncio.TimeoutError):
             pass
         finally:
             async with state.lock:
                 state.connected = False
+                state.device_socket = None
                 state.clear_session()
 
     @app.websocket("/ws/mavlink/view/{vehicle_id}")

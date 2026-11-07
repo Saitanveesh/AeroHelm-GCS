@@ -133,6 +133,43 @@ namespace AeroHelm.GcsCloud
             }
         }
 
+        // Explicit telemetry-request duplex. No arbitrary Mission Planner
+        // MAVLink, vehicle command or parameter write crosses this API.
+        // The relay and physically disarmed Pi independently enforce policy.
+        internal static string RequestDisarmedTelemetry(string vehicleId)
+        {
+            if (!UsesDedicatedRelay || !Authenticated)
+                throw new InvalidOperationException("Dedicated telemetry relay sign-in required.");
+            if (string.IsNullOrWhiteSpace(vehicleId) || vehicleId.Length > 64)
+                throw new ArgumentException("Invalid aircraft identifier.");
+            foreach (char ch in vehicleId)
+            {
+                if (!(ch <= 127 && char.IsLetterOrDigit(ch)) &&
+                    ch != '-' && ch != '_')
+                    throw new ArgumentException("Invalid aircraft identifier.");
+            }
+            Uri target = new Uri(new Uri(TargetOrigin + "/"),
+                "api/v1/vehicles/" + Uri.EscapeDataString(vehicleId) +
+                "/telemetry/probe");
+            var request = (HttpWebRequest)WebRequest.Create(target);
+            request.Method = "POST";
+            request.AllowAutoRedirect = false;
+            request.Timeout = 6000;
+            request.ReadWriteTimeout = 6000;
+            request.ContentLength = 0;
+            request.Accept = "application/json";
+            request.Headers[HttpRequestHeader.Authorization] =
+                "Bearer " + AccessToken;
+            using (var response = (HttpWebResponse)request.GetResponse())
+            using (var reader = new StreamReader(response.GetResponseStream()))
+            {
+                if (response.StatusCode != HttpStatusCode.OK)
+                    throw new IOException("Telemetry probe rejected.");
+                // QUEUED is not confirmation of real ATTITUDE delivery.
+                return reader.ReadToEnd();
+            }
+        }
+
         internal static void Clear()
         {
             lock (Sync)
