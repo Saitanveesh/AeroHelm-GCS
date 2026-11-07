@@ -18,7 +18,8 @@ $productionScripts = @(
     'scripts/Consolidate-AeroHelmWindows.ps1',
     'scripts/Cleanup-AeroHelmGenerated.ps1',
     'scripts/Build-Integrated-AeroHelm.ps1',
-    'scripts/Install-VihangaVerified.ps1'
+    'scripts/Install-VihangaVerified.ps1',
+    'scripts/Test-VihangaSettingsStorage.ps1'
 )
 foreach ($relative in $productionScripts) {
     $candidate = Join-Path $root $relative
@@ -84,6 +85,10 @@ if ($settingsCore.Contains('new XmlTextWriter(filename, Encoding.UTF8)')) {
 $brandingStorage = Read-Source 'scripts/Install-AeroHelmBranding.ps1'
 Require-Text $brandingStorage "GetFolderPath('LocalApplicationData')" 'Branding profile migration must not write into protected Documents.'
 Require-Text $brandingStorage '$legacySettingsDir' 'Branding must preserve the legacy profile location for copy-only migration.'
+$profilePreflight = Read-Source 'scripts/Test-VihangaSettingsStorage.ps1'
+Require-Text $profilePreflight 'LocalApplicationData' 'Windows settings storage must be tested under the current user.'
+Require-Text $profilePreflight '[IO.File]::WriteAllBytes($probe, $payload)' 'Preflight must test actual profile write permission.'
+Require-Text $profilePreflight 'Remove-Item -LiteralPath $probe' 'Preflight must clean up only its temporary file.'
 # Prevent the SDK's recursive Compile glob from including archived runtime
 # plugin .cs files, the source of the CS0101/CS0111 Windows build failures.
 Require-Text $mainProject 'Compile Remove="build-logs\**"' 'Historical runtime backups would be compiled as duplicate source classes.'
