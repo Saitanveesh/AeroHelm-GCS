@@ -107,6 +107,35 @@ def test_full_raw_stream_viewer_and_live_evidence(credentials):
                 assert health["message_ids"]["30"] == 1
 
 
+def test_non_attitude_mavlink_is_forwarded_unchanged(credentials):
+    cfg, token = credentials
+    codec = mavutil.mavlink.MAVLink(None, srcSystem=1, srcComponent=1)
+    samples = (
+        mavutil.mavlink.MAVLink_vfr_hud_message(
+            1.0, 2.0, 180, 10, 12.5, 0.2),
+        mavutil.mavlink.MAVLink_global_position_int_message(
+            123, 125000000, 775000000, 180000, 5000, 1, 2, 3, 18000),
+        mavutil.mavlink.MAVLink_gps_raw_int_message(
+            123456, 3, 125000000, 775000000, 180000,
+            100, 100, 10, 180, 10),
+    )
+    packets = [message.pack(codec) for message in samples]
+    assert [envelope(p) for p in packets] == [74, 33, 24]
+    with TestClient(create_app(cfg)) as client:
+        jwt_token = client.post("/api/v1/auth/login", json={
+            "username": "operator",
+            "password": "correct-bench-password"}).json()["access_token"]
+        with client.websocket_connect("/ws/mavlink/view/AH-HW-001",
+              headers={"Authorization": "Bearer " + jwt_token}) as viewer:
+            with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+                  headers={"Authorization": "Bearer " + token}) as device:
+                for packet in packets:
+                    device.send_bytes(packet)
+                    assert viewer.receive_bytes() == packet
+                counts = client.get("/api/v1/mavlink/health").json()["message_ids"]
+                assert counts["74"] == counts["33"] == counts["24"] == 1
+
+
 def test_rejects_unauthorized_device_viewer_and_wrong_vehicle(credentials):
     cfg, device_token = credentials
     with TestClient(create_app(cfg)) as client:
