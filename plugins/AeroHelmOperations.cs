@@ -47,6 +47,51 @@ namespace AeroHelm.GcsCloud
         }
     }
 
+    internal static class AeroHelmBackendProfile
+    {
+        private static bool Absent(WebException error)
+        {
+            var response=error.Response as HttpWebResponse;
+            if(response==null || response.StatusCode!=HttpStatusCode.NotFound)
+                return false;
+            response.Dispose();
+            return true;
+        }
+
+        // Same signed-in HTTPS origin only. These are GET-only discovery
+        // fallbacks; never forward the M1 JWT to a different R2 host.
+        internal static string ReadFleet(string primary)
+        {
+            if(primary!="api/v2/fleet")
+                throw new ArgumentException("Unsupported fleet discovery route.");
+            try { return "V2 FLEET VIEW\r\n"+OperationsApi.Request("GET",primary); }
+            catch(WebException ex)
+            {
+                if(!Absent(ex)) throw;
+            }
+            try {
+                return "R2 DEVICE-REPORTED FLEET (not flight clearance)\r\n"+
+                    OperationsApi.Request("GET","api/v1/fleet/status");
+            }
+            catch(WebException ex) { if(!Absent(ex)) throw; }
+            return "M1 REGISTERED AIRCRAFT ONLY; NO V2 SECURITY, ANALYTICS OR HISTORY\r\n"+
+                OperationsApi.Request("GET","api/v1/vehicles");
+        }
+
+        internal static string ReadFallbackCapabilities()
+        {
+            try {
+                return "R2 DECLARED CAPABILITIES (requires matching identity)\r\n"+
+                    OperationsApi.Request("GET","api/v1/capabilities");
+            }
+            catch(WebException ex) { if(!Absent(ex)) throw; }
+            return "M1 TELEMETRY HEALTH ONLY; OPERATIONS/RESEARCH NOT DEPLOYED\r\n"+
+                OperationsApi.Request("GET","api/v1/mavlink/health");
+        }
+
+        internal static bool IsRouteAbsent(WebException error) { return Absent(error); }
+    }
+
     internal sealed class AeroHelmOpsWindow : Form
     {
         private readonly TextBox missionText = new TextBox();
@@ -175,8 +220,27 @@ namespace AeroHelm.GcsCloud
                 {
                     capabilityReport.Text=await Api("GET","api/v1/operations/capabilities");
                 }
-                catch(Exception ex){capabilityReport.Text="Policy unavailable: "+Error(ex);}
-                finally {if(!IsDisposed)refreshPolicy.Enabled=true;}
+                catch(WebException ex)
+                {
+                    if(AeroHelmBackendProfile.IsRouteAbsent(ex))
+                    {
+                        try {
+                            var fallback=await Task.Run(
+                                ()=>AeroHelmBackendProfile.ReadFallbackCapabilities());
+                            if(!IsDisposed && !Disposing)
+                                capabilityReport.Text=fallback;
+                        }
+                        catch(Exception error)
+                        {
+                            if(!IsDisposed && !Disposing)
+                                capabilityReport.Text="Deployment profile unavailable: "+Error(error);
+                        }
+                    }
+                    else if(!IsDisposed && !Disposing)
+                        capabilityReport.Text="Policy unavailable: "+Error(ex);
+                }
+                catch(Exception ex){if(!IsDisposed && !Disposing)capabilityReport.Text="Policy unavailable: "+Error(ex);}
+                finally {if(!IsDisposed&&!Disposing)refreshPolicy.Enabled=true;}
             };
             policyPage.Controls.Add(refreshPolicy);
             policyPage.Controls.Add(capabilityReport);

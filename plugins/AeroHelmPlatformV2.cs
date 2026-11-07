@@ -76,8 +76,8 @@ namespace AeroHelm.GcsCloud
             var fleetPanel=Panel();
             fleet.Controls.Add(fleetPanel);
             fleetPanel.Controls.Add(ActionButton("Refresh fleet status",
-                async()=>await Run(()=>OperationsApi.Request("GET","api/v2/fleet"),
-                                     "Fleet health")));
+                async()=>await Run(()=>AeroHelmBackendProfile.ReadFleet("api/v2/fleet"),
+                                     "Fleet health (negotiated read-only API)")));
             fleetPanel.Controls.Add(ActionButton("Aircraft risk flags",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/vehicles/"+Id()+"/alerts"),"Aircraft alerts")));
