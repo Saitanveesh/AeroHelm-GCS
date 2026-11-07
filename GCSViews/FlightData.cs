@@ -256,6 +256,21 @@ namespace MissionPlanner.GCSViews
             this.SubMainLeft.Panel1.ControlRemoved += (sender, e) => ManageLeftPanelVisibility();
             this.tabControlactions.ControlAdded += (sender, e) => ManageLeftPanelVisibility();
             this.tabControlactions.ControlRemoved += (sender, e) => ManageLeftPanelVisibility();
+            // Native flight pages retain a compact searchable entry point
+            // without adding another touch overlay or toolbar.
+            var switchTab = new ToolStripMenuItem("Switch tab");
+            contextMenuStripactionstab.Items.Insert(0,switchTab);
+            contextMenuStripactionstab.Opening += (sender,e) => {
+                switchTab.DropDownItems.Clear();
+                foreach(TabPage page in tabControlactions.TabPages)
+                {
+                    var selectedPage=page;
+                    var item=new ToolStripMenuItem(selectedPage.Text);
+                    item.Checked=tabControlactions.SelectedTab==selectedPage;
+                    item.Click+=(s,args)=>tabControlactions.SelectedTab=selectedPage;
+                    switchTab.DropDownItems.Add(item);
+                }
+            };
             this.panel_persistent.ControlAdded += (sender, e) => ManageLeftPanelVisibility();
             this.panel_persistent.ControlRemoved += (sender, e) => ManageLeftPanelVisibility();
             //    _serializer = new DockStateSerializer(dockContainer1);
@@ -428,7 +443,11 @@ namespace MissionPlanner.GCSViews
 
             hud1.displayicons = Settings.Instance.GetBoolean("HUD_showicons", false);
 
-            tabControlactions.Multiline = Settings.Instance.GetBoolean("tabControlactions_Multiline", false);
+            // The operator cockpit uses one tab row. Hidden pages stay available
+            // through the native arrow controls and Switch tab context menu.
+            tabControlactions.Multiline = false;
+            tabControlactions.Font = new Font("Segoe UI", 9f);
+            tabControlactions.Padding = new Point(8, 3);
 
         }
 
@@ -2866,10 +2885,12 @@ namespace MissionPlanner.GCSViews
 
         private void FlightData_Resize(object sender, EventArgs e)
         {
-            //Gspeed;
-            //Galt;
-            //Gheading;
-            //attitudeIndicatorInstrumentControl1;
+            if (IsDisposed || Disposing || tabControlactions == null ||
+                tabControlactions.IsDisposed) return;
+            // A single tab row prevents three stacked rows from consuming
+            // the flight-data viewport on narrow displays.
+            if (tabControlactions.Multiline)
+                tabControlactions.Multiline=false;
         }
 
         private void flightPlannerToolStripMenuItem_Click(object sender, EventArgs e)
@@ -5393,8 +5414,19 @@ namespace MissionPlanner.GCSViews
 
         private void tabQuick_Resize(object sender, EventArgs e)
         {
-            tableLayoutPanelQuick.Width = tabQuick.Width;
-            tableLayoutPanelQuick.AutoScroll = false;
+            if (tabQuick == null || tableLayoutPanelQuick == null ||
+                tabQuick.IsDisposed || tableLayoutPanelQuick.IsDisposed) return;
+            // On small screens scroll the view instead of squeezing readouts.
+            int visibleWidth=Math.Max(0,tabQuick.ClientSize.Width -
+                                      tabQuick.Padding.Horizontal);
+            int minimumWidth=tableLayoutPanelQuick.ColumnCount>1 ? 440 : 240;
+            bool needScroll=visibleWidth<minimumWidth;
+            if(tabQuick.AutoScroll != needScroll)
+                tabQuick.AutoScroll=needScroll;
+            int width=Math.Max(minimumWidth,visibleWidth);
+            if(tableLayoutPanelQuick.Width!=width)
+                tableLayoutPanelQuick.Width=width;
+            tableLayoutPanelQuick.AutoScroll=false;
         }
 
         void tabStatus_Resize(object sender, EventArgs e)

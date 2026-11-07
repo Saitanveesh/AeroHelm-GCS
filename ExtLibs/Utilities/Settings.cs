@@ -369,6 +369,65 @@ namespace MissionPlanner.Utilities
         /// <returns></returns>
         static string GetConfigFullPath()
         {
+            // Store Vihanga's operator profile in writable per-user storage.
+            // The upstream Mission Planner profile location is unchanged.
+            if (string.Equals(FileName, "Vihanga GCS.xml",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                var local = Environment.GetFolderPath(
+                    Environment.SpecialFolder.LocalApplicationData);
+                if (string.IsNullOrWhiteSpace(local))
+                    throw new IOException("Vihanga user profile directory is unavailable.");
+                var directoryPath = Path.Combine(local, "Vihanga GCS");
+                Directory.CreateDirectory(directoryPath);
+                var profilePath = Path.Combine(directoryPath, FileName);
+
+                // One-time copy of the previous profile; never move or
+                // overwrite operator settings under Documents.
+                if (!File.Exists(profilePath))
+                {
+                    var documents = Environment.GetFolderPath(
+                        Environment.SpecialFolder.MyDocuments);
+                    if (!string.IsNullOrWhiteSpace(documents))
+                    {
+                        var legacy = Path.Combine(documents, AppConfigName, FileName);
+                        if (File.Exists(legacy))
+                        {
+                            var staging = Path.Combine(directoryPath,
+                                ".vihanga-migration-" + Guid.NewGuid().ToString("N") + ".tmp");
+                            try
+                            {
+                                File.Copy(legacy, staging, false);
+                                // A copied read-only attribute must not prevent
+                                // subsequent settings updates.
+                                File.SetAttributes(staging,
+                                    File.GetAttributes(staging) & ~FileAttributes.ReadOnly);
+                                if (!File.Exists(profilePath))
+                                    File.Move(staging, profilePath);
+                            }
+                            catch (IOException ex)
+                            {
+                                Trace.TraceWarning("Vihanga settings migration skipped: " + ex.Message);
+                            }
+                            catch (UnauthorizedAccessException ex)
+                            {
+                                Trace.TraceWarning("Vihanga settings migration denied: " + ex.Message);
+                            }
+                            finally
+                            {
+                                try
+                                {
+                                    if (File.Exists(staging)) File.Delete(staging);
+                                }
+                                catch (IOException) { }
+                                catch (UnauthorizedAccessException) { }
+                            }
+                        }
+                    }
+                }
+                return profilePath;
+            }
+
             // old path details
             string directory = GetRunningDirectory();
             if (!Directory.Exists(directory))
@@ -507,8 +566,14 @@ namespace MissionPlanner.Utilities
         public void Save()
         {
             string filename = GetConfigFullPath();
-
-            using (XmlTextWriter xmlwriter = new XmlTextWriter(filename, Encoding.UTF8))
+            // Stage the complete XML beside the destination. A failed write
+            // must not truncate or corrupt an existing profile.
+            string temp = Path.Combine(Path.GetDirectoryName(filename),
+                "." + Path.GetFileName(filename) + "." +
+                Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+            using (XmlTextWriter xmlwriter = new XmlTextWriter(temp, Encoding.UTF8))
             {
                 xmlwriter.Formatting = Formatting.Indented;
 
@@ -545,7 +610,27 @@ namespace MissionPlanner.Utilities
                 xmlwriter.WriteEndElement();
 
                 xmlwriter.WriteEndDocument();
-                xmlwriter.Close();
+            }
+
+            if (File.Exists(filename))
+                File.Replace(temp, filename, filename + ".bak");
+            else
+                File.Move(temp, filename);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                throw new UnauthorizedAccessException(
+                    "Settings could not be saved to '" + filename +
+                    "'. Check profile folder permissions and Windows security protections.", ex);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(temp)) File.Delete(temp);
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
             }
         }
 

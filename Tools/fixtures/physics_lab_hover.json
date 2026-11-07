@@ -1,0 +1,54 @@
+{
+  "model": {
+    "mass_kg": 1,
+    "inertia_diag_kg_m2": [
+      0.01,
+      0.01,
+      0.02
+    ],
+    "drag_n_per_mps": [
+      0.1,
+      0.1,
+      0.15
+    ]
+  },
+  "initial": {
+    "position_enu_m": [
+      0,
+      0,
+      0
+    ],
+    "velocity_enu_mps": [
+      0,
+      0,
+      0
+    ],
+    "attitude_q_wxyz": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "angular_velocity_body_radps": [
+      0,
+      0,
+      0
+    ]
+  },
+  "control": {
+    "thrust_newtons": 9.80665,
+    "torque_body_nm": [
+      0,
+      0,
+      0
+    ],
+    "wind_enu_mps": [
+      0,
+      0,
+      0
+    ]
+  },
+  "dt_s": 0.02,
+  "steps": 100,
+  "model_source": "SYNTHETIC 1 kg benchmark fixture; NOT measured from an actual airframe"
+}

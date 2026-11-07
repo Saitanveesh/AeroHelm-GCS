@@ -18,6 +18,7 @@ on:
       - feat/aerohelm-windows-readiness-v2
       - feat/aerohelm-windows-release-candidate
     paths:
+      - "services/vihanga_link/**"
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmReceiveOnlyBridge.cs"
       - "plugins/AeroHelmLinkQuality.cs"
@@ -30,6 +31,7 @@ on:
       - "plugins/AeroHelmFleetLabWindow.cs"
       - "plugins/VihangaSharedUi.cs"
       - "scripts/Start-VihangaGCS.ps1"
+      - "scripts/Test-VihangaPassiveBench.ps1"
       - "plugins/AeroHelmReadOnlyPages.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
       - "scripts/Start-AeroHelm-Touch.ps1"
@@ -49,6 +51,7 @@ on:
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
       - "Tools/test_vihanga_native_toolbar.py"
+      - "scripts/Test-VihangaPassiveBench.ps1"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
       - "scripts/Test-VihangaCertification.ps1"
       - "scripts/Update-AeroHelmLatest.ps1"
@@ -66,11 +69,13 @@ on:
       - ".github/workflows/aerohelm-cloud-plugin.yml"
   pull_request:
     branches:
+      - master
       - feat/gcs-touch-ux-readonly-fleet-r1
     paths:
       - "scripts/Install-AeroHelmCloud.ps1"
       - "scripts/Restore-AeroHelmPlugin.ps1"
       - "scripts/Test-AeroHelmPluginRoundtrip.ps1"
+      - "services/vihanga_link/**"
       - "plugins/AeroHelmCloud.cs"
       - "plugins/AeroHelmReceiveOnlyBridge.cs"
       - "plugins/AeroHelmLinkQuality.cs"
@@ -165,6 +170,34 @@ jobs:
         run: |
           & .\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Record exact compiled native evidence (not flight clearance)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = 'bin/Release/net461/MissionPlanner.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw 'Full native executable missing after solution build.'
+          }
+          $candidates = @(Get-ChildItem 'Plugins/AeroHelmCloud/bin' -Recurse -File -Filter 'AeroHelm.Cloud.Plugin.Validation.dll' |
+            Where-Object { $_.FullName -match '[\\/]Release[\\/]' })
+          if ($candidates.Count -ne 1) {
+            throw "Expected one Release plugin output, found $($candidates.Count)."
+          }
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -notmatch '^[a-f0-9]{40}$') {
+            throw 'Cannot fingerprint exact CI source commit.'
+          }
+          New-Item -ItemType Directory -Path 'build-logs' -Force | Out-Null
+          [ordered]@{
+            schema='vihanga.ci.native-build.v1'
+            source_commit=$head
+            workflow='AeroHelm Cloud Plugin Validation'
+            native_executable_sha256=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            compiled_plugin_sha256=(Get-FileHash -LiteralPath $candidates[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            windows_ui_smoke_verified=$false
+            physical_flight_authorized=$false
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath 'build-logs/vihanga-ci-native-evidence.json' -Encoding UTF8
       - name: Disposable compiled-plugin installation and rollback roundtrip
         shell: powershell
         env:
@@ -172,6 +205,13 @@ jobs:
         run: |
           & .\scripts\Test-AeroHelmPluginRoundtrip.ps1
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Archive native build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: vihanga-native-evidence-${{ github.sha }}
+          path: build-logs/vihanga-ci-native-evidence.json
+          if-no-files-found: error
+
   mavlink-native-bridge-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -193,3 +233,20 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Offline mission generator regression tests
         run: dotnet run --project Tools/AeroHelmSurveyTests/AeroHelmSurveyTests.csproj --configuration Release
+
+  private-relay-contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install relay and Pi contract test dependencies
+        run: python -m pip install -r services/vihanga_link/requirements-test.txt
+      - name: Compile private telemetry transport
+        run: python -m compileall -q services/vihanga_link
+      - name: Validate authentication, CRC, freshness, and simulator isolation
+        run: python -m pytest -q services/vihanga_link

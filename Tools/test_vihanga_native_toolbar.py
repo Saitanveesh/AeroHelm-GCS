@@ -1,0 +1,317 @@
+"""Offline source contracts for the Vihanga Mission Planner toolbar.
+
+No cloud or aircraft connections are opened. Native Windows builds and
+bench acceptance must be performed separately.
+"""
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def source(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8-sig")
+
+
+class VihangaNativeToolbarContracts(unittest.TestCase):
+    def test_retired_touch_panel_is_not_compiled(self):
+        self.assertFalse((ROOT / "plugins/AeroHelmTouchPanel.cs").exists())
+        cloud = source("plugins/AeroHelmCloud.cs")
+        project = source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
+        self.assertNotIn("AeroHelmTouchPanel", cloud)
+        self.assertNotIn("AEROHELM_TOUCH_STARTUP", cloud)
+        self.assertNotIn("AeroHelmTouchPanel.cs", project)
+        self.assertIn("VihangaSharedUi.cs", project)
+        self.assertIn("internal sealed class VihangaSettingsWindow", source("plugins/VihangaSharedUi.cs"))
+
+    def test_native_toolbar_and_missing_workspaces_are_exposed(self):
+        cloud = source("plugins/AeroHelmCloud.cs")
+        self.assertIn('return "Vihanga Ground Station";', cloud)
+        for name in ("SURVEY", "VISION", "LINK", "OPS", "INTEL", "PATHS"):
+            self.assertIn(f'NewToolbarButton("{name}"', cloud)
+        self.assertIn('new ToolStripButton("CLOUD")', cloud)
+        self.assertIn('new ToolStripDropDownButton("MORE")', cloud)
+        self.assertIn('menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _paths)', cloud)
+        for name in ("FLEET", "SECURITY", "ANALYTICS"):
+            self.assertIn(f'new AeroHelmReadOnlyPage("{name}")', cloud)
+        self.assertIn('new AeroHelmIntelWindow("PARAMETERS")', cloud)
+        self.assertIn('new VihangaSettingsWindow()', cloud)
+        self.assertIn('main.MenuConfigTune.PerformClick()', source("plugins/VihangaSharedUi.cs"))
+
+    def test_cloud_view_does_not_automatically_take_pilot_radio(self):
+        cloud = source("plugins/AeroHelmCloud.cs")
+        selector = source("plugins/AeroHelmLinkSelector.cs")
+        direct = source("plugins/AeroHelmPilotDirectWindow.cs")
+        self.assertIn('new AeroHelmLinkSelector()', cloud)
+        self.assertIn('AeroHelmLinkNavigation.Open(MainV2.instance,', cloud)
+        self.assertIn("No automatic radio switchover.", selector)
+        self.assertIn('new VihangaLinkChoice("Direct telemetry"', selector)
+        self.assertIn("main.doConnect(MainV2.comPort,port,baud,true,true)", direct)
+        self.assertIn("MessageBoxButtons.YesNo", direct)
+        self.assertIn('"GET","api/v1/mavlink/health"', cloud)
+        watchdog = cloud.split("private async Task CheckCloudLinkAsync()", 1)[1].split(
+            "private static void ShowWorkspace", 1)[0]
+        for denied in ("main.doConnect", "ws.SendAsync", "MAV_CMD", "PARAM_SET"):
+            self.assertNotIn(denied, watchdog)
+
+    def test_ops_intel_have_live_authenticated_endpoints(self):
+        ops = source("plugins/AeroHelmOperations.cs")
+        intel = source("plugins/AeroHelmPlatformV2.cs")
+        self.assertIn('Api("GET","api/v1/operations/capabilities")', ops)
+        self.assertIn('"api/v1/operations/missions"', ops)
+        self.assertIn('"api/v1/operations/calibrations"', ops)
+        self.assertIn('"api/v2/fleet"', intel)
+        self.assertIn('"api/v2/security/posture"', intel)
+        self.assertIn('"api/v1/vehicles/"+subject+"/parameters"', intel)
+        self.assertIn('vehicle.Text=""', intel)
+
+    def test_new_cloud_fleet_contract_is_visible_without_mutation(self):
+        ops = source("plugins/AeroHelmOperations.cs")
+        intel = source("plugins/AeroHelmPlatformV2.cs")
+        self.assertIn('Api("GET","api/v1/capabilities")', ops)
+        self.assertIn('Api("GET","api/v1/missions?limit=50")', ops)
+        self.assertIn('"api/v1/fleet/status"', intel)
+        self.assertIn('"api/v1/fleet/metrics"', intel)
+        self.assertIn('"api/v1/missions?limit=50"', intel)
+
+    def test_mission_validation_is_invalidated_after_edits(self):
+        intel = source("plugins/AeroHelmPlatformV2.cs")
+        for event in ("points.TextChanged", "fence.TextChanged",
+                      "altitude.ValueChanged", "speed.ValueChanged"):
+            self.assertIn(event, intel)
+        self.assertIn("InvalidateMissionValidation()", intel)
+        self.assertIn("lastMissionPlan", intel)
+        self.assertIn("Plan or aircraft changed during validation", intel)
+        self.assertIn("Revalidate before starting a passive shadow", intel)
+        self.assertIn("new SortedDictionary<string,double>(StringComparer.Ordinal)", intel)
+        self.assertIn("Duplicate parameter:", intel)
+        self.assertIn("Sort parameter targets locally", intel)
+        self.assertIn("ParseParameterTargets()", intel)
+
+    def test_cleanup_source_has_valid_get_child_item_invocation(self):
+        cleanup = source("scripts/Cleanup-AeroHelmGenerated.ps1")
+        self.assertIn(
+            "Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop",
+            cleanup)
+        self.assertNotIn("-Force\n                             -ErrorAction Stop", cleanup)
+        self.assertIn("if(-not $Apply)", cleanup)
+        self.assertIn("Consolidate-AeroHelmWindows.ps1", cleanup)
+
+    def test_recovery_rebuilds_before_manifest_verification(self):
+        repair=source("scripts/Repair-AeroHelmWindows.ps1")
+        release=source("scripts/Consolidate-AeroHelmWindows.ps1")
+        updater=source("scripts/Update-AeroHelmLatest.ps1")
+        self.assertIn("Invoke-FreshReleaseStep -StepArgs @('Build','-Apply','-WithBranding')",repair)
+        self.assertIn("Invoke-FreshReleaseStep -StepArgs @('Verify')",repair)
+        self.assertIn("& powershell.exe @arguments",repair)
+        self.assertIn("if($code -ne 0)",repair)
+        self.assertIn("& powershell.exe @buildArgs",release)
+        self.assertIn("if($buildCode -ne 0)",release)
+        self.assertIn("$repairExit=$LASTEXITCODE",updater)
+        self.assertIn("if ($repairExit -ne 0)",updater)
+
+    def test_manifest_diagnosis_is_read_only_and_verify_fails_closed(self):
+        release = source("scripts/Consolidate-AeroHelmWindows.ps1")
+        self.assertIn("ValidateSet('Inspect','Build','Verify','Diagnose','Bootstrap')", release)
+        self.assertIn("if($Stage -eq 'Verify'){ Assert-PluginLayout }", release)
+        self.assertIn("Git source commit", release)
+        self.assertIn("Cloud plugin DLL SHA256", release)
+        self.assertIn("never edit the manifest to bypass a mismatch", release)
+        self.assertIn("No rebuild, cleanup or flight action", release)
+
+    def test_release_pins_source_and_native_binary_hashes(self):
+        launcher = source("scripts/Start-VihangaGCS.ps1")
+        release = source("scripts/Consolidate-AeroHelmWindows.ps1")
+        session = source("scripts/Start-AeroHelm-Session.ps1")
+        for key in ("release.git_commit", "release.executable_sha256",
+                    "release.plugin_sha256", "Get-NetTCPConnection -LocalPort 5760",
+                    "AEROHELM_CLOUD_READONLY", "LocalDirectBackup"):
+            self.assertIn(key, launcher)
+        self.assertIn("feat/vihanga-phase3-native-toolbar", launcher)
+        self.assertIn("Copy-Runtime $runtime $snapshot $false", release)
+        self.assertIn("Copy-Runtime $snapshot $runtime $true", release)
+        self.assertIn("Start-VihangaGCS.ps1", session)
+        self.assertNotIn("AEROHELM_TOUCH_STARTUP", launcher)
+        self.assertIn("Start-VihangaGCS.ps1", source("scripts/Start-AeroHelm-Touch.ps1"))
+
+
+    def test_ops_closed_modal_does_not_update_disposed_controls(self):
+        ops = source("plugins/AeroHelmOperations.cs")
+        self.assertIn("if(IsDisposed || Disposing) return;", ops)
+        self.assertIn("if(!IsDisposed && !Disposing) Busy(false,status.Text)", ops)
+        self.assertIn("if(!IsDisposed && !Disposing) status.Text=Error(ex)", ops)
+        self.assertIn("missionId.Text!=subject", ops)
+        self.assertIn("calibrationRequestId!=requestId", ops)
+
+    def test_ci_archives_native_hash_evidence_after_roundtrip(self):
+        ci = source(".github/workflows/aerohelm-cloud-plugin.yml")
+        self.assertIn("Record exact compiled native evidence", ci)
+        self.assertIn("vihanga-ci-native-evidence.json", ci)
+        self.assertIn("actions/upload-artifact@v4", ci)
+        self.assertIn("windows_ui_smoke_verified=$false", ci)
+        self.assertIn("physical_flight_authorized=$false", ci)
+
+    def test_passive_bench_never_opens_flight_controller_port(self):
+        inventory = source("scripts/Test-VihangaPassiveBench.ps1")
+        self.assertIn("SerialPort]::GetPortNames()", inventory)
+        self.assertIn("Test-NetConnection -ComputerName", inventory)
+        self.assertIn("physical_flight_authorized=$false", inventory)
+        self.assertIn("mavlink_heartbeat_verified=$false", inventory)
+        for forbidden in ("SerialPort]::Open(", "doConnect(", "MAV_CMD",
+                          "PARAM_SET", "Remove-Item", "Stop-Process"):
+            self.assertNotIn(forbidden, inventory)
+
+    def test_certification_gate_never_self_certifies_flight(self):
+        script = source("scripts/Test-VihangaCertification.ps1")
+        windows = source("scripts/Test-AeroHelmWindowsPages.ps1")
+        for field in ("exact_native_binary_hashes_verified",
+                      "exact_commit_github_ci_passed",
+                      "private_cloud_pi_preflight_passed",
+                      "external_operator_evidence_present",
+                      "operational_flight_certified=$false"):
+            self.assertIn(field, script)
+        self.assertIn("Test-VihangaCertification.ps1", windows)
+        self.assertIn("-RunSourceTests", script)
+        self.assertIn("RequireSoftwareGate", script)
+        self.assertNotIn("flight_certified=$true", script)
+
+    def test_local_acceptance_scripts_target_current_branch(self):
+        for path in ("scripts/Test-AeroHelmPrivatePreflight.ps1",
+                     "scripts/Inspect-AeroHelmWindowsStage.ps1"):
+            content = source(path)
+            self.assertIn("feat/vihanga-phase3-native-toolbar", content)
+            self.assertNotIn("if ($branch -notin @(",content)
+            self.assertNotIn("if ($actualBranch -notin @(",content)
+
+    def test_thread_safe_operator_requests(self):
+        intel = source("plugins/AeroHelmPlatformV2.cs")
+        ops = source("plugins/AeroHelmOperations.cs")
+        for expected in ("vehicle.Invoke(new Func<string>(Id))",
+                         "aircraftAtValidation",
+                         "Aircraft selection changed; earlier cloud response discarded.",
+                         "Aircraft selection changed; parameter response discarded.",
+                         "string approvedHash=lastMissionHash;"):
+            self.assertIn(expected, intel)
+        self.assertIn("string selectedMission=missionId.Text;",ops)
+        self.assertIn("string selectedLease=leaseId.Text;",ops)
+        self.assertNotIn('Task.Run(()=>RequestWithLease("renew",missionId.Text,leaseId.Text))',ops)
+
+    def test_fresh_clone_requires_empty_runtime_and_skips_legacy_profile(self):
+        release=source("scripts/Consolidate-AeroHelmWindows.ps1")
+        installer=source("scripts/Build-Integrated-AeroHelm.ps1")
+        branding=source("scripts/Install-AeroHelmBranding.ps1")
+        self.assertIn("$freshBootstrap=($Stage -eq 'Bootstrap')",release)
+        self.assertIn("Fresh bootstrap requires an empty runtime directory.",release)
+        self.assertIn("if($freshBootstrap){$buildArgs+='-SkipLegacySettings'}",release)
+        self.assertIn("if(-not $freshBootstrap)",release)
+        self.assertIn("if($freshBootstrap)",release)
+        self.assertIn("$brandingParams['SkipLegacySettings']=$true",installer)
+        self.assertIn("if (-not $SkipLegacySettings -and -not (Test-Path",branding)
+
+    def test_connection_screen_uses_independent_drawn_cards_and_short_status(self):
+        selector=source("plugins/AeroHelmLinkSelector.cs")
+        link=source("plugins/AeroHelmWorkspace.cs")
+        self.assertIn("internal sealed class VihangaLinkChoice : Control",selector)
+        self.assertIn('new VihangaLinkChoice("Cloud telemetry"',selector)
+        self.assertIn('new VihangaLinkChoice("Direct telemetry"',selector)
+        self.assertIn('new VihangaLinkChoice("Attitude monitor"',selector)
+        self.assertNotIn("private static Button Action(",selector)
+        self.assertIn("AccessibleRole=AccessibleRole.PushButton",selector)
+        self.assertIn('showDetails.Text = "Technical details"',link)
+        self.assertIn("ShowSelectedReport()",link)
+        self.assertIn('"ATTITUDE  " + (localAtt',link)
+        self.assertNotIn("Observed ATTITUDE:",link)
+        self.assertNotIn("No authenticated duplex request has been sent.",link)
+
+    def test_native_mission_planner_hud_handles_narrow_flight_panel(self):
+        flight=source("GCSViews/FlightData.cs")
+        self.assertIn("tabControlactions.Multiline = false;",flight)
+        self.assertIn('new ToolStripMenuItem("Switch tab")',flight)
+        self.assertNotIn("tabControlactions.ClientSize.Width < 560",flight)
+        self.assertIn("tabQuick.AutoScroll=needScroll;",flight)
+        self.assertIn("minimumWidth=tableLayoutPanelQuick.ColumnCount>1 ? 440 : 240",flight)
+        self.assertIn("tableLayoutPanelQuick.Width=width;",flight)
+        self.assertNotIn("hud1.roll=0;",flight)
+
+    def test_responsive_cloud_pages_and_operator_workspaces(self):
+        pages=source("plugins/AeroHelmReadOnlyPages.cs")
+        shared=source("plugins/VihangaSharedUi.cs")
+        intel=source("plugins/AeroHelmPlatformV2.cs")
+        ops=source("plugins/AeroHelmOperations.cs")
+        link=source("plugins/AeroHelmWorkspace.cs")
+        self.assertIn("ReflowToolbar(layout,bar)",pages)
+        self.assertIn("SizeType.Percent,64",pages)
+        self.assertIn("DataGridViewAutoSizeColumnsMode.AllCells",pages)
+        self.assertIn("table.Columns[0].FillWeight=38",pages)
+        self.assertIn("VihangaAdaptivePanel",shared)
+        self.assertIn("TextRenderer.MeasureText",shared)
+        self.assertIn("VihangaAdaptivePanel.Attach(this,sim,maint,policyPage)",ops)
+        self.assertIn("VihangaAdaptivePanel.Attach(this,fleetPanel,missionPanel,paramPanel,hPanel,secPanel)",intel)
+        self.assertIn("WrapContents = true, AutoScroll = true",link)
+
+    def test_ops_intel_negotiate_m1_without_cross_origin_token_forwarding(self):
+        ops=source("plugins/AeroHelmOperations.cs")
+        intel=source("plugins/AeroHelmPlatformV2.cs")
+        self.assertIn("internal static class AeroHelmBackendProfile",ops)
+        self.assertIn("Same signed-in HTTPS origin only.",ops)
+        self.assertIn('OperationsApi.Request("GET","api/v1/fleet/status")',ops)
+        self.assertIn('OperationsApi.Request("GET","api/v1/vehicles")',ops)
+        self.assertIn('OperationsApi.Request("GET","api/v1/mavlink/health")',ops)
+        self.assertIn('AeroHelmBackendProfile.IsRouteAbsent(ex)',ops)
+        self.assertIn('AeroHelmBackendProfile.ReadFleet("api/v2/fleet")',intel)
+        self.assertNotIn("cloud_flight_authorized=true",ops)
+
+    def test_m1_capability_negotiation_preserves_absent_features(self):
+        pages=source("plugins/AeroHelmReadOnlyPages.cs")
+        for required in ("LegacyM1Capabilities", "LegacyM1RegistryMetrics",
+                         "api/v1/capabilities", "api/v1/mavlink/health",
+                         "NOT SUPPORTED BY M1", "NOT DEPLOYED (HTTP 404)",
+                         "No data or successful security posture has been inferred."):
+            self.assertIn(required,pages)
+        self.assertIn("http.StatusCode!=HttpStatusCode.NotFound",pages)
+        self.assertIn('OperationsApi.Request("GET","api/v1/vehicles")',pages)
+        self.assertNotIn("Operator JWT converted to R2 OIDC",pages)
+
+    def test_missing_attitude_is_diagnosed_without_forged_hud_data(self):
+        bridge=source("plugins/AeroHelmReceiveOnlyBridge.cs")
+        link=source("plugins/AeroHelmWorkspace.cs")
+        self.assertIn("internal bool NativeHeartbeatFresh",bridge)
+        self.assertIn("internal bool NativeAttitudeFresh",bridge)
+        self.assertIn("internal string AttitudeTroubleshooting",bridge)
+        self.assertIn("MAVLink ATTITUDE (message 30)",bridge)
+        self.assertIn("localHb && !localAtt",link)
+        self.assertIn("ATTITUDE  \" + (localAtt",link)
+        self.assertIn("M1 ATTITUDE API NOT DEPLOYED (HTTP 404)",link)
+        self.assertNotIn("ORACLE M1 UPDATE REQUIRED",link)
+
+    def test_branding_handles_no_custom_artwork(self):
+        build = source("scripts/Build-Integrated-AeroHelm.ps1")
+        branding = source("scripts/Install-AeroHelmBranding.ps1")
+        self.assertIn("if (-not [string]::IsNullOrWhiteSpace($LogoPath))", build)
+        self.assertIn("if (-not [string]::IsNullOrWhiteSpace($IconPath))", build)
+        self.assertIn("Install-AeroHelmBranding.ps1') @brandingParams", build)
+        self.assertNotIn("-LogoPath $LogoPath -IconPath $IconPath", build)
+        self.assertIn("Branding completed without the expected Vihanga GCS title.", build)
+        self.assertIn("build-logs\\branding-backups", branding)
+        self.assertIn("requires an existing PNG file.", branding)
+
+    def test_branding_preserves_operator_settings(self):
+        branding = source("scripts/Install-AeroHelmBranding.ps1")
+        repair = source("scripts/Repair-AeroHelmWindows.ps1")
+        self.assertIn("'Vihanga GCS.xml'", branding)
+        self.assertIn("'AeroHelm GCS.xml'", branding)
+        self.assertIn("'config.xml'", branding)
+        self.assertIn("if (-not $SkipLegacySettings -and -not (Test-Path -LiteralPath $newProfile -PathType Leaf))", branding)
+        self.assertIn("Copy-Item -LiteralPath $sourceProfile -Destination $newProfile", branding)
+        self.assertIn("Invoke-FreshReleaseStep -StepArgs @('Build','-Apply','-WithBranding')", repair)
+
+    def test_cloud_fleet_unknowns_are_not_flight_authority(self):
+        pages = source("plugins/AeroHelmReadOnlyPages.cs")
+        for marker in ("TELEMETRY STALE/UNAVAILABLE", "SIMULATED / FRESH",
+                       "Kerberos integration: NOT PROVISIONED", "cloud_flight_authorized"):
+            self.assertIn(marker, pages)
+        self.assertNotIn('OperationsApi.Request("POST","api/v1/device', pages)
+
+
+if __name__ == "__main__":
+    unittest.main()

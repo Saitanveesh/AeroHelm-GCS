@@ -1,0 +1,13 @@
+{
+  "schema": "vihanga.operator-acceptance.v1",
+  "tested_commit": "",
+  "windows_gui_smoke": false,
+  "radio_manual_selection": false,
+  "cloud_outage_recovery": false,
+  "simulator_ops": false,
+  "intel_parameter_checks": false,
+  "propeller_free_hil": false,
+  "autopilot_failsafe_verified": false,
+  "evidence_reference": "",
+  "note": "Operator-owned evidence only. This form never automatically certifies flight readiness."
+}

@@ -1,0 +1,119 @@
+# Reference private deployment. Requires reviewed reverse proxy TLS, OIDC, secrets,
+# backups and ingress policy. Does NOT expose app/DB on public host ports.
+# API can reach trusted IdP JWKS via edge; the database is internal-only.
+services:
+  database:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aerohelm
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+    secrets:
+      - db_admin_password
+      - db_app_password
+      - db_migrator_password
+    volumes:
+      - aerohelm-postgres:/var/lib/postgresql/data
+      - ./deploy/postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aerohelm"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+    networks: [private]
+  api:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    secrets:
+      - app_database_url
+    depends_on:
+      database:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [private, edge]
+    # HTTPS terminator must be private/authenticated, with allowlisted forwarding.
+  scheduler:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    command: ["python", "-m", "cloud.app.scheduler"]
+    restart: unless-stopped
+    env_file: .env
+    secrets:
+      - app_database_url
+    depends_on:
+      database:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [private]
+  compute:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    command: ["python", "-m", "cloud.app.compute_worker"]
+    restart: unless-stopped
+    env_file: .env
+    secrets:
+      - app_database_url
+    depends_on:
+      database:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [private]
+    # Read-only analytic DB workload; no public/API or flight-controller access.
+  migrate:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    profiles: ["migrate"]
+    command: ["python", "-m", "alembic", "-c", "cloud/alembic.ini", "upgrade", "head"]
+    restart: "no"
+    env_file: .env
+    environment:
+      AEROHELM_DATABASE_URL_FILE: /run/secrets/migrator_database_url
+    secrets:
+      - migrator_database_url
+    depends_on:
+      database:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [private]
+networks:
+  private:
+    internal: true
+  # Outbound OIDC JWKS HTTPS reachability and reviewed gateway attachment.
+  # Not published to a host port. DB and scheduler stay on internal only.
+  edge: {}
+volumes:
+  aerohelm-postgres:
+secrets:
+  db_admin_password:
+    file: ./secrets/db_admin_password.txt
+  db_app_password:
+    file: ./secrets/db_app_password.txt
+  db_migrator_password:
+    file: ./secrets/db_migrator_password.txt
+  app_database_url:
+    file: ./secrets/app_database_url.txt
+  migrator_database_url:
+    file: ./secrets/migrator_database_url.txt

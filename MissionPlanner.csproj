@@ -59,6 +59,11 @@
     <Compile Remove="Msi\**" />
     <Compile Remove="obj2\**" />
     <Compile Remove="obj\**" />
+    <Compile Remove="obj3\**" />
+    <Compile Remove="Tools\**" />
+    <!-- Prevent SDK globbing of previous full-runtime backups. Otherwise
+         backup Plugins/*.cs is compiled twice (CS0101/CS0111). -->
+    <Compile Remove="build-logs\**" />
     <Compile Remove="plugins\**" />
     <Compile Remove="Plugins\**" />
     <Compile Remove="Linux\**" />
@@ -72,6 +77,9 @@
     <EmbeddedResource Remove="Msi\**" />
     <EmbeddedResource Remove="obj2\**" />
     <EmbeddedResource Remove="obj\**" />
+    <EmbeddedResource Remove="obj3\**" />
+    <EmbeddedResource Remove="Tools\**" />
+    <EmbeddedResource Remove="build-logs\**" />
     <EmbeddedResource Remove="plugins\**" />
     <EmbeddedResource Remove="resedit\**" />
     <EmbeddedResource Remove="SikRadio\**" />
@@ -83,6 +91,9 @@
     <None Remove="Msi\**" />
     <None Remove="obj2\**" />
     <None Remove="obj\**" />
+    <None Remove="obj3\**" />
+    <None Remove="Tools\**" />
+    <None Remove="build-logs\**" />
     <None Remove="plugins\**" />
     <None Remove="resedit\**" />
     <None Remove="SikRadio\**" />

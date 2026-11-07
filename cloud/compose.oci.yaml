@@ -1,0 +1,7 @@
+# Optional Oracle + Tailscale Serve ingress override.
+# Exposes API ONLY to host loopback. It is NOT publicly bound.
+# Use together with cloud/compose.yaml; see deploy/oci/README.md.
+services:
+  api:
+    ports:
+      - "127.0.0.1:${AEROHELM_BIND_PORT:-18080}:8080"

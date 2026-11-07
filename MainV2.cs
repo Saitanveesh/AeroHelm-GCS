@@ -1449,6 +1449,18 @@ namespace MissionPlanner
 
         public void doConnect(MAVLinkInterface comPort, string portname, string baud, bool getparams = true, bool showui = true)
         {
+            // Enforce the read-only rule at the actual native connection
+            // boundary, not just the CONNECT button. Programmatic plugins
+            // must never accidentally enter Getting Params over cloud TCP.
+            bool aeroHelmReadOnlyTcp =
+                string.Equals(portname, "TCP", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_CLOUD_READONLY"), "1", StringComparison.Ordinal);
+            if (aeroHelmReadOnlyTcp)
+            {
+                getparams = false;
+                log.Warn("AeroHelm cloud TCP: suppressing PARAM_REQUEST_* because the local bridge is receive-only.");
+            }
             bool skipconnectcheck = false;
             log.Info($"We are connecting to {portname} {baud}");
             switch (portname)
@@ -1473,7 +1485,16 @@ namespace MissionPlanner
                     });
                     break;
                 case "TCP":
-                    comPort.BaseStream = new TcpSerial();
+                    // In AeroHelm cloud read-only mode BOTH the native and
+                    // external Python bridges are always loopback-only.
+                    // Avoid asking for an arbitrary TCP target that might accept
+                    // Mission Planner's normal outbound commands.
+                    if (aeroHelmReadOnlyTcp)
+                        comPort.BaseStream = new TcpSerial {
+                            Host = "127.0.0.1", Port = "5760", autoReconnect = false
+                        };
+                    else
+                        comPort.BaseStream = new TcpSerial();
                     _connectionControl.CMB_serialport.Text = "TCP";
                     break;
                 case "UDP":
@@ -1894,7 +1915,21 @@ namespace MissionPlanner
             }
             else
             {
-                doConnect(comPort, _connectionControl.CMB_serialport.Text, _connectionControl.CMB_baudrate.Text);
+                // AeroHelm M1 is a deliberately receive-only cloud TCP link.
+                // The normal parameter-sync workflow sends PARAM_REQUEST_* messages,
+                // which the M1 bridge intentionally discards. Without this opt-in,
+                // Mission Planner appears frozen at "Getting Params" indefinitely.
+                // Only skip the initial parameter download for explicit TCP M1 tests;
+                // preserve normal USB/radio and ordinary TCP behavior by default.
+                bool aeroHelmReadOnly =
+                    string.Equals(Environment.GetEnvironmentVariable("AEROHELM_CLOUD_READONLY"),
+                                  "1", StringComparison.Ordinal) &&
+                    string.Equals(_connectionControl.CMB_serialport.Text, "TCP",
+                                  StringComparison.OrdinalIgnoreCase);
+                if (aeroHelmReadOnly)
+                    log.Warn("AeroHelm M1 read-only TCP: skip parameter download; calibration, mission upload and configuration writes are unavailable.");
+                doConnect(comPort, _connectionControl.CMB_serialport.Text,
+                          _connectionControl.CMB_baudrate.Text, !aeroHelmReadOnly);
             }
 
             _connectionControl.UpdateSysIDS();
@@ -2236,6 +2271,13 @@ namespace MissionPlanner
                 Settings.Instance.APMFirmware = MainV2.comPort.MAV.cs.firmware.ToString();
 
                 Settings.Instance.Save();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                log.Error("Cannot save operator settings", ex);
+                CustomMessageBox.Show("The ground-station settings could not be saved. " +
+                    "Check write access to the per-user profile folder and any Windows " +
+                    "security restrictions.\n\n" + ex.Message);
             }
             catch (Exception ex)
             {
