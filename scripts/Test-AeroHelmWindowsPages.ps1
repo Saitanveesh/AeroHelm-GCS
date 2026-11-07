@@ -280,6 +280,8 @@ $relayLogin = Read-Source 'plugins/VihangaLinkLoginWindow.cs'
 $privateRelay = Read-Source 'services/vihanga_link/relay.py'
 $privatePi = Read-Source 'services/vihanga_link/pi_agent.py'
 $missionPreview = Read-Source 'services/vihanga_link/mission_preview.py'
+$simWorkflow = Read-Source 'services/vihanga_link/simulation_workflow.py'
+$nativePreview = Read-Source 'plugins/VihangaMissionPreviewWindow.cs'
 Require-Text $relaySession 'MissionPlanner.Program.AeroHelmOperatorToken' 'Legacy Oracle M1 session must remain independent of new relay.'
 Require-Text $relaySession 'VIHANGA_LINK_ORIGIN' 'Dedicated relay origin must be explicit.'
 Require-Text $relaySession 'relayExpiresUtc' 'Dedicated viewer JWT must have bounded expiry.'
@@ -299,6 +301,17 @@ Require-Text $privateRelay '@app.post("/api/v1/sim/mission/preview")' 'Cloud pla
 Require-Text $missionPreview 'vehicle_command_authorized": False' 'Autonomy preview may not grant hardware command authority.'
 Require-Text $missionPreview 'Route escapes the declared geofence volume' 'Preview must enforce a declared spatial boundary.'
 Require-Text $missionPreview 'reserve-adjusted endurance' 'Preview must enforce declared endurance reserve.'
+Require-Text $simWorkflow "state='APPROVED_SIM'" 'Simulated mission execution requires explicit prior approval.'
+Require-Text $simWorkflow 'Author and approver must be different people' 'Simulator approval must be segregated from authorship.'
+Require-Text $simWorkflow 'lease_digest' 'Virtual mission steps require an expiring lease token.'
+Require-Text $simWorkflow 'EXPIRED_SIM' 'Timed-out simulation leases must fail closed.'
+Require-Text $project 'VihangaMissionPreviewWindow.cs' 'Native plugin must compile the cloud mission preview window.'
+Require-Text $cloud 'new VihangaMissionPreviewWindow()' 'TOOLS must open dedicated cloud simulation preview.'
+Require-Text $nativePreview 'api/v1/sim/mission/preview' 'Preview UI must target only the simulation API.'
+Require-Text $nativePreview 'SIMULATION_PREVIEW_ONLY' 'Preview UI must reject hardware-authorizing responses.'
+if ($nativePreview.Contains('MAV_CMD') -or $nativePreview.Contains('ws.SendAsync(')) {
+    throw 'Native cloud autonomy preview may not forward MAVLink commands.'
+}
 if ($privateRelay.Contains('/ws/mavlink/control/') -or
     $privatePi.Contains('ws.recv(') -or
     $privatePi.Contains('ws.send_bytes(')) {
