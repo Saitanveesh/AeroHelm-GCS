@@ -88,6 +88,30 @@ namespace AeroHelm.GcsCloud
             }
         }
 
+        // Current receive-only WSS evidence, not cached flight state.
+        internal bool NativeHeartbeatFresh
+        {
+            get { return cloudStreamOpen && quality.Snapshot().HeartbeatFresh; }
+        }
+        internal bool NativeAttitudeFresh
+        {
+            get { return cloudStreamOpen && quality.Snapshot().AttitudeFresh; }
+        }
+        internal string AttitudeTroubleshooting
+        {
+            get
+            {
+                if(!NativeHeartbeatFresh) return
+                    "No fresh native HEARTBEAT. Check Pi UART ownership, M1 telemetry WSS and login.";
+                if(!NativeAttitudeFresh) return
+                    "Fresh HEARTBEAT reaches the GCS, but MAVLink ATTITUDE (message 30) " +
+                    "does not. Inspect FC stream configuration, Pi UART-agent message IDs " +
+                    "and M1 WebSocket forwarding; do not synthesize roll/pitch or issue " +
+                    "FC stream commands from the read-only cloud link.";
+                return "Fresh real HEARTBEAT and ATTITUDE packets observed on the native GCS link.";
+            }
+        }
+
         internal bool IsListening { get { return cancellation != null; } }
 
         internal bool Start()

@@ -439,7 +439,7 @@ namespace AeroHelm.GcsCloud
         {
             Text = "VIHANGA LINK — Cloud link diagnostics";
             Width = 870; Height = 580;
-            MinimumSize = new Drawing.Size(700,480);
+            MinimumSize = new Drawing.Size(560,420);
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.Dpi;
             BackColor = Drawing.Color.FromArgb(8,8,8);
@@ -448,8 +448,8 @@ namespace AeroHelm.GcsCloud
                 RowCount = 5, ColumnCount = 1 };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(layout);
             var linkHeading = new TableLayoutPanel {
@@ -489,14 +489,14 @@ namespace AeroHelm.GcsCloud
             autoRefresh.AutoSize = true;
             autoRefresh.ForeColor = Drawing.Color.FromArgb(210,210,210);
             autoRefresh.Margin = new Padding(12,11,0,0);
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
+            var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, AutoScroll = true };
             buttons.Controls.Add(check);
             buttons.Controls.Add(autoRefresh);
             layout.Controls.Add(buttons, 0, 2);
             // Full duplex means authenticated diagnostic request/ACK only:
             // never forward GCS MAVLink, arm, calibrate, or change an FC parameter.
             var duplexBar = new FlowLayoutPanel {
-                Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true
+                Dock = DockStyle.Fill, WrapContents = true, AutoScroll = true
             };
             duplexPing.Text = "PI ROUND-TRIP PING";
             duplexPing.Width = 190; duplexPing.Height = 40;
@@ -704,7 +704,7 @@ namespace AeroHelm.GcsCloud
                         catch (WebException ex) {
                             var http = ex.Response as HttpWebResponse;
                             attitudeNote = http != null && http.StatusCode == HttpStatusCode.NotFound ?
-                                "ORACLE M1 UPDATE REQUIRED" :
+                                "M1 ATTITUDE API NOT DEPLOYED (HTTP 404)" :
                                 http != null && (http.StatusCode == HttpStatusCode.Unauthorized ||
                                                  http.StatusCode == HttpStatusCode.Forbidden) ?
                                 "SIGN IN AGAIN" : "CLOUD PREVIEW UNAVAILABLE";
@@ -758,18 +758,21 @@ namespace AeroHelm.GcsCloud
                     hbReady is bool) realHeartbeat = (bool)hbReady;
                 if (m.TryGetValue("attitude_stream_active",out attReady) &&
                     attReady is bool) realAttitude = (bool)attReady;
+                var nativeEvidence = AeroHelmCloudPlugin.ActiveNativeBridge;
+                bool localHb = nativeEvidence != null && nativeEvidence.NativeHeartbeatFresh;
+                bool localAtt = nativeEvidence != null && nativeEvidence.NativeAttitudeFresh;
                 if (!fresh)
                     freshness.Text = "LINK / STALE OR NO PIXHAWK STREAM";
                 else if (realHeartbeat == false)
                     freshness.Text = "LINK / NO REAL HEARTBEAT — HUD CANNOT CONNECT";
-                else if (realAttitude == false)
-                    freshness.Text = "LINK / MISSING ATTITUDE — HORIZON WILL FREEZE";
+                else if (realAttitude == false || (localHb && !localAtt))
+                    freshness.Text = "LINK / REAL HEARTBEAT, NO ATTITUDE — HUD INVALID";
                 else if (realHeartbeat == true && realAttitude == true)
                     freshness.Text = "LINK / REAL HEARTBEAT + ATTITUDE RECEIVED";
                 else
                     freshness.Text = "LINK / CLOUD FRAMES — HUD DATA UNVERIFIED";
                 freshness.ForeColor = (!fresh || realHeartbeat == false ||
-                    realAttitude == false) ? Drawing.Color.FromArgb(255,184,150) :
+                    realAttitude == false || (localHb && !localAtt)) ? Drawing.Color.FromArgb(255,184,150) :
                     realHeartbeat == true && realAttitude == true ?
                     Drawing.Color.FromArgb(196,236,196) :
                     Drawing.Color.FromArgb(243,211,166);
@@ -798,9 +801,12 @@ namespace AeroHelm.GcsCloud
                         (object)realHeartbeat.Value : "UNKNOWN") + Environment.NewLine +
                     "Live attitude ready: " + Convert.ToString(realAttitude.HasValue ?
                         (object)realAttitude.Value : "UNKNOWN") + Environment.NewLine +
-                    "Native GCS link: " + (AeroHelmCloudPlugin.ActiveNativeBridge == null ?
-                        "EXTERNAL OR DISABLED" : AeroHelmCloudPlugin.ActiveNativeBridge.Summary) +
+                    "Native GCS link: " + (nativeEvidence == null ?
+                        "EXTERNAL OR DISABLED" : nativeEvidence.Summary) +
                         Environment.NewLine +
+                    "ATTITUDE STREAM DIAGNOSIS: " + (nativeEvidence == null ?
+                        "Native receiver unavailable; no local HB/ATT packet evidence." :
+                        nativeEvidence.AttitudeTroubleshooting) + Environment.NewLine +
                     "Dropped queued frames: " + Convert.ToString(m.ContainsKey("viewer_frames_dropped") ? m["viewer_frames_dropped"] : "unknown") + Environment.NewLine +
                     "UTC checked: " + DateTime.UtcNow.ToString("u", CultureInfo.InvariantCulture) +
                     Environment.NewLine + Environment.NewLine +
