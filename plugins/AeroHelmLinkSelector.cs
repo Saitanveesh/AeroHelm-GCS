@@ -64,7 +64,7 @@ namespace AeroHelm.GcsCloud
             int top=Math.Max(7,(int)(9*dpi));
             int width=Math.Max(1,rect.Width-x-Math.Max(10,(int)(14*dpi)));
             int titleHeight=TextRenderer.MeasureText(heading,headingFont,
-                new Drawing.Size(width,int.MaxValue),TextFormatFlags.SingleLine |
+                new Drawing.Size(width,120),TextFormatFlags.SingleLine |
                 TextFormatFlags.NoPrefix).Height;
             int titleBottom=top+titleHeight+2;
             TextRenderer.DrawText(e.Graphics,heading,headingFont,
