@@ -50,6 +50,32 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("VihangaLinkSession.CloudOrigin", shared)
         self.assertNotRegex(shared, r'\bnew\s+CloudWindow\s*\(')
 
+    def test_duplex_is_bounded_telemetry_request_not_a_flight_control_tunnel(self):
+        relay = source("services/vihanga_link/relay.py")
+        pi = source("services/vihanga_link/pi_agent.py")
+        client = source("plugins/VihangaLinkSession.cs")
+        link = source("plugins/AeroHelmWorkspace.cs")
+        plugin = source("plugins/AeroHelmCloud.cs")
+
+        self.assertIn('allow_disarmed_telemetry_requests: bool = False', relay)
+        self.assertIn('"/api/v1/vehicles/{vehicle_id}/telemetry/probe"', relay)
+        self.assertIn('def request_stream_probe(', relay)
+        self.assertIn('self.probe_request_count >= 2', relay)
+        self.assertIn('self.fresh(self.last_heartbeat)', relay)
+        self.assertIn('"native_quick_data_ready"', relay)
+        self.assertIn('def queue_disarmed_telemetry_request(', pi)
+        self.assertIn('self._seen_armed', pi)
+        self.assertIn('self._last_disarmed_heartbeat', pi)
+        self.assertIn('REFUSED_DISARM_REQUIRED', pi)
+        self.assertIn('MAV_CMD_SET_MESSAGE_INTERVAL', pi)
+        self.assertIn('RequestDisarmedTelemetry', client)
+        self.assertIn('request.AllowAutoRedirect = false;', client)
+        self.assertIn('Request real FC streams', link)
+        self.assertIn('RequestDisarmedTelemetry(vehicleId)', link)
+        self.assertIn('QUICK     ', link)
+        self.assertIn('VIHANGA_ADVANCED_TOOLS', plugin)
+        self.assertNotIn('ws.SendAsync(', source("plugins/AeroHelmReceiveOnlyBridge.cs"))
+
     def test_native_mavlink_harness_qualifies_mission_planner_login_stub(self):
         harness = source("Tools/AeroHelmMavlinkBridgeTests/Program.cs")
         self.assertIn("namespace MissionPlanner", harness)
