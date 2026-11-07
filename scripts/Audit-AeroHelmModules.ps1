@@ -5,20 +5,16 @@ $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $cloud=[IO.File]::ReadAllText((Join-Path $root 'plugins/AeroHelmCloud.cs'))
 $project=[IO.File]::ReadAllText((Join-Path $root 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'))
 $bindings=@(
- @{name='FLIGHT';source='MainV2.cs';token='MenuFlightData';purpose='Native HUD'},
+ @{name='FLIGHT';source='MainV2.cs';token='MenuFlightData';purpose='Native flight data HUD'},
  @{name='PLAN';source='MainV2.cs';token='MenuFlightPlanner';purpose='Native mission planning'},
- @{name='CLOUD';source='plugins/AeroHelmCloud.cs';token='new CloudWindow()';purpose='Authenticated cloud viewer'},
- @{name='PATHS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmLinkSelector()';purpose='Manual cloud/direct choice'},
+ @{name='PATHS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmLinkSelector()';purpose='Manual cloud or USB/radio connection'},
+ @{name='CAMERA';source='plugins/AeroHelmCloud.cs';token='new AeroHelmVisionWindow()';purpose='Camera view'},
+ @{name='DIAGNOSTICS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmLinkWindow()';purpose='Link evidence in TOOLS'},
+ @{name='ATTITUDE';source='plugins/AeroHelmCloud.cs';token='new AeroHelmCloudAttitudeWindow()';purpose='Independent attitude monitor'},
  @{name='SURVEY';source='plugins/AeroHelmCloud.cs';token='new AeroHelmSurveyWindow()';purpose='Offline survey drafts'},
- @{name='VISION';source='plugins/AeroHelmCloud.cs';token='new AeroHelmVisionWindow()';purpose='Private camera'},
- @{name='LINK';source='plugins/AeroHelmCloud.cs';token='new AeroHelmLinkWindow()';purpose='Telemetry diagnostics'},
- @{name='OPS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmOpsWindow()';purpose='Simulation and supervised bench'},
- @{name='INTEL';source='plugins/AeroHelmCloud.cs';token='new AeroHelmIntelWindow()';purpose='Mission assurance'},
- @{name='FLEET';source='plugins/AeroHelmCloud.cs';token='new AeroHelmReadOnlyPage("FLEET")';purpose='Fleet inspection'},
- @{name='SECURITY';source='plugins/AeroHelmCloud.cs';token='new AeroHelmReadOnlyPage("SECURITY")';purpose='Security inspection'},
- @{name='ANALYTICS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmReadOnlyPage("ANALYTICS")';purpose='Analytics inspection'},
- @{name='PARAMETERS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmIntelWindow("PARAMETERS")';purpose='Read-only parameter cache'},
- @{name='SETTINGS';source='plugins/AeroHelmCloud.cs';token='new VihangaSettingsWindow()';purpose='Local settings'}
+ @{name='OPERATIONS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmOpsWindow()';purpose='Simulation and maintenance'},
+ @{name='INTELLIGENCE';source='plugins/AeroHelmCloud.cs';token='new AeroHelmIntelWindow()';purpose='Fleet, parameters and security insights'},
+ @{name='SETTINGS';source='plugins/AeroHelmCloud.cs';token='new VihangaSettingsWindow()';purpose='Vihanga local preferences'}
 )
 $records=@()
 foreach($entry in $bindings){
@@ -32,13 +28,24 @@ foreach($entry in $bindings){
    backend_capabilities='REQUIRES LIVE CHECK';purpose=$entry.purpose
  }
 }
-$items=@('CLOUD','PATHS','SURVEY','VISION','LINK','OPS','INTEL','MORE')
+$items=@('PATHS','CAMERA','TOOLS')
 $missing=@()
 foreach($item in $items){
- $needle= if($item -eq 'CLOUD'){'new ToolStripButton("CLOUD")'}
-    elseif($item -eq 'MORE'){'new ToolStripDropDownButton("MORE")'}
+ $needle=if($item -eq 'TOOLS'){'new ToolStripDropDownButton("TOOLS")'}
     else {'NewToolbarButton("'+$item+'"'}
  if(-not $cloud.Contains($needle)){$missing+=$item}
+}
+$obsolete=@(
+ 'new ToolStripButton("CLOUD")',
+ 'NewToolbarButton("SURVEY"',
+ 'NewToolbarButton("VISION"',
+ 'NewToolbarButton("LINK"',
+ 'NewToolbarButton("OPS"',
+ 'NewToolbarButton("INTEL"',
+ 'new ToolStripDropDownButton("MORE")'
+)
+foreach($needle in $obsolete){
+ if($cloud.Contains($needle)){throw "Redundant toolbar entry: $needle"}
 }
 if(-not (Test-Path -LiteralPath (Join-Path $root 'plugins/VihangaSharedUi.cs')) -or
    -not $project.Contains('VihangaSharedUi.cs') -or
