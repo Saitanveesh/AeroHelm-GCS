@@ -24,11 +24,12 @@ from services.vihanga_link.pi_agent import (
 from pymavlink import mavutil
 
 
-def frame(message_id: int, payload: bytes, mav2: bool = False) -> bytes:
-    header = bytearray((0xFD, len(payload), 0, 0, 1, 1, 1,
+def frame(message_id: int, payload: bytes, mav2: bool = False,
+          source_system: int = 1) -> bytes:
+    header = bytearray((0xFD, len(payload), 0, 0, 1, source_system, 1,
                         message_id & 255, message_id >> 8 & 255,
                         message_id >> 16 & 255)) if mav2 else bytearray(
-                            (0xFE, len(payload), 1, 1, 1, message_id))
+                            (0xFE, len(payload), 1, source_system, 1, message_id))
     assert message_id in (0, 22, 30)
     crc = 0xFFFF
     for value in bytes(header[1:]) + payload + bytes((
@@ -63,6 +64,49 @@ def test_crc_evidence_is_real_and_no_false_heartbeat():
     assert not valid_evidence(frame(0, bytes(9)), 30)
     assert envelope(b"\xfd\x04") is None
     assert envelope(b"invalid-data") is None
+
+
+
+def test_foreign_sysid_is_rejected_even_with_valid_crc(credentials):
+    cfg, token = credentials
+    foreign_hb = frame(0, bytes(9), source_system=2)
+    foreign_att = frame(30, struct.pack("<Iff", 12, .2, -.1) + bytes(16),
+                        mav2=True, source_system=2)
+    assert valid_evidence(foreign_hb, 0)
+    assert valid_evidence(foreign_att, 30)
+    app = create_app(cfg)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+              headers={"Authorization": "Bearer " + token}) as device:
+            device.send_bytes(foreign_hb)
+            device.send_bytes(foreign_att)
+            for _ in range(100):
+                health = client.get("/api/v1/mavlink/health").json()
+                if health["foreign_system_frames_rejected"] == 2:
+                    break
+                time.sleep(0.01)
+            assert health["foreign_system_frames_rejected"] == 2
+            assert health["rejected_frames"] == 2
+            assert health["real_heartbeat_frames"] == 0
+            assert health["real_attitude_frames"] == 0
+            assert not health["native_hud_heartbeat_ready"]
+            assert not health["attitude_stream_active"]
+
+    # Configured SYSID 2 is accepted; no hardcoded assumption that FC is 1.
+    alternate = Config(cfg.vehicle_id, cfg.operator_name,
+                       cfg.operator_password_hash, cfg.jwt_key,
+                       cfg.device_token_sha256, cfg.allowed_hosts, 2)
+    with TestClient(create_app(alternate)) as client:
+        with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+              headers={"Authorization": "Bearer " + token}) as device:
+            device.send_bytes(foreign_hb)
+            for _ in range(100):
+                health = client.get("/api/v1/mavlink/health").json()
+                if health["real_heartbeat_frames"]:
+                    break
+                time.sleep(0.01)
+            assert health["real_heartbeat_frames"] == 1
+            assert health["foreign_system_frames_rejected"] == 0
 
 
 def test_no_implicit_or_default_credentials():
