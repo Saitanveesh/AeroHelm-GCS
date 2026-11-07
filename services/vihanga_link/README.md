@@ -78,6 +78,7 @@ Set the following private variables (the sample values are illustrative):
     VIHANGA_PINNED_RELAY_HOST=YOUR-PRIVATE-RELAY.ts.net
     VIHANGA_DEVICE_TOKEN_FILE=/etc/vihanga/device-token
     VIHANGA_DISARMED_STREAM_PROBE=1
+    VIHANGA_DISARMED_PARAM_SNAPSHOT=0
 
 Run:
 
@@ -116,7 +117,22 @@ is disabled.
 ## Tests and release acceptance
 
     python -m pip install -r services/vihanga_link/requirements-test.txt
-    python -m pytest -q services/vihanga_link/test_link.py
+    python -m pytest -q services/vihanga_link
+
+An optional one-time parameter-list query can be enabled with
+VIHANGA_DISARMED_PARAM_SNAPSHOT=1 after verifying FC identity and the
+disarmed bench. It issues only PARAM_REQUEST_LIST locally over the Pi UART
+and forwards the resulting PARAM_VALUE frames; it does not write parameters,
+prove cache completeness, or enable remote GCS commands. The Pi also holds
+an exclusive lock to prevent two instances starting across an ownership check.
+
+The private relay exposes POST /api/v1/sim/mission/preview to a short-lived
+authenticated operator viewer. It validates operator-declared rectangular
+geofences, finite coordinates, speed and altitude limits, route length,
+declared endurance/reserve and returns a deterministic plan digest,
+virtual waypoint timeline and approximate camera capture count. It is
+simulation-only: it never sends MAVLink, changes parameters, starts missions
+or claims calibrated energy/dynamics prediction.
 
 These are synthetic offline tests, NOT Oracle deployment tests or
 physical aircraft acceptance.
