@@ -92,8 +92,6 @@ namespace AeroHelm.GcsCloud
                 });
             _workspaces.DropDownItems.Add("Survey planner", null,
                 (sender,e) => ShowWorkspace(new AeroHelmSurveyWindow()));
-            _workspaces.DropDownItems.Add("Operations / simulation", null,
-                (sender,e) => ShowWorkspace(new AeroHelmOpsWindow()));
             var planPreview = new ToolStripMenuItem("Autonomy preview");
             planPreview.Visible = VihangaLinkSession.UsesDedicatedRelay;
             planPreview.Click += (sender,e) =>
@@ -102,11 +100,21 @@ namespace AeroHelm.GcsCloud
                     ShowWorkspace(new VihangaMissionPreviewWindow());
             };
             _workspaces.DropDownItems.Add(planPreview);
-            _workspaces.DropDownItems.Add("Fleet and intelligence", null,
-                (sender,e) => ShowWorkspace(new AeroHelmIntelWindow()));
-            _workspaces.DropDownItems.Add(new ToolStripSeparator());
             _workspaces.DropDownItems.Add("Vihanga settings", null,
                 (sender,e) => ShowWorkspace(new VihangaSettingsWindow()));
+
+            // Experimental backend-dependent pages remain compiled for
+            // engineering evaluation but must not occupy the pilot's menu.
+            // Enable only in a dedicated development/maintenance session.
+            if (string.Equals(Environment.GetEnvironmentVariable(
+                    "VIHANGA_ADVANCED_TOOLS"), "1", StringComparison.Ordinal))
+            {
+                _workspaces.DropDownItems.Add(new ToolStripSeparator());
+                _workspaces.DropDownItems.Add("Simulated operations (development)", null,
+                    (sender,e) => ShowWorkspace(new AeroHelmOpsWindow()));
+                _workspaces.DropDownItems.Add("Fleet intelligence (development)", null,
+                    (sender,e) => ShowWorkspace(new AeroHelmIntelWindow()));
+            }
             menu.Items.Insert(at++, _workspaces);
             // This monitor stays active while the native Flight Data workspace is in use and the
             // pilot opens native Flight Data. It NEVER connects to a radio,
