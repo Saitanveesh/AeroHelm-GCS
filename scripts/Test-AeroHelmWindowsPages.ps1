@@ -70,6 +70,41 @@ $fleetLab = Read-Source 'plugins/AeroHelmFleetLabWindow.cs'
 $workspace = Read-Source 'plugins/AeroHelmWorkspace.cs'
 $operations = Read-Source 'plugins/AeroHelmOperations.cs'
 $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
+# Fail before the expensive native Windows build if a custom plugin class
+# was removed or renamed while a constructor call still references it.
+# Check precisely the sources that the separate plugin project compiles.
+$pluginProjectDir = Join-Path $root 'Plugins/AeroHelmCloud'
+$pluginUnits = [regex]::Matches($project, '<Compile\s+Include="([^"]+\.cs)"')
+if ($pluginUnits.Count -lt 1) { throw 'Plugin compile source list is empty.' }
+$pluginDeclarations = [System.Collections.Generic.HashSet[string]]::new()
+$pluginSources = @()
+foreach ($unit in $pluginUnits) {
+    $relative = $unit.Groups[1].Value.Replace('\','/')
+    $sourcePath = [IO.Path]::GetFullPath((Join-Path $pluginProjectDir $relative))
+    if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+        throw "Compiled plugin source is missing: $relative"
+    }
+    $text = [IO.File]::ReadAllText($sourcePath)
+    $pluginSources += [pscustomobject]@{ Path=$relative; Text=$text }
+    foreach ($decl in [regex]::Matches(
+        $text, '\b(?:class|struct|enum)\s+([A-Za-z_]\w*)\b')) {
+        [void]$pluginDeclarations.Add($decl.Groups[1].Value)
+    }
+}
+foreach ($unit in $pluginSources) {
+    foreach ($call in [regex]::Matches(
+        $unit.Text, '\bnew\s+((?:AeroHelm|Vihanga|Cloud)[A-Za-z_0-9]+)\s*\(')) {
+        $typeName = $call.Groups[1].Value
+        if (-not $pluginDeclarations.Contains($typeName)) {
+            throw "Unresolved custom plugin constructor $typeName in $($unit.Path)."
+        }
+    }
+}
+Require-Text $shared 'VihangaLinkLoginWindow.EnsureSignedIn(this)' 'Settings must open the compiled dedicated relay sign-in.'
+Require-Text $shared 'new AeroHelmIntelWindow("FLEET")' 'Legacy cloud fleet must use the compiled read-only intelligence form.'
+if ([regex]::IsMatch($shared, '\bnew\s+CloudWindow\s*\(')) {
+    throw 'Removed CloudWindow constructor is still referenced in Settings.'
+}
 $mainProject = Read-Source 'MissionPlanner.csproj'
 $settingsCore = Read-Source 'ExtLibs/Utilities/Settings.cs'
 # Vihanga operator preferences must save to writable per-user storage and
