@@ -122,7 +122,7 @@ foreach ($item in @('PATHS','CAMERA')) {
     Require-Text $cloud ('NewToolbarButton("'+$item+'"') "Required operator toolbar entry missing: $item"
 }
 Require-Text $cloud 'new ToolStripDropDownButton("TOOLS")' 'Consolidated utility menu missing.'
-foreach ($item in @('Link diagnostics','Attitude monitor','Survey planner','Operations / simulation','Fleet and intelligence','Vihanga settings')) {
+foreach ($item in @('Link diagnostics','Attitude monitor','Survey planner','Vihanga settings')) {
     Require-Text $cloud ('DropDownItems.Add("'+$item+'"') "Consolidated tool missing: $item"
 }
 foreach ($obsolete in @('new ToolStripButton("CLOUD")',
@@ -134,6 +134,9 @@ foreach ($obsolete in @('new ToolStripButton("CLOUD")',
 }
 Require-Text $cloud 'new VihangaSettingsWindow()' 'Settings must remain accessible through tools.'
 Require-Text $cloud 'main.MenuConfigTune' 'Custom controls must follow native Configuration entry.'
+Require-Text $cloud 'VIHANGA_ADVANCED_TOOLS' 'Experimental tools must be hidden unless maintenance profile is explicit.'
+Require-Text $cloud 'Simulated operations (development)' 'Simulation research must remain available in maintenance mode.'
+Require-Text $cloud 'Fleet intelligence (development)' 'Fleet lab must remain available in maintenance mode.'
 if ($cloud.Contains('internal sealed class CloudWindow : Form')) {
     throw 'Unreachable legacy CLOUD registry must not ship in the operator plugin.'
 }
