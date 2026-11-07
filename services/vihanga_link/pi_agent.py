@@ -367,6 +367,9 @@ class Publisher:
                         try:
                             await self._publish_over_ws(ws, request_reader)
                         finally:
+                            # An interrupted WSS session must not leave an
+                            # unexecuted cloud request pending on physical UART.
+                            self._remote_probe_pending.clear()
                             request_reader.cancel()
                             await asyncio.gather(request_reader, return_exceptions=True)
                 except (OSError, websockets.WebSocketException, TimeoutError) as ex:
