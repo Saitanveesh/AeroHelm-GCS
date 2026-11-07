@@ -17,7 +17,8 @@ from starlette.websockets import WebSocketDisconnect
 from services.vihanga_link.relay import Config, create_app, envelope, valid_evidence
 from services.vihanga_link.pi_agent import (
     Config as PiConfig, MESSAGE_RATES_HZ,
-    is_disarmed_autopilot_heartbeat, request_streams_once
+    is_disarmed_autopilot_heartbeat, request_streams_once,
+    request_parameter_snapshot_once
 )
 from pymavlink import mavutil
 
@@ -195,6 +196,7 @@ class FakePort:
     class MAV:
         def __init__(self): self.commands = []
         def command_long_send(self, *args): self.commands.append(args)
+        def param_request_list_send(self, *args): self.commands.append(("parameters",) + args)
     def __init__(self): self.mav = self.MAV()
 
 
@@ -219,3 +221,12 @@ def test_stream_requests_are_local_disarmed_and_nonpersistent(tmp_path):
     cfg_disabled = PiConfig(cfg.device, cfg.baud, cfg.vehicle_id, cfg.system_id,
                             cfg.url, cfg.token_file, False, cfg.pinned_relay_host)
     assert not request_streams_once(FakePort(), Heartbeat(), cfg_disabled)
+    assert not request_parameter_snapshot_once(FakePort(), Heartbeat(), cfg_disabled)
+    cfg_params = PiConfig(cfg.device, cfg.baud, cfg.vehicle_id, cfg.system_id,
+                          cfg.url, cfg.token_file, True, cfg.pinned_relay_host, True)
+    param_port = FakePort()
+    assert not request_parameter_snapshot_once(param_port, Heartbeat(True), cfg_params)
+    assert not request_parameter_snapshot_once(param_port, Heartbeat(sysid=4), cfg_params)
+    assert param_port.mav.commands == []
+    assert request_parameter_snapshot_once(param_port, Heartbeat(), cfg_params)
+    assert param_port.mav.commands == [("parameters", 1, 1)]
