@@ -192,16 +192,18 @@ def create_app(config: Config | None = None) -> FastAPI:
             "exp": now + TOKEN_LIFETIME_SECONDS,
         }, cfg.jwt_key, algorithm="HS256")
 
-    def verify_viewer(token: str) -> bool:
+    def viewer_expiration(token: str) -> int:
         try:
             claims = jwt.decode(token, cfg.jwt_key, algorithms=["HS256"],
                 issuer="vihanga-link", audience="vihanga-mavlink-view",
                 options={"require": ["sub", "vehicle_id", "scope", "exp", "iat", "nbf"]})
-            return (claims["vehicle_id"] == cfg.vehicle_id and
-                    claims["scope"] == "telemetry:read" and
-                    claims["sub"] == cfg.operator_name)
-        except InvalidTokenError:
-            return False
+            if (claims["vehicle_id"] == cfg.vehicle_id and
+                claims["scope"] == "telemetry:read" and
+                claims["sub"] == cfg.operator_name):
+                return int(claims["exp"])
+        except (InvalidTokenError, ValueError, TypeError):
+            pass
+        return 0
 
     def bearer(ws: WebSocket) -> str:
         value = ws.headers.get("authorization", "")
@@ -253,9 +255,10 @@ def create_app(config: Config | None = None) -> FastAPI:
         await ws.accept()
         try:
             while True:
-                packet = await ws.receive_bytes()
+                # A dead Pi session may not monopolize the sole device slot.
+                packet = await asyncio.wait_for(ws.receive_bytes(), timeout=12)
                 await state.publish(packet)
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, asyncio.TimeoutError):
             pass
         finally:
             async with state.lock:
@@ -264,7 +267,8 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.websocket("/ws/mavlink/view/{vehicle_id}")
     async def viewer(ws: WebSocket, vehicle_id: str) -> None:
-        if vehicle_id != cfg.vehicle_id or not verify_viewer(bearer(ws)):
+        expiry = viewer_expiration(bearer(ws))
+        if vehicle_id != cfg.vehicle_id or not expiry:
             await ws.close(code=4401)
             return
         queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
@@ -272,14 +276,34 @@ def create_app(config: Config | None = None) -> FastAPI:
             state.viewers.add(queue)
         await ws.accept()
         try:
-            while True:
-                packet = await queue.get()
-                await ws.send_bytes(packet)
+            while time.time() < expiry:
+                # Always observe disconnect and JWT expiry, including when no
+                # telemetry exists. Viewer-originated bytes are NEVER routed
+                # to the Pi or flight controller.
+                receive = asyncio.create_task(ws.receive())
+                next_frame = asyncio.create_task(queue.get())
+                done, pending = await asyncio.wait(
+                    {receive, next_frame}, timeout=1.0,
+                    return_when=asyncio.FIRST_COMPLETED)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                if receive in done:
+                    event = receive.result()
+                    if event.get("type") == "websocket.disconnect":
+                        break
+                if next_frame in done and time.time() < expiry:
+                    await ws.send_bytes(next_frame.result())
         except (WebSocketDisconnect, RuntimeError, OSError):
             pass
         finally:
             async with state.lock:
                 state.viewers.discard(queue)
+            try:
+                await ws.close(code=1000)
+            except RuntimeError:
+                pass
 
     return app
 
