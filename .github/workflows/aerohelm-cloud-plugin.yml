@@ -3,6 +3,7 @@ name: AeroHelm Cloud Plugin Validation
 on:
   push:
     branches:
+      - master
       - feat/aerohelm-cloud-plugin
       - feat/aerohelm-workspace-vision-mission
       - feat/aerohelm-platform-v2
