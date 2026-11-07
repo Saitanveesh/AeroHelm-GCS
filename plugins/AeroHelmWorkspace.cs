@@ -425,6 +425,7 @@ namespace AeroHelm.GcsCloud
         private readonly TextBox url = new TextBox();
         private readonly TextBox output = new TextBox();
         private readonly Button check = new Button();
+        private readonly Button requestTelemetry = new Button();
         private readonly Button duplexPing = new Button();
         private readonly Button duplexStatusQuery = new Button();
         private readonly Label duplexStatus = new Label();
@@ -485,7 +486,7 @@ namespace AeroHelm.GcsCloud
             url.ForeColor = Drawing.Color.White;
             layout.Controls.Add(url, 0, 1);
             check.Text = "Check now";
-            check.Width = 225; check.Height = 41;
+            check.Width = 135; check.Height = 41;
             check.FlatStyle = FlatStyle.Flat;
             check.FlatAppearance.BorderSize = 0;
             check.BackColor = Drawing.Color.FromArgb(38,38,38);
@@ -497,6 +498,16 @@ namespace AeroHelm.GcsCloud
             autoRefresh.Margin = new Padding(12,11,0,0);
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, AutoScroll = true };
             buttons.Controls.Add(check);
+            requestTelemetry.Text = "Request real FC streams";
+            requestTelemetry.Width = 220;
+            requestTelemetry.Height = 41;
+            requestTelemetry.Visible = VihangaLinkSession.UsesDedicatedRelay;
+            requestTelemetry.FlatStyle = FlatStyle.Flat;
+            requestTelemetry.FlatAppearance.BorderSize = 0;
+            requestTelemetry.BackColor = Drawing.Color.FromArgb(45,45,45);
+            requestTelemetry.ForeColor = Drawing.Color.White;
+            requestTelemetry.Click += async (s,e) => await RequestDisarmedTelemetryAsync();
+            buttons.Controls.Add(requestTelemetry);
             buttons.Controls.Add(autoRefresh);
             showDetails.Text = "Technical details";
             showDetails.AutoSize = true;
@@ -558,6 +569,79 @@ namespace AeroHelm.GcsCloud
             layout.Controls.Add(output, 0, 4);
             Shown += async (s,e) => await CheckAsync();
             FormClosing += (s,e) => refreshTimer.Stop();
+        }
+
+        // Explicit operator request; this can only request pre-approved
+        // telemetry stream rates on a physically disarmed Pi/FC. It does not
+        // send Mission Planner commands and cannot enable flight authority.
+        private async Task RequestDisarmedTelemetryAsync()
+        {
+            if (!VihangaLinkSession.UsesDedicatedRelay || checking ||
+                diagnosticPending || IsDisposed || Disposing)
+                return;
+            if (!VihangaLinkLoginWindow.EnsureSignedIn(this))
+                return;
+            if (MessageBox.Show(this,
+                    "This will request real flight-data streams only if the " +
+                    "connected Raspberry Pi confirms a fresh disarmed FC " +
+                    "heartbeat and the bench feature is explicitly enabled. " +
+                    "No flight-control commands will be forwarded. " +
+                    "Use only with propellers removed. Continue?",
+                    "Request physical telemetry (disarmed bench)",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+            requestTelemetry.Enabled = false;
+            try
+            {
+                string vehicleId = Environment.GetEnvironmentVariable("AEROHELM_VEHICLE_ID");
+                if (string.IsNullOrWhiteSpace(vehicleId)) vehicleId = "AH-HW-001";
+                var response = await Task.Run(() =>
+                    VihangaLinkSession.RequestDisarmedTelemetry(vehicleId));
+                if (IsDisposed || Disposing) return;
+                var result = new JavaScriptSerializer()
+                    .Deserialize<Dictionary<string, object>>(response);
+                object status;
+                if (!result.TryGetValue("status", out status) ||
+                    Convert.ToString(status) != "QUEUED_ON_PRIVATE_LINK")
+                    throw new InvalidOperationException("Private relay did not queue telemetry request.");
+                MessageBox.Show(this,
+                    "Telemetry request queued on the private link. This is " +
+                    "NOT confirmation the Pi or flight controller accepted it. " +
+                    "Use Check now to verify rising real ATTITUDE ID30, " +
+                    "GLOBAL_POSITION_INT ID33 and VFR_HUD ID74 counts. " +
+                    "If they remain absent, inspect Pi UART logs and FC stream configuration.",
+                    "Telemetry requested — await real packets",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                await CheckAsync();
+            }
+            catch (WebException ex)
+            {
+                if (IsDisposed || Disposing) return;
+                var http = ex.Response as HttpWebResponse;
+                string status = http == null ? "network unavailable" :
+                    "HTTP " + (int)http.StatusCode;
+                if (http != null) http.Dispose();
+                MessageBox.Show(this,
+                    "Physical telemetry request refused (" + status + "). " +
+                    "Check independent relay sign-in, Pi availability and " +
+                    "disarmed stream-probe configuration; no flight command was issued.",
+                    "Telemetry request refused", MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed || Disposing) return;
+                MessageBox.Show(this,
+                    "Telemetry request unavailable (" + ex.GetType().Name +
+                    "). Check the private relay and Pi diagnostics.",
+                    "Telemetry not requested", MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                if (!IsDisposed && !Disposing)
+                    requestTelemetry.Enabled = true;
+            }
         }
 
         private void ShowSelectedReport()
@@ -931,10 +1015,13 @@ namespace AeroHelm.GcsCloud
                                Environment.NewLine +
                     "FRAMES    Total " + total + " | HB " + heartbeatFrames +
                                " | ATT " + attitudeFrames + Environment.NewLine +
-                    "LINK      Receive-only; flight commands disabled";
+                    "LINK      FC stream requests: disarmed bench only; flight commands disabled";
                 lastTechnical = lastSummary + Environment.NewLine +
                     "REJECTED  " + errors + " | VIEWERS " + audience +
                     Environment.NewLine +
+                    "STREAM PROBE " + (data.ContainsKey("telemetry_probe") ?
+                        new JavaScriptSerializer().Serialize(data["telemetry_probe"]) :
+                        "not deployed") + Environment.NewLine +
                     "IDS       " + (data.TryGetValue("message_ids", out idMap) ?
                         new JavaScriptSerializer().Serialize(idMap) : "not reported") +
                     Environment.NewLine +
