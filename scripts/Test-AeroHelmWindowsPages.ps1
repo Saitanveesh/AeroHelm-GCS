@@ -134,6 +134,9 @@ foreach ($obsolete in @('new ToolStripButton("CLOUD")',
 }
 Require-Text $cloud 'new VihangaSettingsWindow()' 'Settings must remain accessible through tools.'
 Require-Text $cloud 'main.MenuConfigTune' 'Custom controls must follow native Configuration entry.'
+if ($cloud.Contains('internal sealed class CloudWindow : Form')) {
+    throw 'Unreachable legacy CLOUD registry must not ship in the operator plugin.'
+}
 if (Test-Path -LiteralPath (Join-Path $root 'plugins/AeroHelmTouchPanel.cs')) {
     throw 'Obsolete TOUCH panel must not ship.'
 }
@@ -276,6 +279,7 @@ $relaySession = Read-Source 'plugins/VihangaLinkSession.cs'
 $relayLogin = Read-Source 'plugins/VihangaLinkLoginWindow.cs'
 $privateRelay = Read-Source 'services/vihanga_link/relay.py'
 $privatePi = Read-Source 'services/vihanga_link/pi_agent.py'
+$missionPreview = Read-Source 'services/vihanga_link/mission_preview.py'
 Require-Text $relaySession 'MissionPlanner.Program.AeroHelmOperatorToken' 'Legacy Oracle M1 session must remain independent of new relay.'
 Require-Text $relaySession 'VIHANGA_LINK_ORIGIN' 'Dedicated relay origin must be explicit.'
 Require-Text $relaySession 'relayExpiresUtc' 'Dedicated viewer JWT must have bounded expiry.'
@@ -289,6 +293,12 @@ Require-Text $privateRelay 'flight_control_enabled": False' 'New private relay m
 Require-Text $privateRelay 'maxsize=32' 'Cloud viewer queue must be bounded.'
 Require-Text $privatePi 'valid_uart_owner_probe' 'Pi agent must refuse a second UART owner.'
 Require-Text $privatePi 'is_disarmed_autopilot_heartbeat' 'Local stream negotiation requires an identified disarmed autopilot.'
+Require-Text $privatePi 'request_parameter_snapshot_once' 'Read-only parameter inventory must require an explicit disarmed local request.'
+Require-Text $privatePi 'fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)' 'Pi UART owner must hold an exclusive process lock.'
+Require-Text $privateRelay '@app.post("/api/v1/sim/mission/preview")' 'Cloud planner must expose bounded simulation preview.'
+Require-Text $missionPreview 'vehicle_command_authorized": False' 'Autonomy preview may not grant hardware command authority.'
+Require-Text $missionPreview 'Route escapes the declared geofence volume' 'Preview must enforce a declared spatial boundary.'
+Require-Text $missionPreview 'reserve-adjusted endurance' 'Preview must enforce declared endurance reserve.'
 if ($privateRelay.Contains('/ws/mavlink/control/') -or
     $privatePi.Contains('ws.recv(') -or
     $privatePi.Contains('ws.send_bytes(')) {
