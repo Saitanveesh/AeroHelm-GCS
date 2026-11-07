@@ -26,6 +26,7 @@ import jwt
 from jwt import InvalidTokenError
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from pymavlink.dialects.v20 import ardupilotmega as mavlink_dialect
 
 APP_MODE = "hardware-telemetry-only"
 MAX_FRAME = 300
@@ -89,22 +90,37 @@ def envelope(packet: bytes) -> int | None:
     return None
 
 
-def valid_evidence(packet: bytes, message_id: int) -> bool:
-    """Independent MAVLink X25+extra CRC for HB, attitude and parameter evidence."""
-    crc_rules = {0: (50, 9), 22: (220, 25), 30: (39, 12)}
-    if message_id not in crc_rules or envelope(packet) != message_id:
+def valid_frame_crc(packet: bytes) -> bool:
+    """Validate X25 CRC of every supported ArduPilot MAVLink v1/v2 frame.
+
+    A plausible envelope alone is not proof of genuine flight telemetry.
+    Unknown message IDs are rejected rather than passed into the native HUD.
+    MAVLink2 signing is preserved but NOT authenticated by this CRC check;
+    publisher authentication and a trusted physical UART remain mandatory.
+    """
+    message_id = envelope(packet)
+    if message_id is None:
         return False
-    extra, minimum = crc_rules[message_id]
-    if packet[1] < minimum:
+    message_class = mavlink_dialect.mavlink_map.get(message_id)
+    if message_class is None:
         return False
-    header = 6 if packet[0] == 0xFE else 10
-    idx = header + packet[1]
+    header_size = 6 if packet[0] == 0xFE else 10
+    crc_offset = header_size + packet[1]
     crc = 0xFFFF
-    for value in packet[1:idx] + bytes((extra,)):
+    for value in packet[1:crc_offset] + bytes((message_class.crc_extra,)):
         b = value ^ (crc & 0xFF)
         b ^= (b << 4) & 0xFF
         crc = ((crc >> 8) ^ (b << 8) ^ (b << 3) ^ (b >> 4)) & 0xFFFF
-    return crc == packet[idx] | packet[idx + 1] << 8
+    return crc == packet[crc_offset] | packet[crc_offset + 1] << 8
+
+
+def valid_evidence(packet: bytes, message_id: int) -> bool:
+    """For critical HUD/parameter evidence, also reject truncated payloads."""
+    minimum_payload = {0: 9, 22: 25, 30: 12}
+    return (message_id in minimum_payload and
+            envelope(packet) == message_id and
+            packet[1] >= minimum_payload[message_id] and
+            valid_frame_crc(packet))
 
 
 @dataclass
@@ -139,7 +155,7 @@ class LinkState:
 
     async def publish(self, packet: bytes) -> None:
         msg_id = envelope(packet)
-        if msg_id is None:
+        if msg_id is None or not valid_frame_crc(packet):
             self.rejected += 1
             return
         if msg_id in (0, 22, 30) and not valid_evidence(packet, msg_id):
