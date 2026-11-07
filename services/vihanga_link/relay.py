@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import os
 import re
+import struct
 import time
 from typing import Any
 
@@ -89,15 +90,17 @@ def envelope(packet: bytes) -> int | None:
 
 
 def valid_evidence(packet: bytes, message_id: int) -> bool:
-    """Independent MAVLink X25+extra CRC for heartbeat and attitude evidence."""
-    if message_id not in (0, 30) or envelope(packet) != message_id:
+    """Independent MAVLink X25+extra CRC for HB, attitude and parameter evidence."""
+    crc_rules = {0: (50, 9), 22: (220, 25), 30: (39, 12)}
+    if message_id not in crc_rules or envelope(packet) != message_id:
         return False
-    if packet[1] < (9 if message_id == 0 else 12):
+    extra, minimum = crc_rules[message_id]
+    if packet[1] < minimum:
         return False
     header = 6 if packet[0] == 0xFE else 10
     idx = header + packet[1]
     crc = 0xFFFF
-    for value in packet[1:idx] + bytes((50 if message_id == 0 else 39,)):
+    for value in packet[1:idx] + bytes((extra,)):
         b = value ^ (crc & 0xFF)
         b ^= (b << 4) & 0xFF
         crc = ((crc >> 8) ^ (b << 8) ^ (b << 3) ^ (b >> 4)) & 0xFFFF
@@ -116,11 +119,19 @@ class LinkState:
     last_frame: float = -1.0
     last_heartbeat: float = -1.0
     last_attitude: float = -1.0
+    parameter_frames: dict[int, bytes] = field(default_factory=dict)
+    parameter_expected: int = 0
+    parameter_source: int = -1
+    parameter_seen_at: float = -1.0
 
     def clear_session(self) -> None:
         self.counters.clear()
         self.frames = self.rejected = 0
         self.last_frame = self.last_heartbeat = self.last_attitude = -1.0
+        self.parameter_frames.clear()
+        self.parameter_expected = 0
+        self.parameter_source = -1
+        self.parameter_seen_at = -1.0
         # No stale session packets may survive a device reconnection.
         for queue in self.viewers:
             while not queue.empty():
@@ -131,7 +142,7 @@ class LinkState:
         if msg_id is None:
             self.rejected += 1
             return
-        if msg_id in (0, 30) and not valid_evidence(packet, msg_id):
+        if msg_id in (0, 22, 30) and not valid_evidence(packet, msg_id):
             self.rejected += 1
             return
         now = time.monotonic()
@@ -142,6 +153,17 @@ class LinkState:
             self.last_heartbeat = now
         if msg_id == 30:
             self.last_attitude = now
+        if msg_id == 22:
+            header = 6 if packet[0] == 0xFE else 10
+            source = packet[3] if packet[0] == 0xFE else packet[5]
+            count, index = struct.unpack_from("<HH", packet, header + 4)
+            if 0 < count <= 5000 and index < count:
+                if count != self.parameter_expected or source != self.parameter_source:
+                    self.parameter_frames.clear()
+                    self.parameter_expected = count
+                    self.parameter_source = source
+                self.parameter_frames[index] = bytes(packet)
+                self.parameter_seen_at = now
         for queue in tuple(self.viewers):
             if queue.full():
                 queue.get_nowait()  # Drop stale frames, never stall Pi uplink.
@@ -150,6 +172,23 @@ class LinkState:
     def fresh(self, timestamp: float) -> bool:
         return self.connected and timestamp >= 0 and (
             time.monotonic() - timestamp) <= FRESH_SECONDS
+
+    def parameter_status(self) -> dict[str, Any]:
+        age_seconds = (time.monotonic() - self.parameter_seen_at
+                       if self.parameter_seen_at >= 0 else None)
+        complete = (self.connected and self.parameter_expected > 0 and
+                    len(self.parameter_frames) == self.parameter_expected and
+                    age_seconds is not None and 0 <= age_seconds <= 300)
+        return {
+            "status": "COMPLETE" if complete else
+                      "PARTIAL" if self.parameter_frames else "UNAVAILABLE",
+            "verified_complete": bool(complete),
+            "count": len(self.parameter_frames),
+            "expected": self.parameter_expected,
+            "age_ms": round(age_seconds * 1000) if age_seconds is not None else None,
+            "epoch": self.epoch,
+            "read_only": True,
+        }
 
     def health(self, vehicle_id: str) -> dict[str, Any]:
         return {
@@ -166,6 +205,7 @@ class LinkState:
             "message_ids": {str(k): v for k, v in sorted(self.counters.items())},
             "gcs_viewers": len(self.viewers),
             "epoch": self.epoch,
+            "parameter_snapshot": self.parameter_status(),
             "flight_control_enabled": False,
         }
 
@@ -237,6 +277,17 @@ def create_app(config: Config | None = None) -> FastAPI:
             "receiving attitude" if state.fresh(state.last_attitude)
             else "heartbeat only" if state.fresh(state.last_heartbeat)
             else "offline"}]}
+
+    @app.get("/api/v1/vehicles/{vehicle_id}/parameters")
+    async def parameters(
+            vehicle_id: str,
+            authorization: str = Header(default="")) -> dict:
+        token = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if not viewer_expiration(token):
+            raise HTTPException(status_code=401, detail="Private operator session required")
+        if vehicle_id != cfg.vehicle_id:
+            raise HTTPException(status_code=404, detail="Unknown aircraft")
+        return state.parameter_status()
 
     @app.post("/api/v1/sim/mission/preview")
     async def preview_mission(
