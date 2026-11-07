@@ -235,13 +235,16 @@ namespace AeroHelm.GcsCloud
         {
             if(_hudEvidence==null || _hudEvidence.IsDisposed) return;
             var bridge=ActiveNativeBridge;
-            bool attached=bridge!=null && bridge.CloudStreamOpen;
-            _hudEvidence.Visible=attached;
-            if(!attached)return;
-            bool hb=bridge.NativeHeartbeatFresh;
-            bool att=bridge.NativeAttitudeFresh;
-            _hudEvidence.Text=!hb ? "HEARTBEAT MISSING" :
-                !att ? "ATTITUDE MISSING" : "ATTITUDE LIVE";
+            // Retain an explicit warning when the configured cloud stream drops.
+            // Direct COM/radio mode has no cloud bridge and is not classified here.
+            bool cloudMode=bridge!=null;
+            _hudEvidence.Visible=cloudMode;
+            if(!cloudMode)return;
+            bool streamOpen=bridge.CloudStreamOpen;
+            bool hb=streamOpen && bridge.NativeHeartbeatFresh;
+            bool att=streamOpen && bridge.NativeAttitudeFresh;
+            _hudEvidence.Text=hb&&att ? "ATTITUDE LIVE" :
+                "CLOUD HEARTBEAT/ATTITUDE MISSING";
             _hudEvidence.ForeColor=hb&&att ?
                 FrameworkDrawing::System.Drawing.Color.FromArgb(177,222,190) :
                 FrameworkDrawing::System.Drawing.Color.FromArgb(255,185,151);
