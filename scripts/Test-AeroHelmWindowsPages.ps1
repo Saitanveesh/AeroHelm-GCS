@@ -270,6 +270,10 @@ Require-Text $observedAttitude 'AeroHelmReceiveOnlyBridge.PrivateWebSocketUri()'
 Require-Text $observedAttitude 'ws.Options.SetRequestHeader("Authorization"' 'Attitude WSS must use the existing operator session.'
 Require-Text $observedAttitude 'AeroHelmReceiveOnlyBridge.TryReadAttitude(' 'Attitude preview must decode genuine CRC-verified MAVLink packets.'
 Require-Text $observedAttitude 'quality.Snapshot()' 'Attitude preview must enforce packet freshness.'
+Require-Text $observedAttitude 'OtherMessageIdSummary()' 'Cloud monitor must expose other MAVLink message IDs to diagnose heartbeat-only streams.'
+Require-Text $observedAttitude 'messageIds[id]++' 'Cloud monitor must count real observed message IDs.'
+Require-Text $observedAttitude 'MAVn_EXTRA1/SRx_EXTRA1' 'Cloud monitor must expose the per-port ATTITUDE stream-rate diagnostic.'
+Require-Text $observedAttitude 'ID 30 missing:' 'Missing attitude must be surfaced without invented roll/pitch.'
 if($observedAttitude.Contains('api/v1/mavlink/attitude') -or
    $observedAttitude.Contains('ws.SendAsync(') -or
    $observedAttitude.Contains('ws.Send(')){
