@@ -27,18 +27,22 @@ development source under services/vihanga_link.
 - **Status: source built; deployment, Python CI, Windows MSBuild and real
   hardware acceptance NOT verified.**
 
-### B — Read-only configuration parity (not implemented)
+### B — Read-only configuration parity (partial source implementation)
 
-- Param list/read and mission download must use a separately authorized
-  uplink policy, not ordinary telemetry WSS. The Pi retains sole UART
-  ownership and batches requests within link bandwidth limits.
-- Record parameter completeness, generation timestamp, FC identity, CRC,
-  and transport epoch. Never treat a partial cache as a full parameter set.
-- Reject any mutation to arming, flight modes, missions or parameters.
-- Acceptance: exact readback matches a direct USB reference, without
-  changing live FC parameters, and can recover from interruption.
+- The Pi can send an explicitly opted-in, disarmed-only PARAM_REQUEST_LIST
+  locally and forward genuine PARAM_VALUE (ID 22). It does not persist
+  settings or permit arbitrary GCS-to-FC commands.
+- The private relay checks CRC, source component, parameter count/index,
+  per-session completeness and oldest sample freshness (5-minute maximum).
+  The signed-in Intel tab reads a complete snapshot, and compares REAL32
+  fields without assigning unsafe meanings to other parameter encodings.
+- Incomplete snapshots return a non-success status rather than fabricated
+  values. New Pi sessions clear previous parameter evidence.
+- **Still pending:** native Mission Planner full parameter parity, parameter
+  re-request of missing indices, deterministic snapshot provenance across
+  FC reboot, mission download and direct USB comparison on hardware.
 
-### C — Supervised command and mission authority (not implemented)
+### C — Supervised command and mission authority (physical: not implemented)
 
 - Separate, mutually authenticated command plane. Independent role-scoped
   operator authentication, explicit mission approval, short-lived
@@ -55,8 +59,15 @@ development source under services/vihanga_link.
 - Acceptance: SITL/HIL, deliberate fault injection, emergency stop,
   independent pilot radio handover and documented hardware risk review.
 
-### D — Cloud-assisted autonomy (not implemented)
+### D — Cloud-assisted autonomy (simulation foundation implemented)
 
+- A deterministic mission preview API now validates an operator-declared
+  geofence, position/altitude/speed limits, endurance reserve and camera
+  interval; it returns a revision digest and simulated timing only.
+- A separate SQLite-backed offline simulation workflow implements draft,
+  independent approval, expiring exclusive virtual leases, ordered virtual
+  steps, abort and an integrity-checkable local audit chain. It is NOT
+  reachable from physical MAVLink or exposed as a hardware dispatch API.
 - Cloud planning and perception are advisory until independently reviewed.
   Use immutable mission revision hashes, replay-safe requests, bounded
   flight envelopes and approved operators before any onboard execution.
