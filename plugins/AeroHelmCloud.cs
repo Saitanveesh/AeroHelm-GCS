@@ -23,17 +23,11 @@ namespace AeroHelm.GcsCloud
 {
     public sealed class AeroHelmCloudPlugin : MissionPlanner.Plugin.Plugin
     {
-        private ToolStripButton _button;
-        private ToolStripButton _survey;
         private ToolStripButton _vision;
-        private ToolStripButton _link;
         private ToolStripButton _paths;
-        private ToolStripLabel _hudEvidence;
-        private ToolStripButton _ops;
-        private ToolStripButton _intel;
         private ToolStripDropDownButton _workspaces;
         internal static AeroHelmReceiveOnlyBridge ActiveNativeBridge;
-                private bool _simulationWasVisible;
+        private bool _simulationWasVisible;
         private bool _helpWasVisible;
         private readonly System.Windows.Forms.Timer _cloudLinkWatchdog =
             new System.Windows.Forms.Timer();
@@ -51,79 +45,39 @@ namespace AeroHelm.GcsCloud
             // and ArduPilot logo aligned to the right. Appending a ToolStripMenuItem
             // after those items can leave it hidden in the overflow area.
             // Place a distinct, text-only button immediately after HELP instead.
-            _button = new ToolStripButton("CLOUD");
-            _button.Name = "AeroHelmCloudButton";
-            _button.ToolTipText = "Vihanga cloud: authenticated telemetry viewing (no remote flight commands)";
-            _button.Image = AeroHelmIconPainter.Make("CLOUD", 20);
-            _button.ImageScaling = ToolStripItemImageScaling.None;
-            _button.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
-            _button.ForeColor = FrameworkDrawing::System.Drawing.Color.White;
-            _button.Margin = new Padding(5, 0, 5, 0);
-            _button.AutoSize = true;
-            _button.Click += delegate
-            {
-                using (var window = new CloudWindow())
-                    window.ShowDialog(MainV2.instance);
-            };
-
             var main = MainV2.instance;
             var menu = main.MainMenu;
-            var helpIndex = menu.Items.IndexOf(main.MenuHelp);
-            menu.Items.Insert(helpIndex >= 0 ? helpIndex + 1 : 0, _button);
+            // Keep the native DATA / PLAN / SETUP / CONFIG entries.
+            // Three Vihanga entries only: link selection, camera, utilities.
+            // No duplicate CLOUD registry login or separate STATUS and HUD tiles.
+            int configIndex = menu.Items.IndexOf(main.MenuConfigTune);
+            int at = configIndex >= 0 ? configIndex + 1 :
+                Math.Max(0, menu.Items.IndexOf(main.MenuHelp));
 
-            // The additional AeroHelm tools are deliberately passive:
-            // SURVEY exports offline drafts, VISION opens a private camera page,
-            // LINK reads diagnostic status. None forwards MAVLink flight commands.
-            int at = menu.Items.IndexOf(_button) + 1;
-            _survey = NewToolbarButton("SURVEY", "Offline survey draft + route safety checks");
-            _survey.Click += delegate
+            _paths = NewToolbarButton("PATHS",
+                "Select cloud telemetry or an independent USB/radio link");
+            _paths.Click += delegate
             {
-                using (var window = new AeroHelmSurveyWindow())
-                    window.ShowDialog(MainV2.instance);
+                using (var picker = new AeroHelmLinkSelector())
+                {
+                    if (picker.ShowDialog(main) == DialogResult.OK)
+                        AeroHelmLinkNavigation.Open(main, picker.Selection, null);
+                }
             };
-            menu.Items.Insert(at++, _survey);
+            menu.Items.Insert(at++, _paths);
 
-            _vision = NewToolbarButton("VISION", "Private onboard camera viewer");
-            _vision.Image = AeroHelmIconPainter.Make("VISION",20);
-            _vision.ImageScaling = ToolStripItemImageScaling.None;
-            _vision.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
+            _vision = NewToolbarButton("CAMERA", "Open onboard camera viewer");
             _vision.Click += delegate
             {
                 using (var window = new AeroHelmVisionWindow())
-                    window.ShowDialog(MainV2.instance);
+                    window.ShowDialog(main);
             };
             menu.Items.Insert(at++, _vision);
 
-            _link = NewToolbarButton("LINK", "Check cloud telemetry freshness and viewer count");
-            _link.Click += delegate
+            _workspaces = new ToolStripDropDownButton("TOOLS")
             {
-                using (var window = new AeroHelmLinkWindow())
-                    window.ShowDialog(MainV2.instance);
-            };
-            menu.Items.Insert(at++, _link);
-
-            _ops = NewToolbarButton("OPS", "Simulation mission execution and supervised bench calibration");
-            _ops.Click += delegate
-            {
-                using (var window = new AeroHelmOpsWindow())
-                    window.ShowDialog(MainV2.instance);
-            };
-            menu.Items.Insert(at++, _ops);
-
-            _intel = NewToolbarButton("INTEL", "Fleet, mission assurance, parameter drift, history and security");
-            _intel.Click += delegate
-            {
-                using (var window = new AeroHelmIntelWindow())
-                    window.ShowDialog(MainV2.instance);
-            };
-            menu.Items.Insert(at++, _intel);
-
-            // Secondary workspaces remain available without replacing native
-            // Flight Data, Flight Plan, Setup or Configuration controls.
-            _workspaces = new ToolStripDropDownButton("MORE")
-            {
-                Name = "VihangaMoreButton",
-                ToolTipText = "Fleet, security, analytics, parameters and settings",
+                Name = "VihangaToolsButton",
+                ToolTipText = "Diagnostics, survey, simulated operations and settings",
                 Image = AeroHelmIconPainter.Make("SETTINGS",20),
                 ImageScaling = ToolStripItemImageScaling.None,
                 DisplayStyle = ToolStripItemDisplayStyle.ImageAndText,
@@ -131,68 +85,18 @@ namespace AeroHelm.GcsCloud
                 Margin = new Padding(4,0,4,0),
                 AutoSize = true
             };
-            _workspaces.DropDownItems.Add("FLEET",null,(s,e) =>
-                ShowWorkspace(new AeroHelmReadOnlyPage("FLEET")));
-            _workspaces.DropDownItems.Add("SECURITY",null,(s,e) =>
-                ShowWorkspace(new AeroHelmReadOnlyPage("SECURITY")));
-            _workspaces.DropDownItems.Add("ANALYTICS",null,(s,e) =>
-                ShowWorkspace(new AeroHelmReadOnlyPage("ANALYTICS")));
-            _workspaces.DropDownItems.Add("PARAMETERS",null,(s,e) =>
-                ShowWorkspace(new AeroHelmIntelWindow("PARAMETERS")));
-            _workspaces.DropDownItems.Add("SETTINGS",null,(s,e) =>
-                ShowWorkspace(new VihangaSettingsWindow()));
+            _workspaces.DropDownItems.Add("Link diagnostics", null,
+                (sender,e) => ShowWorkspace(new AeroHelmLinkWindow()));
+            _workspaces.DropDownItems.Add("Survey planner", null,
+                (sender,e) => ShowWorkspace(new AeroHelmSurveyWindow()));
+            _workspaces.DropDownItems.Add("Operations / simulation", null,
+                (sender,e) => ShowWorkspace(new AeroHelmOpsWindow()));
+            _workspaces.DropDownItems.Add("Fleet and intelligence", null,
+                (sender,e) => ShowWorkspace(new AeroHelmIntelWindow()));
+            _workspaces.DropDownItems.Add(new ToolStripSeparator());
+            _workspaces.DropDownItems.Add("Vihanga settings", null,
+                (sender,e) => ShowWorkspace(new VihangaSettingsWindow()));
             menu.Items.Insert(at++, _workspaces);
-            // Operator toolbar: CLOUD / PATHS / MORE. Keep secondary
-            // workspaces in the MORE menu and preserve maintenance mode.
-            bool compactOperatorToolbar=!string.Equals(
-                Environment.GetEnvironmentVariable("AEROHELM_REDUCED_TOOLBAR"),
-                "0",StringComparison.Ordinal);
-            _workspaces.DropDownItems.Insert(0,
-                new ToolStripMenuItem("LINK — telemetry status",null,
-                    (s,e)=>ShowWorkspace(new AeroHelmLinkWindow())));
-            _workspaces.DropDownItems.Insert(1,
-                new ToolStripMenuItem("SURVEY — offline planning",null,
-                    (s,e)=>ShowWorkspace(new AeroHelmSurveyWindow())));
-            _workspaces.DropDownItems.Insert(2,
-                new ToolStripMenuItem("VISION — camera",null,
-                    (s,e)=>ShowWorkspace(new AeroHelmVisionWindow())));
-            _workspaces.DropDownItems.Insert(3,
-                new ToolStripMenuItem("OPS — simulation and maintenance",null,
-                    (s,e)=>ShowWorkspace(new AeroHelmOpsWindow())));
-            _workspaces.DropDownItems.Insert(4,
-                new ToolStripMenuItem("INTEL — fleet inspection",null,
-                    (s,e)=>ShowWorkspace(new AeroHelmIntelWindow())));
-            _workspaces.DropDownItems.Insert(5,new ToolStripSeparator());
-            if(compactOperatorToolbar)
-            {
-                foreach(var secondary in new ToolStripItem[]{
-                    _survey,_vision,_link,_ops,_intel})
-                    secondary.Visible=false;
-            }
-
-            // Independent connection module. Explicit operator choice:
-            // CLOUD is receive-only; DIRECT exposes native COM/radio controls.
-            _paths=NewToolbarButton("PATHS",
-                "Choose cloud viewer or native pilot telemetry-radio backup");
-            _paths.Click+=delegate
-            {
-                using(var picker=new AeroHelmLinkSelector())
-                {
-                    if(picker.ShowDialog(MainV2.instance)==DialogResult.OK)
-                        AeroHelmLinkNavigation.Open(MainV2.instance,
-                            picker.Selection,null);
-                }
-            };
-            menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _paths);
-            // Visible only while the receive-only cloud bridge has a client.
-            // This is an evidence indicator, never a source of HUD values.
-            _hudEvidence=new ToolStripLabel("ATTITUDE MISSING"){
-                Name="VihangaAttitudeEvidence",Visible=false,
-                ForeColor=FrameworkDrawing::System.Drawing.Color.FromArgb(255,185,151),
-                ToolTipText="No fresh MAVLink ATTITUDE (ID 30) on cloud GCS link",
-                Margin=new Padding(4,0,4,0)
-            };
-            menu.Items.Insert(menu.Items.IndexOf(_paths)+1,_hudEvidence);
             // This monitor stays active while the native Flight Data workspace is in use and the
             // pilot opens native Flight Data. It NEVER connects to a radio,
             // sends MAVLink or initiates failover. Its only output is a
@@ -201,6 +105,14 @@ namespace AeroHelm.GcsCloud
             _cloudLinkWatchdog.Tick+=async(sender,args)=>await CheckCloudLinkAsync();
             _cloudLinkWatchdog.Start();
             _ = CheckCloudLinkAsync();
+            _simulationWasVisible = main.MenuSimulation.Visible;
+            _helpWasVisible = main.MenuHelp.Visible;
+            if (!string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_REDUCED_TOOLBAR"), "0", StringComparison.Ordinal))
+            {
+                main.MenuSimulation.Visible = false;
+                main.MenuHelp.Visible = false;
+            }
 
             // AeroHelm operational profile: simplify the toolbar only.
             // Do not delete Simulation or Help functionality, which upstream
@@ -231,31 +143,8 @@ namespace AeroHelm.GcsCloud
             return true;
         }
 
-        private void UpdateHudEvidence()
-        {
-            if(_hudEvidence==null || _hudEvidence.IsDisposed) return;
-            var bridge=ActiveNativeBridge;
-            // Retain an explicit warning when the configured cloud stream drops.
-            // Direct COM/radio mode has no cloud bridge and is not classified here.
-            bool cloudMode=bridge!=null;
-            _hudEvidence.Visible=cloudMode;
-            if(!cloudMode)return;
-            bool streamOpen=bridge.CloudStreamOpen;
-            bool hb=streamOpen && bridge.NativeHeartbeatFresh;
-            bool att=streamOpen && bridge.NativeAttitudeFresh;
-            _hudEvidence.Text=hb&&att ? "ATTITUDE LIVE" :
-                "CLOUD HEARTBEAT/ATTITUDE MISSING";
-            _hudEvidence.ForeColor=hb&&att ?
-                FrameworkDrawing::System.Drawing.Color.FromArgb(177,222,190) :
-                FrameworkDrawing::System.Drawing.Color.FromArgb(255,185,151);
-            _hudEvidence.ToolTipText=hb&&att ?
-                "Fresh real HEARTBEAT and ATTITUDE received (not flight clearance)" :
-                "Cloud HUD has no fresh heartbeat/attitude packet. Native display may show cached or zero values.";
-        }
-
         private async Task CheckCloudLinkAsync()
         {
-            UpdateHudEvidence();
             if (_cloudProbeBusy || _paths == null || _paths.IsDisposed) return;
             _cloudProbeBusy = true;
             try
@@ -378,47 +267,28 @@ namespace AeroHelm.GcsCloud
                 ActiveNativeBridge.Dispose();
                 ActiveNativeBridge = null;
             }
-            if (_button != null)
+            var main = MainV2.instance;
+            if (main != null && !main.IsDisposed)
             {
-                var main = MainV2.instance;
-                if (main != null && !main.IsDisposed)
-                {
-                    main.MenuSimulation.Visible = _simulationWasVisible;
-                    main.MenuHelp.Visible = _helpWasVisible;
-                    main.MainMenu.Items.Remove(_button);
-                    main.MainMenu.Items.Remove(_survey);
-                    main.MainMenu.Items.Remove(_vision);
-                    main.MainMenu.Items.Remove(_link);
-                    main.MainMenu.Items.Remove(_paths);
-                    main.MainMenu.Items.Remove(_hudEvidence);
-                    main.MainMenu.Items.Remove(_ops);
-                    main.MainMenu.Items.Remove(_intel);
-                    main.MainMenu.Items.Remove(_workspaces);
-                }
-                // Every toolbar item owns its native bitmap. Release all
-                // symbols when the plugin is unloaded; do not leak WinForms
-                // GDI handles across repeated plugin lifecycle tests.
-                foreach(ToolStripItem item in new ToolStripItem[]{
-                    _button,_survey,_vision,_link,_ops,_intel,_workspaces,_paths
-                })
-                {
-                    if(item.Image!=null)
-                    {
-                        var owned=item.Image;
-                        item.Image=null;
-                        owned.Dispose();
-                    }
-                    item.Dispose();
-                }
-                _button = null;
-                _survey = null;
-                _vision = null;
-                _link = null;
-                _paths = null;
-                _ops = null;
-                _intel = null;
-                _workspaces = null;
+                main.MenuSimulation.Visible = _simulationWasVisible;
+                main.MenuHelp.Visible = _helpWasVisible;
+                foreach (var item in new ToolStripItem[] { _paths, _vision, _workspaces })
+                    if (item != null) main.MainMenu.Items.Remove(item);
             }
+            foreach (ToolStripItem item in new ToolStripItem[] { _paths, _vision, _workspaces })
+            {
+                if (item == null) continue;
+                if (item.Image != null)
+                {
+                    var owned = item.Image;
+                    item.Image = null;
+                    owned.Dispose();
+                }
+                item.Dispose();
+            }
+            _paths = null;
+            _vision = null;
+            _workspaces = null;
             return true;
         }
     }
