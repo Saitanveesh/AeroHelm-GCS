@@ -15,7 +15,8 @@ from fastapi.testclient import TestClient
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from services.vihanga_link.relay import Config, create_app, envelope, valid_evidence, valid_frame_crc
+from services.vihanga_link.relay import (Config, create_app, envelope, valid_evidence,
+                                        valid_frame_crc, valid_native_attitude)
 from services.vihanga_link.pi_agent import (
     Config as PiConfig, MESSAGE_RATES_HZ,
     is_disarmed_autopilot_heartbeat, request_streams_once,
@@ -65,6 +66,40 @@ def test_crc_evidence_is_real_and_no_false_heartbeat():
     assert envelope(b"\xfd\x04") is None
     assert envelope(b"invalid-data") is None
 
+
+
+
+def test_crc_valid_but_invalid_attitude_cannot_mark_hud_live(credentials):
+    cfg, token = credentials
+    invalids = (
+        frame(30, struct.pack("<Iff", 1, float("nan"), 0.2) + bytes(16)),
+        frame(30, struct.pack("<Iff", 2, 0.1, float("inf")) + bytes(16),
+              mav2=True),
+        frame(30, struct.pack("<Iff", 3, 0.2, 2.0) + bytes(16),
+              mav2=True),
+    )
+    for packet in invalids:
+        assert valid_evidence(packet, 30)  # Intact CRC alone is insufficient.
+        assert not valid_native_attitude(packet)
+    genuine = frame(30, struct.pack("<Iff", 4, 0.2, -0.1) + bytes(16),
+                    mav2=True)
+    assert valid_native_attitude(genuine)
+
+    with TestClient(create_app(cfg)) as client:
+        with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+              headers={"Authorization": "Bearer " + token}) as device:
+            for packet in invalids:
+                device.send_bytes(packet)
+            device.send_bytes(genuine)
+            for _ in range(100):
+                health = client.get("/api/v1/mavlink/health").json()
+                if health["frames"] + health["rejected_frames"] == 4:
+                    break
+                time.sleep(0.01)
+            assert health["frames"] == 1
+            assert health["real_attitude_frames"] == 1
+            assert health["rejected_frames"] == 3
+            assert health["attitude_stream_active"]
 
 
 def test_foreign_sysid_is_rejected_even_with_valid_crc(credentials):
