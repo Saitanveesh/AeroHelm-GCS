@@ -5,6 +5,7 @@ They never contact a Pixhawk or a production cloud instance.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections import Counter
 import struct
@@ -321,6 +322,40 @@ def test_rejects_unauthorized_device_viewer_and_wrong_vehicle(credentials):
             with client.websocket_connect("/ws/mavlink/device/OTHER",
                   headers={"Authorization": "Bearer " + device_token}):
                 pass
+
+
+
+def test_handshake_failure_releases_publisher_and_viewer_slots(credentials):
+    cfg, device_token = credentials
+    app = create_app(cfg)
+
+    class BrokenHandshake:
+        def __init__(self, token):
+            self.headers = {"authorization": "Bearer " + token}
+            self.closed = False
+        async def accept(self):
+            raise OSError("simulated handshake interrupted")
+        async def close(self, code=1000):
+            self.closed = True
+
+    routes = {route.path: route.endpoint for route in app.routes
+              if hasattr(route, "path")}
+    device = BrokenHandshake(device_token)
+    with pytest.raises(OSError, match="handshake interrupted"):
+        asyncio.run(routes["/ws/mavlink/device/{vehicle_id}"](
+            device, cfg.vehicle_id))
+    assert not app.state.link.connected
+    assert app.state.link.health(cfg.vehicle_id)["device_online"] is False
+
+    with TestClient(app) as client:
+        access = client.post("/api/v1/auth/login", json={
+            "username": "operator", "password": "correct-bench-password"
+        }).json()["access_token"]
+    viewer = BrokenHandshake(access)
+    asyncio.run(routes["/ws/mavlink/view/{vehicle_id}"](
+        viewer, cfg.vehicle_id))
+    assert not app.state.link.viewers
+    assert viewer.closed
 
 
 def test_reconnect_expires_old_session_and_drops_stale_evidence(credentials):
