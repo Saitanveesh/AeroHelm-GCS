@@ -68,6 +68,7 @@ on:
       - ".github/workflows/aerohelm-cloud-plugin.yml"
   pull_request:
     branches:
+      - master
       - feat/gcs-touch-ux-readonly-fleet-r1
     paths:
       - "scripts/Install-AeroHelmCloud.ps1"
