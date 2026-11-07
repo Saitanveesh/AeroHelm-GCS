@@ -1,0 +1,18 @@
+# Applies ONLY to cloud/Dockerfile, never other GCS Docker builds.
+**
+!cloud/
+!cloud/**
+cloud/secrets/
+cloud/.env
+cloud/.env.*
+!cloud/.env.example
+cloud/**/__pycache__/
+cloud/**/*.py[cod]
+cloud/**/.pytest_cache/
+cloud/**/.mypy_cache/
+cloud/**/.ruff_cache/
+cloud/**/*.db
+cloud/**/*.pem
+cloud/**/*.key
+cloud/**/*.p12
+cloud/**/*.pfx
