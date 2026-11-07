@@ -20,7 +20,7 @@ from services.vihanga_link.relay import (Config, create_app, envelope, valid_evi
 from services.vihanga_link.pi_agent import (
     Config as PiConfig, MESSAGE_RATES_HZ,
     is_disarmed_autopilot_heartbeat, request_streams_once,
-    request_parameter_snapshot_once, observation_delta
+    request_parameter_snapshot_once, observation_delta, stream_probe_due
 )
 from pymavlink import mavutil
 
@@ -393,6 +393,18 @@ def test_stream_requests_are_local_disarmed_and_nonpersistent(tmp_path):
                    "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
                    tmp_path / "device-secret", True, "pi-link.ts.net")
     cfg.validate()
+    assert stream_probe_due(cfg, seen_armed=False, attitude_seen=False,
+                            attempts=0, seconds_since_last_probe=0)
+    assert not stream_probe_due(cfg, seen_armed=False, attitude_seen=False,
+                                attempts=1, seconds_since_last_probe=14.0)
+    assert stream_probe_due(cfg, seen_armed=False, attitude_seen=False,
+                            attempts=1, seconds_since_last_probe=15.0)
+    assert not stream_probe_due(cfg, seen_armed=True, attitude_seen=False,
+                                attempts=1, seconds_since_last_probe=100.0)
+    assert not stream_probe_due(cfg, seen_armed=False, attitude_seen=True,
+                                attempts=1, seconds_since_last_probe=100.0)
+    assert not stream_probe_due(cfg, seen_armed=False, attitude_seen=False,
+                                attempts=2, seconds_since_last_probe=100.0)
     with pytest.raises(ValueError):
         PiConfig(cfg.device, cfg.baud, cfg.vehicle_id, cfg.system_id,
                  cfg.url, cfg.token_file, True, "unexpected.ts.net").validate()
