@@ -6,6 +6,7 @@ They never contact a Pixhawk or a production cloud instance.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 import struct
 import time
 
@@ -18,7 +19,7 @@ from services.vihanga_link.relay import Config, create_app, envelope, valid_evid
 from services.vihanga_link.pi_agent import (
     Config as PiConfig, MESSAGE_RATES_HZ,
     is_disarmed_autopilot_heartbeat, request_streams_once,
-    request_parameter_snapshot_once
+    request_parameter_snapshot_once, observation_delta
 )
 from pymavlink import mavutil
 
@@ -280,6 +281,20 @@ class FakePort:
         def command_long_send(self, *args): self.commands.append(args)
         def param_request_list_send(self, *args): self.commands.append(("parameters",) + args)
     def __init__(self): self.mav = self.MAV()
+
+
+
+def test_pi_window_counts_do_not_infer_missing_attitude():
+    old = Counter({0: 12, 30: 2, 33: 4, 74: 5})
+    now = Counter({0: 23, 30: 2, 33: 15, 74: 7, 24: 1})
+    delta = observation_delta(now, old)
+    assert delta[0] == 11
+    assert delta[30] == 0
+    assert delta[33] == 11
+    assert delta[74] == 2
+    assert delta[24] == 1
+    assert delta[1] == delta[147] == 0
+    assert observation_delta(Counter(), old)[0] == 0
 
 
 def test_stream_requests_are_local_disarmed_and_nonpersistent(tmp_path):
