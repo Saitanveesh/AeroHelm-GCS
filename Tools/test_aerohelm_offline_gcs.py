@@ -27,7 +27,7 @@ class OfflineGcsContracts(unittest.TestCase):
             self.assertIn(f"global::MissionPlanner.Program.{field}", harness)
         self.assertNotRegex(
             harness,
-            r"(?<![.:])\\bProgram\\.AeroHelm(?:OperatorToken|CloudOrigin|TokenExpiresUtc)\\b",
+            r"(?<![A-Za-z0-9_.:])Program[.]AeroHelm(?:OperatorToken|CloudOrigin|TokenExpiresUtc)",
         )
 
     def test_readonly_tcp_always_uses_local_bridge(self):
