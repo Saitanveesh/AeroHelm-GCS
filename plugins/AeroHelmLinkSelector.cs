@@ -50,22 +50,32 @@ namespace AeroHelm.GcsCloud
         {
             base.OnPaint(e);
             var rect=ClientRectangle;
+            float dpi=Math.Max(1f,e.Graphics.DpiX/96f);
             e.Graphics.Clear(hovered ? Drawing.Color.FromArgb(40,47,55) :
                 Drawing.Color.FromArgb(27,32,39));
             using(var brush=new Drawing.SolidBrush(accent))
-                e.Graphics.FillRectangle(brush,0,0,4,rect.Height);
+                e.Graphics.FillRectangle(brush,0,0,Math.Max(3,(int)(4*dpi)),rect.Height);
             using(var pen=new Drawing.Pen(Focused ? accent :
                 Drawing.Color.FromArgb(64,70,77),Focused?2f:1f))
                 e.Graphics.DrawRectangle(pen,1,1,Math.Max(1,rect.Width-3),
                     Math.Max(1,rect.Height-3));
-            int width=Math.Max(1,rect.Width-44);
+
+            int x=Math.Max(18,(int)(22*dpi));
+            int top=Math.Max(7,(int)(9*dpi));
+            int width=Math.Max(1,rect.Width-x-Math.Max(10,(int)(14*dpi)));
+            int titleHeight=TextRenderer.MeasureText(heading,headingFont,
+                new Drawing.Size(width,int.MaxValue),TextFormatFlags.SingleLine |
+                TextFormatFlags.NoPrefix).Height;
+            int titleBottom=top+titleHeight+2;
             TextRenderer.DrawText(e.Graphics,heading,headingFont,
-                new Drawing.Rectangle(22,10,width,28),
+                new Drawing.Rectangle(x,top,width,titleHeight+2),
                 Drawing.Color.FromArgb(245,247,249),
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            int subtitleTop=titleBottom+Math.Max(2,(int)(3*dpi));
             TextRenderer.DrawText(e.Graphics,description,descriptionFont,
-                new Drawing.Rectangle(22,40,width,Math.Max(20,rect.Height-45)),
+                new Drawing.Rectangle(x,subtitleTop,width,
+                    Math.Max(1,rect.Height-subtitleTop-Math.Max(5,(int)(7*dpi)))),
                 Drawing.Color.FromArgb(184,193,202),
                 TextFormatFlags.Left | TextFormatFlags.WordBreak |
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
