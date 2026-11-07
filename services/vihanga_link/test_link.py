@@ -160,8 +160,15 @@ def test_reconnect_expires_old_session_and_drops_stale_evidence(credentials):
         with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
               headers={"Authorization": "Bearer " + token}) as device:
             device.send_bytes(frame(0, bytes(9)))
-            # The state machine never asserts freshness from wall clock alone.
+            # Wait for the producer to publish, then force the observation
+            # timestamp old; avoid races between TestClient's ASGI portal and
+            # this test thread.
             link = app.state.link
+            for _ in range(100):
+                if link.frames > 0:
+                    break
+                time.sleep(0.01)
+            assert link.frames == 1
             link.last_heartbeat = time.monotonic() - 30
             assert not link.health(cfg.vehicle_id)["native_hud_heartbeat_ready"]
         h = client.get("/api/v1/mavlink/health").json()
