@@ -1,5 +1,5 @@
 # Vihanga Windows update/build/start. Default: read-only inspection.
-# -Apply: fast-forward reviewed branch, backup old runtime, rebuild and verify.
+# -Apply: fast-forward merged master, backup old runtime, rebuild and verify.
 # -Launch: start only after successful verified compile.
 # -StopVerifiedLegacyBridge: explicit opt-in to stop ONLY a checked old Python
 # receive-only TCP bridge on port 5760; never kill an unknown process.
@@ -10,7 +10,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$branch='feat/vihanga-phase3-native-toolbar'
+$branch='master'
 $inspect=Join-Path $PSScriptRoot 'Consolidate-AeroHelmWindows.ps1'
 $repair=Join-Path $PSScriptRoot 'Repair-AeroHelmWindows.ps1'
 $session=Join-Path $PSScriptRoot 'Start-AeroHelm-Session.ps1'
@@ -37,7 +37,7 @@ if (-not $Apply) {
 if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close every Mission Planner window before updating the live GCS EXE/DLL.'
 }
-Write-Host 'Checking reviewed Vihanga GCS source. A prior build manifest is stale after a source update until this exact commit has been rebuilt.'
+Write-Host 'Checking merged Vihanga master. A prior build manifest is stale after a source update until this exact commit has been rebuilt.'
 & git -C $root fetch --prune origin $branch
 if ($LASTEXITCODE -ne 0) { throw 'Remote Git fetch failed. No build performed.' }
 & git -C $root merge --ff-only ('origin/' + $branch)

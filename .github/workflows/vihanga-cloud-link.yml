@@ -1,7 +1,7 @@
 name: Vihanga cloud transport tests
 on:
   push:
-    branches: [feat/vihanga-phase3-native-toolbar]
+    branches: [master, feat/vihanga-phase3-native-toolbar]
     paths:
       - 'services/vihanga_link/**'
       - '.github/workflows/vihanga-cloud-link.yml'

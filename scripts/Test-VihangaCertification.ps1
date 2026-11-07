@@ -11,7 +11,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$expectedBranch='feat/vihanga-phase3-native-toolbar'
+$approvedBranches=@('master','feat/vihanga-phase3-native-toolbar')
 $branch=(& git -C $root branch --show-current).Trim()
 $commit=(& git -C $root rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$'){
@@ -19,7 +19,7 @@ if($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$'){
 }
 $trackedChanges=@(& git -C $root status --porcelain --untracked-files=no)
 if($LASTEXITCODE -ne 0){throw 'Cannot inspect Git checkout cleanliness.'}
-$sourceRevision=($branch -eq $expectedBranch -and $trackedChanges.Count -eq 0)
+$sourceRevision=($branch -in $approvedBranches -and $trackedChanges.Count -eq 0)
 $warnings=New-Object 'System.Collections.Generic.List[string]'
 if(-not $sourceRevision){
     $warnings.Add('Checkout is not the reviewed branch or contains tracked modifications.')
@@ -52,7 +52,7 @@ if((Test-Path -LiteralPath $manifestFile -PathType Leaf) -and
         $dllSha=(Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
         $nativeHashes=($manifest.schema -eq 'aerohelm.gcs.consolidation.v1' -and
             $manifest.git_commit -eq $commit -and
-            $manifest.source_branch -eq $expectedBranch -and
+            $manifest.source_branch -eq $branch -and
             $manifest.executable_sha256 -eq $exeSha -and
             $manifest.plugin_sha256 -eq $dllSha -and
             $manifest.native_build_reported_success -eq $true -and
