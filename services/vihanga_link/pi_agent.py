@@ -33,6 +33,12 @@ LOG = logging.getLogger("vihanga.edge")
 MESSAGE_RATES_HZ = {30: 5, 33: 2, 74: 2, 1: 1, 24: 1, 147: 1}
 MAX_FRAME = 300
 MAX_QUEUE = 256
+OBSERVATION_IDS = (0, 30, 33, 74, 24, 1, 147)
+
+
+def observation_delta(current: Counter[int], previous: Counter[int]) -> dict[int, int]:
+    """Per-ID observed real packet counts, with no inferred attitude frames."""
+    return {mid: max(0, current[mid] - previous[mid]) for mid in OBSERVATION_IDS}
 
 
 @dataclass(frozen=True)
@@ -146,6 +152,7 @@ class Publisher:
         self.queue: asyncio.Queue[tuple[float, bytes]] = asyncio.Queue(maxsize=MAX_QUEUE)
         self.stop = threading.Event()
         self.counts: Counter[int] = Counter()
+        self.sent_counts: Counter[int] = Counter()
         self.dropped = 0
         self.port = None
         self._uart_thread = None
@@ -162,8 +169,27 @@ class Publisher:
         probed = False
         parameters_requested = False
         seen_armed = False
+        last_report = time.monotonic()
+        previous_uart: Counter[int] = Counter()
+        previous_uplink: Counter[int] = Counter()
         while not self.stop.is_set():
             try:
+                now = time.monotonic()
+                if now - last_report >= 10.0:
+                    observed = observation_delta(self.counts, previous_uart)
+                    sent = observation_delta(self.sent_counts, previous_uplink)
+                    LOG.info(
+                        "10s physical UART IDs HB=%d ATT=%d POS=%d HUD=%d GPS=%d; "
+                        "cloud WSS sent HB=%d ATT=%d; queue drops=%d",
+                        observed[0], observed[30], observed[33], observed[74],
+                        observed[24], sent[0], sent[30], self.dropped)
+                    if observed[0] > 0 and observed[30] == 0:
+                        LOG.warning(
+                            "Real FC HEARTBEAT present but no ATTITUDE ID30 on Pi UART; "
+                            "inspect FC stream source/configuration on disarmed bench")
+                    previous_uart = self.counts.copy()
+                    previous_uplink = self.sent_counts.copy()
+                    last_report = now
                 msg = self.port.recv_match(blocking=True, timeout=0.4)
                 if msg is None or msg.get_type() == "BAD_DATA":
                     continue
@@ -246,6 +272,9 @@ class Publisher:
                                 continue
                             if time.monotonic() - collected_at <= 1.5:
                                 await ws.send(frame)
+                                mid = (frame[5] if frame[0] == 0xFE else
+                                       frame[7] | frame[8] << 8 | frame[9] << 16)
+                                self.sent_counts[mid] += 1
                             else:
                                 self.dropped += 1
                 except (OSError, websockets.WebSocketException, TimeoutError) as ex:
@@ -263,8 +292,8 @@ class Publisher:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
                 os.close(self._lock_fd)
                 self._lock_fd = None
-            LOG.info("UART publisher stopped; frames %s; queue drops %d",
-                dict(self.counts), self.dropped)
+            LOG.info("UART publisher stopped; observed %s; sent %s; queue drops %d",
+                dict(self.counts), dict(self.sent_counts), self.dropped)
 
 
 async def main() -> None:
