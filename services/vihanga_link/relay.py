@@ -43,6 +43,7 @@ class Config:
     jwt_key: str
     device_token_sha256: str
     allowed_hosts: tuple[str, ...]
+    fc_system_id: int = 1
 
     @staticmethod
     def from_env() -> "Config":
@@ -54,6 +55,7 @@ class Config:
             device_token_sha256=os.getenv("VIHANGA_DEVICE_TOKEN_SHA256", ""),
             allowed_hosts=tuple(x.strip() for x in
                 os.getenv("VIHANGA_ALLOWED_HOSTS", "").split(",") if x.strip()),
+            fc_system_id=int(os.getenv("VIHANGA_FC_SYSID", "1")),
         )
         cfg.validate()
         return cfg
@@ -61,6 +63,8 @@ class Config:
     def validate(self) -> None:
         if not DEVICE_ID.fullmatch(self.vehicle_id):
             raise ValueError("VIHANGA_VEHICLE_ID must be a single explicit aircraft identifier")
+        if not 1 <= self.fc_system_id <= 254:
+            raise ValueError("VIHANGA_FC_SYSID must identify the exact expected flight controller")
         if not self.operator_name or not self.operator_password_hash.startswith("$argon2id$"):
             raise ValueError("Operator name and Argon2id password hash are required")
         if len(self.jwt_key.encode()) < 32:
@@ -125,6 +129,8 @@ def valid_evidence(packet: bytes, message_id: int) -> bool:
 
 @dataclass
 class LinkState:
+    fc_system_id: int = 1
+    foreign_system_frames: int = 0
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     connected: bool = False
     epoch: int = 0
@@ -142,7 +148,7 @@ class LinkState:
 
     def clear_session(self) -> None:
         self.counters.clear()
-        self.frames = self.rejected = 0
+        self.frames = self.rejected = self.foreign_system_frames = 0
         self.last_frame = self.last_heartbeat = self.last_attitude = -1.0
         self.parameter_frames.clear()
         self.parameter_expected = 0
@@ -157,6 +163,11 @@ class LinkState:
         msg_id = envelope(packet)
         if msg_id is None or not valid_frame_crc(packet):
             self.rejected += 1
+            return
+        source_system = packet[3] if packet[0] == 0xFE else packet[5]
+        if source_system != self.fc_system_id:
+            self.rejected += 1
+            self.foreign_system_frames += 1
             return
         if msg_id in (0, 22, 30) and not valid_evidence(packet, msg_id):
             self.rejected += 1
@@ -251,6 +262,8 @@ class LinkState:
             "real_heartbeat_frames": self.counters[0],
             "real_attitude_frames": self.counters[30],
             "rejected_frames": self.rejected,
+            "foreign_system_frames_rejected": self.foreign_system_frames,
+            "flight_controller_system_id": self.fc_system_id,
             "message_ids": {str(k): v for k, v in sorted(self.counters.items())},
             "gcs_viewers": len(self.viewers),
             "epoch": self.epoch,
@@ -269,7 +282,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     cfg.validate()
     app = FastAPI(title="Vihanga private MAVLink relay", docs_url=None, redoc_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(cfg.allowed_hosts))
-    state = LinkState()
+    state = LinkState(fc_system_id=cfg.fc_system_id)
     app.state.link = state
     ph = PasswordHasher()
 
