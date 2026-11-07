@@ -129,8 +129,8 @@ namespace AeroHelm.GcsCloud
         {
             Selection=AeroHelmLinkPath.Cancel;
             Text="Vihanga GCS | Connections";
-            Width=800;Height=570;
-            MinimumSize=new Drawing.Size(580,510);
+            Width=760;Height=440;
+            MinimumSize=new Drawing.Size(580,395);
             StartPosition=FormStartPosition.CenterParent;
             AutoScaleMode=AutoScaleMode.Dpi;
             BackColor=Drawing.Color.FromArgb(17,21,27);
@@ -138,11 +138,11 @@ namespace AeroHelm.GcsCloud
             Font=new Drawing.Font("Segoe UI",10f);
 
             var layout=new TableLayoutPanel {
-                Dock=DockStyle.Fill, ColumnCount=1,RowCount=7,
+                Dock=DockStyle.Fill, ColumnCount=1,RowCount=6,
                 Padding=new Padding(20,16,20,14),BackColor=BackColor
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-            foreach(int height in new[]{66,94,94,94,40})
+            foreach(int height in new[]{66,94,94,40})
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute,height));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,48));
@@ -178,25 +178,19 @@ namespace AeroHelm.GcsCloud
             direct.Click+=(s,e)=>Select(AeroHelmLinkPath.PilotDirect);
             layout.Controls.Add(direct,0,2);
 
-            var attitude=new VihangaLinkChoice("Attitude monitor",
-                "Cloud roll and pitch   |   Independent read-only view",
-                Drawing.Color.FromArgb(122,172,166));
-            attitude.Click+=(s,e)=>Select(AeroHelmLinkPath.CloudAttitudePreview);
-            layout.Controls.Add(attitude,0,3);
-
             layout.Controls.Add(new Label {
                 Dock=DockStyle.Fill,
                 Text="Connection changes are manual. No automatic radio switchover.",
                 ForeColor=Drawing.Color.FromArgb(175,186,198),
                 TextAlign=Drawing.ContentAlignment.MiddleLeft
-            },0,4);
+            },0,3);
 
             cloudEvidence.Dock=DockStyle.Fill;
             cloudEvidence.Text="Cloud status: checking...";
             cloudEvidence.ForeColor=Drawing.Color.FromArgb(192,203,215);
             cloudEvidence.TextAlign=Drawing.ContentAlignment.MiddleLeft;
             cloudEvidence.AccessibleName="Cloud status; read-only observation";
-            layout.Controls.Add(cloudEvidence,0,5);
+            layout.Controls.Add(cloudEvidence,0,4);
 
             var cancel=new Button {
                 Text="Close",Dock=DockStyle.Right,Width=112,Height=38,
@@ -205,7 +199,7 @@ namespace AeroHelm.GcsCloud
                 UseVisualStyleBackColor=false
             };
             cancel.FlatAppearance.BorderColor=Drawing.Color.FromArgb(85,94,104);
-            layout.Controls.Add(cancel,0,6);
+            layout.Controls.Add(cancel,0,5);
             CancelButton=cancel;
             KeyPreview=true;
             KeyDown+=(s,e)=>{
