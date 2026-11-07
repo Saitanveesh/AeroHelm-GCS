@@ -233,6 +233,12 @@ def test_authenticated_telemetry_request_is_bounded_and_pi_acks_without_flight_c
                     break
                 time.sleep(0.01)
             assert app.state.link.health(cfg.vehicle_id)["native_hud_heartbeat_ready"]
+            # A viewer can never inject a raw MAVLink command into the Pi.
+            with client.websocket_connect("/ws/mavlink/view/AH-HW-001",
+                    headers=bearer) as viewer:
+                viewer.send_bytes(b"arbitrary gcs flight commands are discarded")
+                assert client.get("/api/v1/mavlink/health").json()[
+                    "telemetry_probe"]["request_count"] == 0
             response = client.post(route, headers=bearer)
             assert response.status_code == 200
             details = response.json()
