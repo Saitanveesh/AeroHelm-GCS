@@ -141,6 +141,33 @@ namespace AeroHelm.GcsCloud
             _workspaces.DropDownItems.Add("SETTINGS",null,(s,e) =>
                 ShowWorkspace(new VihangaSettingsWindow()));
             menu.Items.Insert(at++, _workspaces);
+            // Operator toolbar: CLOUD / PATHS / MORE. Keep secondary
+            // workspaces in the MORE menu and preserve maintenance mode.
+            bool compactOperatorToolbar=!string.Equals(
+                Environment.GetEnvironmentVariable("AEROHELM_REDUCED_TOOLBAR"),
+                "0",StringComparison.Ordinal);
+            _workspaces.DropDownItems.Insert(0,
+                new ToolStripMenuItem("LINK — telemetry status",null,
+                    (s,e)=>ShowWorkspace(new AeroHelmLinkWindow())));
+            _workspaces.DropDownItems.Insert(1,
+                new ToolStripMenuItem("SURVEY — offline planning",null,
+                    (s,e)=>ShowWorkspace(new AeroHelmSurveyWindow())));
+            _workspaces.DropDownItems.Insert(2,
+                new ToolStripMenuItem("VISION — camera",null,
+                    (s,e)=>ShowWorkspace(new AeroHelmVisionWindow())));
+            _workspaces.DropDownItems.Insert(3,
+                new ToolStripMenuItem("OPS — simulation and maintenance",null,
+                    (s,e)=>ShowWorkspace(new AeroHelmOpsWindow())));
+            _workspaces.DropDownItems.Insert(4,
+                new ToolStripMenuItem("INTEL — fleet inspection",null,
+                    (s,e)=>ShowWorkspace(new AeroHelmIntelWindow())));
+            _workspaces.DropDownItems.Insert(5,new ToolStripSeparator());
+            if(compactOperatorToolbar)
+            {
+                foreach(var secondary in new ToolStripItem[]{
+                    _survey,_vision,_link,_ops,_intel})
+                    secondary.Visible=false;
+            }
 
             // Independent connection module. Explicit operator choice:
             // CLOUD is receive-only; DIRECT exposes native COM/radio controls.
@@ -228,32 +255,26 @@ namespace AeroHelm.GcsCloud
                                 && att is bool;
                 bool ready = link && hbKnown && (bool)hb &&
                              attKnown && (bool)att;
-                _paths.Text = ready ? "PATHS" : "PATHS !";
+                _paths.Text = "PATHS";
                 _paths.ForeColor = ready ?
                     FrameworkDrawing::System.Drawing.Color.FromArgb(195,228,195) :
                     FrameworkDrawing::System.Drawing.Color.FromArgb(242,198,139);
                 _paths.ToolTipText = ready ?
-                    "CLOUD: real HB + ATTITUDE observed; not flight certification. "+
-                    "Click to select CLOUD or PILOT DIRECT." :
+                    "Cloud: heartbeat and attitude verified; choose link." :
                     !link ?
-                    "CLOUD STALE/OFFLINE — select physical pilot radio manually. "+
-                    "NO automatic failover." :
+                    "Cloud: offline or stale; direct link requires pilot selection." :
                     !hbKnown || !attKnown ?
-                    "CLOUD FRAMES FRESH, HB/ATTITUDE UNVERIFIED (legacy server). "+
-                    "PILOT DIRECT is independent." :
-                    "CLOUD HEARTBEAT/ATTITUDE MISSING — do not trust old HUD data. "+
-                    "PILOT DIRECT requires explicit operator selection.";
+                    "Cloud: frames received; heartbeat and attitude not verified." :
+                    "Cloud: heartbeat or attitude missing.";
             }
             catch (Exception)
             {
                 if(_paths != null && !_paths.IsDisposed)
                 {
-                    _paths.Text="PATHS !";
+                    _paths.Text="PATHS";
                     _paths.ForeColor=FrameworkDrawing::System.Drawing.Color.FromArgb(
                         244,177,150);
-                    _paths.ToolTipText="Cloud check unavailable / sign-in expired. "+
-                        "Pilot's direct USB/radio path remains independent; "+
-                        "NO automatic switching or flight commands.";
+                    _paths.ToolTipText="Cloud status unavailable; direct connection remains independent.";
                 }
             }
             finally { _cloudProbeBusy = false; }
