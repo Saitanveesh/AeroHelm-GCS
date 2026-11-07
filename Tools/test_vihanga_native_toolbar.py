@@ -196,6 +196,15 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("string selectedLease=leaseId.Text;",ops)
         self.assertNotIn('Task.Run(()=>RequestWithLease("renew",missionId.Text,leaseId.Text))',ops)
 
+    def test_native_mission_planner_hud_handles_narrow_flight_panel(self):
+        flight=source("GCSViews/FlightData.cs")
+        self.assertIn("tabControlactions.ClientSize.Width < 560",flight)
+        self.assertIn('Settings.Instance.GetBoolean("tabControlactions_Multiline"',flight)
+        self.assertIn("tabQuick.AutoScroll=needScroll;",flight)
+        self.assertIn("minimumWidth=tableLayoutPanelQuick.ColumnCount>1 ? 440 : 240",flight)
+        self.assertIn("tableLayoutPanelQuick.Width=width;",flight)
+        self.assertNotIn("hud1.roll=0;",flight)
+
     def test_responsive_cloud_pages_and_operator_workspaces(self):
         pages=source("plugins/AeroHelmReadOnlyPages.cs")
         shared=source("plugins/VihangaSharedUi.cs")
