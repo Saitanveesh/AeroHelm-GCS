@@ -49,13 +49,13 @@ if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close other Mission Planner windows before launching Vihanga.'
 }
 $branch = (& git -C $root branch --show-current).Trim()
-if ($branch -ne 'feat/vihanga-phase3-native-toolbar') {
-    throw "Vihanga launcher requires the reviewed Windows integration branch (found $branch)."
+if ($branch -notin @('master','feat/vihanga-phase3-native-toolbar')) {
+    throw "Vihanga launcher requires the reviewed master or development branch (found $branch)."
 }
 # The consolidated branch must NEVER silently launch an old cached
 # MissionPlanner.exe or plugin DLL. Use the local manifest produced after a
 # successful backed-up native build, not just git branch/source labels.
-if ($branch -eq 'feat/vihanga-phase3-native-toolbar') {
+if ($branch -in @('master','feat/vihanga-phase3-native-toolbar')) {
     $manifestFile = Join-Path $root 'build-logs\aerohelm-consolidated-release.json'
     if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
         throw 'Consolidated runtime not verified. Run scripts\Consolidate-AeroHelmWindows.ps1 -Stage Build -Apply, then -Stage Verify.'
@@ -65,6 +65,7 @@ if ($branch -eq 'feat/vihanga-phase3-native-toolbar') {
     $actualExe = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
     $actualDll = (Get-FileHash -LiteralPath $compiled -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($release.schema -ne 'aerohelm.gcs.consolidation.v1' -or
+        $release.source_branch -ne $branch -or
         $release.git_commit -ne $gitCommit -or
         $release.executable_sha256 -ne $actualExe -or
         $release.plugin_sha256 -ne $actualDll) {
