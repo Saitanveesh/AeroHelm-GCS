@@ -6,7 +6,7 @@ Run from the GCS repository root:
 These checks validate source wiring. They DO NOT substitute for Windows
 MSBuild compilation, live authentication or propeller-off Pixhawk acceptance.
 """
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import unittest
 
@@ -18,6 +18,38 @@ def source(path: str) -> str:
 
 
 class OfflineGcsContracts(unittest.TestCase):
+    def test_plugin_custom_constructor_types_are_in_compiled_sources(self):
+        project = source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
+        includes = re.findall(r'<Compile\s+Include="([^"]+\.cs)"', project)
+        self.assertGreater(len(includes), 10)
+        compiled_sources = {}
+        for path in includes:
+            filename = (
+                ROOT / "Plugins" / "AeroHelmCloud"
+            ).joinpath(*PureWindowsPath(path).parts)
+            compiled_sources[path] = filename.read_text(encoding="utf-8-sig")
+
+        declarations = set()
+        for content in compiled_sources.values():
+            declarations.update(re.findall(
+                r'\b(?:class|struct|enum)\s+([A-Za-z_]\w*)\b', content))
+        for path, content in compiled_sources.items():
+            calls = re.findall(
+                r'\bnew\s+((?:AeroHelm|Vihanga|Cloud)[A-Za-z_0-9]+)\s*\(',
+                content)
+            for classname in calls:
+                with self.subTest(source=path, constructor=classname):
+                    self.assertIn(classname, declarations)
+
+    def test_cloud_settings_routes_only_to_compiled_telemetry_and_fleet_ui(self):
+        shared = source("plugins/VihangaSharedUi.cs")
+        self.assertIn("VihangaLinkSession.UsesDedicatedRelay", shared)
+        self.assertIn("VihangaLinkLoginWindow.EnsureSignedIn(this)", shared)
+        self.assertIn('new AeroHelmIntelWindow("FLEET")', shared)
+        self.assertIn("VihangaLinkSession.Authenticated", shared)
+        self.assertIn("VihangaLinkSession.CloudOrigin", shared)
+        self.assertNotRegex(shared, r'\bnew\s+CloudWindow\s*\(')
+
     def test_native_mavlink_harness_qualifies_mission_planner_login_stub(self):
         harness = source("Tools/AeroHelmMavlinkBridgeTests/Program.cs")
         self.assertIn("namespace MissionPlanner", harness)
