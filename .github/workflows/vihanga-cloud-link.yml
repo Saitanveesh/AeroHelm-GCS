@@ -24,4 +24,4 @@ jobs:
       - name: Compile importable Python
         run: python -m compileall -q services/vihanga_link
       - name: Protocol, authentication and disarmed-port tests
-        run: python -m pytest -q services/vihanga_link/test_link.py
+        run: python -m pytest -q services/vihanga_link
