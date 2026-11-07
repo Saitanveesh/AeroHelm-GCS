@@ -39,6 +39,7 @@ namespace AeroHelm.GcsCloud
             header.Controls.Add(new Label{Text="Aircraft:",Width=65,
                 TextAlign=Drawing.ContentAlignment.MiddleRight,Height=26});
             vehicle.Text="";vehicle.Width=160;vehicle.AccessibleName="Aircraft identifier";header.Controls.Add(vehicle);
+            vehicle.TextChanged += (s,e) => InvalidateMissionValidation();
             banner.Text="ANALYSIS ONLY — no mission upload, flight command, calibration or parameter write.";
             banner.AutoSize=true;banner.ForeColor=Drawing.Color.DarkRed;header.Controls.Add(banner);
             var tabs=new TabControl{Dock=DockStyle.Fill};
@@ -197,10 +198,16 @@ namespace AeroHelm.GcsCloud
 
         private string Id()
         {
+            if (vehicle.InvokeRequired)
+                return (string)vehicle.Invoke(new Func<string>(Id));
+            if (vehicle.IsDisposed)
+                throw new ObjectDisposedException("Aircraft selector");
             string ident=vehicle.Text.Trim();
             if(ident.Length<3||ident.Length>64||
-               ident.Any(ch=>!(char.IsLetterOrDigit(ch)||ch=='-'||ch=='_')))
-                throw new InvalidOperationException("Invalid aircraft identifier");
+               ident.Any(ch=>!((ch>='A'&&ch<='Z') ||
+                               (ch>='a'&&ch<='z') ||
+                               (ch>='0'&&ch<='9') || ch=='-' || ch=='_')))
+                throw new InvalidOperationException("Aircraft ID must be 3–64 ASCII letters, digits, - or _.");
             return Uri.EscapeDataString(ident);
         }
 
@@ -208,16 +215,20 @@ namespace AeroHelm.GcsCloud
         {
             if(running)return;
             running=true;
+            string aircraftAtRequest=vehicle.Text;
             report.Text=title+": contacting authenticated cloud...";
             try
             {
-                // OperationsApi ensures cloud login and token expiry.
                 var result=await Task.Run(job);
-                report.Text=title+"\r\n"+result;
+                if(IsDisposed || Disposing) return;
+                report.Text=vehicle.Text==aircraftAtRequest ?
+                    title+"\r\n"+result :
+                    "Aircraft selection changed; earlier cloud response discarded.";
             }
             catch(Exception ex)
             {
-                report.Text=title+" failed: "+Explain(ex);
+                if(!IsDisposed && !Disposing)
+                    report.Text=title+" failed: "+Explain(ex);
             }
             finally {running=false;}
         }
@@ -280,6 +291,7 @@ namespace AeroHelm.GcsCloud
             try{plan=BuildPlan();}
             catch(Exception ex){report.Text=ex.Message;return;}
             string submittedPlan = json.Serialize(plan);
+            string aircraftAtValidation = vehicle.Text;
             InvalidateMissionValidation();
             running=true;
             try
@@ -290,8 +302,9 @@ namespace AeroHelm.GcsCloud
                 string hash=Convert.ToString(response["mission_sha256"]);
                 if (string.IsNullOrWhiteSpace(hash))
                     throw new InvalidOperationException("Cloud did not return a verified mission hash.");
-                if (!string.Equals(json.Serialize(BuildPlan()),submittedPlan,StringComparison.Ordinal))
-                    throw new InvalidOperationException("Plan changed during validation. Validate the current plan again.");
+                if (!string.Equals(json.Serialize(BuildPlan()),submittedPlan,StringComparison.Ordinal) ||
+                    !string.Equals(vehicle.Text,aircraftAtValidation,StringComparison.Ordinal))
+                    throw new InvalidOperationException("Plan or aircraft changed during validation. Validate again.");
                 lastMissionHash=hash;
                 lastMissionPlan=submittedPlan;
                 report.Text="PREFLIGHT (advisory, NEVER flight authorization)\r\n"+body;
@@ -313,22 +326,36 @@ namespace AeroHelm.GcsCloud
                 InvalidateMissionValidation();
                 return;
             }
+            string shadowSubject;
+            try { shadowSubject=Id(); }
+            catch(Exception ex) { report.Text=ex.Message; return; }
+            string approvedHash=lastMissionHash;
             // The backend independently validates geometry and hash matching.
             await Run(()=>OperationsApi.Request("POST",
-                 "api/v2/missions/shadow/"+Id(),
-                 new{plan=plan,expected_sha256=lastMissionHash}),
+                 "api/v2/missions/shadow/"+shadowSubject,
+                 new{plan=plan,expected_sha256=approvedHash}),
                  "Mission shadow");
         }
 
         private async Task ParameterSnapshotStatus()
         {
             if(running)return;
+            string subject;
+            try { subject=Id(); }
+            catch(Exception ex) { report.Text=ex.Message; return; }
+            string aircraftAtRequest=vehicle.Text;
             running=true;
             report.Text="Querying authenticated parameter cache state...";
             try
             {
                 var body=await Task.Run(()=>OperationsApi.Request("GET",
-                    "api/v1/vehicles/"+Id()+"/parameters"));
+                    "api/v1/vehicles/"+subject+"/parameters"));
+                if(IsDisposed || Disposing) return;
+                if(vehicle.Text!=aircraftAtRequest)
+                {
+                    report.Text="Aircraft selection changed; parameter response discarded.";
+                    return;
+                }
                 var result=json.Deserialize<Dictionary<string,object>>(body);
                 bool complete=result.ContainsKey("verified_complete") &&
                     Convert.ToBoolean(result["verified_complete"]);
@@ -342,7 +369,11 @@ namespace AeroHelm.GcsCloud
                     "This is a previously collected Pi snapshot, not a live parameter read. "+
                     "It cannot authorize remote configuration, mission upload or armed operation.";
             }
-            catch(Exception ex){report.Text="Parameter inspection failed: "+Explain(ex);}
+            catch(Exception ex)
+            {
+                if(!IsDisposed && !Disposing)
+                    report.Text="Parameter inspection failed: "+Explain(ex);
+            }
             finally{running=false;}
         }
 

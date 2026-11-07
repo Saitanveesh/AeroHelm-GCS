@@ -104,6 +104,19 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("Start-VihangaGCS.ps1", source("scripts/Start-AeroHelm-Touch.ps1"))
 
 
+    def test_thread_safe_operator_requests(self):
+        intel = source("plugins/AeroHelmPlatformV2.cs")
+        ops = source("plugins/AeroHelmOperations.cs")
+        for expected in ("vehicle.Invoke(new Func<string>(Id))",
+                         "aircraftAtValidation",
+                         "Aircraft selection changed; earlier cloud response discarded.",
+                         "Aircraft selection changed; parameter response discarded.",
+                         "string approvedHash=lastMissionHash;"):
+            self.assertIn(expected, intel)
+        self.assertIn("string selectedMission=missionId.Text;",ops)
+        self.assertIn("string selectedLease=leaseId.Text;",ops)
+        self.assertNotIn('Task.Run(()=>RequestWithLease("renew",missionId.Text,leaseId.Text))',ops)
+
     def test_branding_preserves_operator_settings(self):
         branding = source("scripts/Install-AeroHelmBranding.ps1")
         repair = source("scripts/Repair-AeroHelmWindows.ps1")

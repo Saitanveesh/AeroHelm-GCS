@@ -405,8 +405,11 @@ namespace AeroHelm.GcsCloud
             {
                 // OperationsApi applies bearer authentication. A simulation lease
                 // must be passed in X-Control-Lease and is never persisted.
-                string reply=await Task.Run(()=>RequestWithLease(action,missionId.Text,
-                    leaseId.Text));
+                string selectedMission=missionId.Text;
+                string selectedLease=leaseId.Text;
+                string reply=await Task.Run(()=>RequestWithLease(action,selectedMission,
+                    selectedLease));
+                if(IsDisposed || Disposing) return;
                 var doc=json.Deserialize<Dictionary<string,object>>(reply);
                 status.Text="Simulation "+action+": "+Convert.ToString(doc["status"])+
                     ". This does NOT command Pixhawk hardware.";
@@ -445,12 +448,16 @@ namespace AeroHelm.GcsCloud
             renewing=true;
             try
             {
-                await Task.Run(()=>RequestWithLease("renew",missionId.Text,leaseId.Text));
+                string selectedMission=missionId.Text;
+                string selectedLease=leaseId.Text;
+                await Task.Run(()=>RequestWithLease("renew",selectedMission,selectedLease));
+                if(IsDisposed || Disposing) return;
             }
             catch(Exception ex)
             {
                 leaseRenewal.Stop();
-                status.Text="Simulation control lease renewal failed: "+Error(ex)+
+                if(!IsDisposed && !Disposing)
+                    status.Text="Simulation control lease renewal failed: "+Error(ex)+
                     ". The server will abort an active mission after lease expiry.";
             }
             finally { renewing=false; }
