@@ -10,6 +10,7 @@ $productionScripts = @(
     'scripts/Start-AeroHelm-Session.ps1',
     'scripts/Start-AeroHelm-DirectBackup.ps1',
     'scripts/Start-AeroHelm-Touch.ps1',
+    'scripts/Start-VihangaGCS.ps1',
     'scripts/Update-AeroHelmLatest.ps1',
     'scripts/Repair-AeroHelmWindows.ps1',
     'scripts/Consolidate-AeroHelmWindows.ps1',
@@ -48,7 +49,7 @@ function Read-Source([string]$path) {
 function Require-Text([string]$content, [string]$needle, [string]$reason) {
     if (-not $content.Contains($needle)) { throw $reason }
 }
-$touch = Read-Source 'plugins/AeroHelmTouchPanel.cs'
+$shared = Read-Source 'plugins/VihangaSharedUi.cs'
 $paths = Read-Source 'plugins/AeroHelmLinkSelector.cs'
 $pilotDirect = Read-Source 'plugins/AeroHelmPilotDirectWindow.cs'
 $observedAttitude = Read-Source 'plugins/AeroHelmCloudAttitudeWindow.cs'
@@ -82,7 +83,7 @@ $installer = Read-Source 'scripts/Install-AeroHelmCloud.ps1'
 $rollback = Read-Source 'scripts/Restore-AeroHelmPlugin.ps1'
 $roundtrip = Read-Source 'scripts/Test-AeroHelmPluginRoundtrip.ps1'
 $preflight = Read-Source 'scripts/Test-AeroHelmPrivatePreflight.ps1'
-$launcher = Read-Source 'scripts/Start-AeroHelm-Touch.ps1'
+$launcher = Read-Source 'scripts/Start-VihangaGCS.ps1'
 $session = Read-Source 'scripts/Start-AeroHelm-Session.ps1'
 $nativeBridge = Read-Source 'plugins/AeroHelmReceiveOnlyBridge.cs'
 $cloudQuality = Read-Source 'plugins/AeroHelmLinkQuality.cs'
@@ -95,18 +96,21 @@ $moduleAudit = Read-Source 'scripts/Audit-AeroHelmModules.ps1'
 $generatedCleanup = Read-Source 'scripts/Cleanup-AeroHelmGenerated.ps1'
 $legacyNativeLauncher = Read-Source 'scripts/Start-AeroHelm-NativeCloud.ps1'
 
-foreach ($row in @(
-    '"FLIGHT", "PLAN", "VISION"',
-    '"OPS", "SECURITY", "FLEET"',
-    '"LINK", "ANALYTICS", "SETTINGS"'
-)) {
-    Require-Text $touch $row "Wrong touch 3x3 tile labels/order: $row"
+foreach ($item in @('CLOUD','PATHS','SURVEY','VISION','LINK','OPS','INTEL','MORE')) {
+    $needle = if ($item -eq 'CLOUD') {'new ToolStripButton("CLOUD")'}
+        elseif ($item -eq 'MORE') {'new ToolStripDropDownButton("MORE")'}
+        else {'NewToolbarButton("'+$item+'"'}
+    Require-Text $cloud $needle "Native toolbar entry missing: $item"
 }
-Require-Text $touch 'tiles.GrowStyle = TableLayoutPanelGrowStyle.FixedSize' 'Touch grid must not wrap.'
-Require-Text $touch 'AeroHelmIconPainter.Make(name, 72)' 'Tile art must use deterministic native line icons.'
-foreach ($module in @('FLEET','SECURITY','ANALYTICS')) {
-    Require-Text $touch ('new AeroHelmReadOnlyPage("'+$module+'")') "Touch page missing: $module"
+foreach ($item in @('FLEET','SECURITY','ANALYTICS')) {
+    Require-Text $cloud ('new AeroHelmReadOnlyPage("'+$item+'")') "MORE workspace missing: $item"
 }
+Require-Text $cloud 'new AeroHelmIntelWindow("PARAMETERS")' 'Parameter inspection must have direct navigation.'
+Require-Text $cloud 'new VihangaSettingsWindow()' 'Settings must have direct navigation.'
+if (Test-Path -LiteralPath (Join-Path $root 'plugins/AeroHelmTouchPanel.cs')) {
+    throw 'Obsolete TOUCH panel must not ship.'
+}
+Require-Text $project 'VihangaSharedUi.cs' 'Shared icon and settings components must compile.'
 Require-Text $pages 'api/v3/research/fleet' 'Research fleet service must be read-only GET.'
 Require-Text $pages 'api/v3/research/evidence-integrity' 'Security evidence verification route missing.'
 Require-Text $pages 'api/v3/vehicles/' 'Per-aircraft digital-shadow route missing.'
@@ -140,15 +144,15 @@ Require-Text $project 'AeroHelmFleetLabWindow.cs' 'Native plugin must compile fl
 Require-Text $fleetLab 'api/v3/fleet/schedule/draft' 'Fleet planner route not wired.'
 Require-Text $fleetLab 'No command or upload will occur.' 'Fleet scheduler cannot imply hardware dispatch.'
 Require-Text $pages 'No physical flight-control authority.' 'Research pages must not suggest flight authorization.'
-Require-Text $touch 'MainV2.instance' 'Mission Planner must remain the native root.'
-Require-Text $touch 'Keys.Escape' 'Touch view must retain Escape-to-close.'
-Require-Text $touch 'RefreshCloudStatusAsync' 'HOME authenticated link status is missing.'
-Require-Text $touch 'api/v1/mavlink/health' 'HOME status must use read-only MAVLink health.'
-Require-Text $touch 'CLOUD / STALE OR DISCONNECTED' 'HOME must report stale aircraft status.'
-Require-Text $touch 'CLOUD / UNAVAILABLE' 'HOME needs a fail-closed disconnected state.'
-Require-Text $cloud 'AEROHELM_TOUCH_STARTUP' 'Windows touch startup opt-in is missing.'
+Require-Text $cloud 'MainV2.instance' 'Native Mission Planner must remain the root.'
+Require-Text $cloud 'CheckCloudLinkAsync()' 'PATHS status monitor missing.'
+Require-Text $cloud '"GET","api/v1/mavlink/health"' 'Live heartbeat and attitude check missing.'
+Require-Text $cloud 'CLOUD HEARTBEAT/ATTITUDE MISSING' 'Stale HUD evidence must fail closed.'
+if ($cloud.Contains('AEROHELM_TOUCH_STARTUP') -or $cloud.Contains('AeroHelmTouchPanel')) {
+    throw 'Obsolete TOUCH startup is still present.'
+}
 Require-Text $cloud 'AEROHELM_REDUCED_TOOLBAR' 'Native HELP/Simulation recovery path is missing.'
-Require-Text $launcher 'AEROHELM_REQUIRE_LOGIN' 'Touch startup must require cloud login.'
+Require-Text $launcher 'AEROHELM_REQUIRE_LOGIN' 'GCS startup must require cloud login.'
 Require-Text $startupGate 'AeroHelm.Cloud.Plugin.Validation.dll' 'Direct AeroHelm GCS launches must require login.'
 Require-Text $startupGate '--local-maintenance' 'Offline maintenance override must remain explicit.'
 Require-Text $nativeSplash 'this.TopMost = true;' 'Splash layering contract changed; recheck login modal behavior.'
@@ -157,7 +161,7 @@ Require-Text $nativeProgram 'Splash.TopMost = false;' 'Splash must not steal foc
 Require-Text $nativeProgram 'AeroHelmStartupGate.Authenticate()' 'Startup gate must enforce sign-in before native GCS.'
 Require-Text $startupGate 'password.Focus();' 'Password field must receive focus when the modal dialog becomes visible.'
 Require-Text $startupGate 'url.Host.EndsWith(".ts.net"' 'Startup sign-in must only use private HTTPS.'
-Require-Text $launcher 'AEROHELM_REDUCED_TOOLBAR' 'Touch mode should hide HELP and SIMULATION by default.'
+Require-Text $launcher 'AEROHELM_REDUCED_TOOLBAR' 'Operator profile must preserve the established reduced toolbar.'
 Require-Text $launcher 'AEROHELM_INTERNAL_TCP_BRIDGE' 'Native single-login adapter opt-in is missing.'
 Require-Text $session 'AEROHELM_CAMERA1_URL' 'Camera URL should be configured once from the session.'
 Require-Text $session 'UseLegacyPythonBridge' 'Legacy external bridge fallback is missing.'
@@ -176,36 +180,32 @@ Require-Text $nativeBridge 'HB ' 'Heartbeat freshness must be explicit.'
 Require-Text $bridgeContracts 'AeroHelmReceiveOnlyBridge.TryReadAttitude' 'Native parser regression tests missing.'
 Require-Text $integratedBuild 'AeroHelmMavlinkBridgeTests.csproj' 'Native bridge tests must run before plugin installation.'
 Require-Text $integratedBuild 'feat/gcs-research-cybershield-twin-ui' 'Build launcher must accept the reviewed research branch.'
-Require-Text $integratedBuild 'feat/gcs-touch-ux-readonly-fleet-r1' 'Build launcher must accept the latest touch UI branch.'
-Require-Text $latestLauncher "feat/gcs-touch-ux-readonly-fleet-r1" 'Updater must target the latest touch UI branch.'
-Require-Text $consolidation "feat/gcs-touch-ux-readonly-fleet-r1" 'Consolidated hash manifest must use latest UI source branch.'
+Require-Text $integratedBuild 'feat/vihanga-phase3-native-toolbar' 'Build launcher must accept the latest touch UI branch.'
+Require-Text $latestLauncher "feat/vihanga-phase3-native-toolbar" 'Updater must target the latest touch UI branch.'
+Require-Text $consolidation "feat/vihanga-phase3-native-toolbar" 'Consolidated hash manifest must use latest UI source branch.'
 Require-Text $generatedCleanup 'if(-not $Apply)' 'Cleanup must default to DRY RUN.'
 Require-Text $generatedCleanup 'git -C $root ls-files --cached' 'Cleanup must protect tracked source files.'
 Require-Text $generatedCleanup 'Get-Process MissionPlanner' 'Cleanup must not run while Mission Planner is open.'
 Require-Text $generatedCleanup 'Consolidate-AeroHelmWindows.ps1' 'Cleanup requires verified runtime.'
 Require-Text $generatedCleanup 'Remove-Item -LiteralPath $item.Path' 'Cleanup may delete only enumerated generated paths.'
-Require-Text $launcher 'feat/gcs-research-cybershield-twin-ui' 'Touch launcher must accept the research branch.'
-Require-Text $launcher 'feat/gcs-touch-ux-readonly-fleet-r1' 'Touch launcher must accept latest reviewed UI branch.'
-Require-Text $launcher 'AEROHELM_AUTO_NATIVE_TCP' 'FLIGHT should connect its local bridge without prompting.'
-Require-Text $launcher 'Get-NetTCPConnection -LocalPort 5760 -State Listen' 'Fail fast when the old Python bridge blocks the embedded loopback receiver.'
-Require-Text $nativeBridge 'internal string CompactSummary' 'Touch HOME must use a short, truthful local bridge headline.'
-Require-Text $touch 'bridge.CompactSummary' 'HOME must not show the full verbose bridge diagnostics by default.'
-Require-Text $touch 'bridgeDiagnosticsTip.SetToolTip' 'Full native bridge diagnostics must remain accessible by hover.'
-Require-Text $touch 'Dock = DockStyle.Bottom, Height = 56' 'Compact cloud status bar height must fit touch UX.'
-if ($touch.Contains('linkStatus.Text += ')) { throw 'HOME cloud status must not append duplicate local TCP diagnostics.' }
+Require-Text $launcher 'feat/vihanga-phase3-native-toolbar' 'Launcher must pin the reviewed branch.'
+Require-Text $launcher 'AEROHELM_AUTO_NATIVE_TCP' 'Cloud receiver setting missing.'
+Require-Text $launcher 'Get-NetTCPConnection -LocalPort 5760 -State Listen' 'Local port conflict gate missing.'
+Require-Text $nativeBridge 'internal string CompactSummary' 'Native bridge diagnostic missing.'
+Require-Text $cloud '_paths.ToolTipText' 'Toolbar needs bounded PATHS diagnostic tooltips.'
 Require-Text $mainNative 'Host = "127.0.0.1", Port = "5760"' 'Native Mission Planner TCP should bind local bridge without prompting.'
 Require-Text $mainNative 'getparams = false;' 'Any read-only cloud TCP caller must skip parameter requests.'
-Require-Text $touch 'AeroHelmReleaseIdentity.BuildId' 'Touch title must expose the compiled plugin identity.'
-Require-Text $touch 'AeroHelmReleaseIdentity.PluginSha256Prefix' 'Settings must show the loaded plugin fingerprint.'
+Require-Text $shared 'AeroHelmReleaseIdentity.BuildId' 'Compiled identity missing.'
+Require-Text $shared 'AeroHelmReleaseIdentity.PluginSha256Prefix' 'DLL fingerprint missing.'
 Require-Text $consolidation 'Copy-Runtime $runtime $snapshot $false' 'Release migration must backup the entire old runtime BEFORE build.'
 Require-Text $consolidation 'Copy-Runtime $snapshot $runtime $true' 'Release migration must restore prior runtime on failure.'
 Require-Text $consolidation 'plugin_sha256' 'Release migration must record compiled plugin fingerprint.'
 Require-Text $consolidation 'if(-not $Apply)' 'Release must require explicit mutation approval.'
-Require-Text $moduleAudit 'SOURCE WIRED' 'All nine-panel source audit is missing.'
+Require-Text $moduleAudit 'SOURCE WIRED' 'Native workspace audit missing.'
 Require-Text $legacyNativeLauncher 'throw ''-CachedParameters is not supported' 'Legacy cloud parameter sync bypass must fail closed.'
 Require-Text $mainNative 'if (aeroHelmReadOnlyTcp)' 'TCP connection itself must enforce read-only routing policy.'
 Require-Text $mainNative 'string.Equals(portname, "TCP", StringComparison.OrdinalIgnoreCase)' 'Read-only policy must not alter native serial/radio parameter downloads.'
-Require-Text $touch 'AeroHelmLinkNavigation.Open(' 'Touch FLIGHT must delegate to explicit dual-link module.'
+Require-Text $cloud 'AeroHelmLinkNavigation.Open(MainV2.instance,' 'Manual link path routing missing.'
 Require-Text $paths 'main.doConnect(MainV2.comPort,"TCP","57600"' 'Cloud PATHS must reach native verified MAVLink receive path.'
 Require-Text $paths 'PilotDirect' 'PILOT radio backup must remain independently selectable.'
 Require-Text $paths 'bridge.Start()' 'A failed initial local cloud bridge must be retryable.'
@@ -286,5 +286,5 @@ foreach ($excluded in @('obj3','Tools')) {
     Require-Text $mainProject ('<Compile Remove="'+$excluded+'\**" />') "Main GCS must exclude $excluded from SDK default compilation."
 }
 Require-Text $project 'AeroHelmReadOnlyPages.cs' 'Native plugin project must compile new pages.'
-Write-Host 'PASS: Windows nine-tile wiring and read-only page contract checks.' -ForegroundColor Green
-Write-Host 'Remaining gates: MSBuild, native plugin load, Windows touch UX, Pi/Pixhawk bench tests.'
+Write-Host 'PASS: Windows native toolbar and read-only workspace source contracts.' -ForegroundColor Green
+Write-Host 'Remaining gates: MSBuild, plugin load, Windows UI smoke, Pi/Pixhawk bench acceptance.'

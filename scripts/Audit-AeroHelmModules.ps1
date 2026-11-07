@@ -1,69 +1,62 @@
-# Static release audit of the nine GCS workspaces and toolbar integrations.
-# No cloud requests, passwords, drone I/O, deletions or configuration writes.
+# Source-only audit: Vihanga native Mission Planner workspaces and plugin.
 param([switch]$Export)
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$touch=Get-Content -LiteralPath (Join-Path $root 'plugins\AeroHelmTouchPanel.cs') -Raw
-$toolbar=Get-Content -LiteralPath (Join-Path $root 'plugins\AeroHelmCloud.cs') -Raw
-$project=Get-Content -LiteralPath (Join-Path $root 'Plugins\AeroHelmCloud\AeroHelmCloud.Plugin.csproj') -Raw
-
+$cloud=[IO.File]::ReadAllText((Join-Path $root 'plugins/AeroHelmCloud.cs'))
+$project=[IO.File]::ReadAllText((Join-Path $root 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'))
 $bindings=@(
-    @{name='FLIGHT'; token='new AeroHelmLinkSelector()'; source='plugins\AeroHelmLinkSelector.cs'; purpose='Explicit cloud or pilot COM telemetry path'},
-    @{name='PLAN'; token='main.MenuFlightPlanner.PerformClick()'; source='MainV2.cs'; purpose='Native Mission Planner mission drafting'},
-    @{name='VISION'; token='new AeroHelmVisionWindow()'; source='plugins\AeroHelmWorkspace.cs'; purpose='Private camera viewer'},
-    @{name='OPS'; token='new AeroHelmOpsWindow()'; source='plugins\AeroHelmOperations.cs'; purpose='Bench and mission planning UI'},
-    @{name='SECURITY'; token='new AeroHelmReadOnlyPage("SECURITY")'; source='plugins\AeroHelmReadOnlyPages.cs'; purpose='Authenticated security/CyberShield views'},
-    @{name='FLEET'; token='new AeroHelmReadOnlyPage("FLEET")'; source='plugins\AeroHelmReadOnlyPages.cs'; purpose='Fleet registry and offline task lab'},
-    @{name='LINK'; token='new AeroHelmLinkWindow()'; source='plugins\AeroHelmWorkspace.cs'; purpose='Cloud, Pi and MAVLink diagnostics'},
-    @{name='ANALYTICS'; token='new AeroHelmReadOnlyPage("ANALYTICS")'; source='plugins\AeroHelmReadOnlyPages.cs'; purpose='History, digital shadow and twin lab'},
-    @{name='SETTINGS'; token='new AeroHelmTouchSettingsWindow()'; source='plugins\AeroHelmTouchPanel.cs'; purpose='Local account and privacy settings'}
+ @{name='FLIGHT';source='MainV2.cs';token='MenuFlightData';purpose='Native HUD'},
+ @{name='PLAN';source='MainV2.cs';token='MenuFlightPlanner';purpose='Native mission planning'},
+ @{name='CLOUD';source='plugins/AeroHelmCloud.cs';token='new CloudWindow()';purpose='Authenticated cloud viewer'},
+ @{name='PATHS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmLinkSelector()';purpose='Manual cloud/direct choice'},
+ @{name='SURVEY';source='plugins/AeroHelmCloud.cs';token='new AeroHelmSurveyWindow()';purpose='Offline survey drafts'},
+ @{name='VISION';source='plugins/AeroHelmCloud.cs';token='new AeroHelmVisionWindow()';purpose='Private camera'},
+ @{name='LINK';source='plugins/AeroHelmCloud.cs';token='new AeroHelmLinkWindow()';purpose='Telemetry diagnostics'},
+ @{name='OPS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmOpsWindow()';purpose='Simulation and supervised bench'},
+ @{name='INTEL';source='plugins/AeroHelmCloud.cs';token='new AeroHelmIntelWindow()';purpose='Mission assurance'},
+ @{name='FLEET';source='plugins/AeroHelmCloud.cs';token='new AeroHelmReadOnlyPage("FLEET")';purpose='Fleet inspection'},
+ @{name='SECURITY';source='plugins/AeroHelmCloud.cs';token='new AeroHelmReadOnlyPage("SECURITY")';purpose='Security inspection'},
+ @{name='ANALYTICS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmReadOnlyPage("ANALYTICS")';purpose='Analytics inspection'},
+ @{name='PARAMETERS';source='plugins/AeroHelmCloud.cs';token='new AeroHelmIntelWindow("PARAMETERS")';purpose='Read-only parameter cache'},
+ @{name='SETTINGS';source='plugins/AeroHelmCloud.cs';token='new VihangaSettingsWindow()';purpose='Local settings'}
 )
 $records=@()
 foreach($entry in $bindings){
-    $exists=Test-Path -LiteralPath (Join-Path $root $entry.source) -PathType Leaf
-    $wired=$touch.Contains($entry.token)
-    $builtInPlugin=$entry.source -like 'plugins\*'
-    $listed= -not $builtInPlugin -or $project.Contains([IO.Path]::GetFileName($entry.source))
-    $status=if($exists -and $wired -and $listed){'SOURCE WIRED'}else{'SOURCE INCOMPLETE'}
-    $records+= [pscustomobject]@{
-        workspace=$entry.name
-        source_status=$status
-        native_windows_runtime='NOT TESTED'
-        physical_hardware='NOT TESTED'
-        backend_capabilities='M1 deployed; M2/V3 requires separate activation/verification'
-        purpose=$entry.purpose
-    }
+ $file=Join-Path $root $entry.source
+ $exists=Test-Path -LiteralPath $file -PathType Leaf
+ $wired=$exists -and ([IO.File]::ReadAllText($file)).Contains($entry.token)
+ $compiled=($entry.source -eq 'MainV2.cs') -or $project.Contains([IO.Path]::GetFileName($entry.source))
+ $records += [pscustomobject]@{
+   workspace=$entry.name;source_status=$(if($wired -and $compiled){'SOURCE WIRED'}else{'SOURCE INCOMPLETE'})
+   native_windows_runtime='NOT TESTED';physical_hardware='NOT TESTED'
+   backend_capabilities='REQUIRES LIVE CHECK';purpose=$entry.purpose
+ }
 }
-$toolbarEntries=@('CLOUD','SURVEY','VISION','LINK','OPS','INTEL','TOUCH','PATHS')
-$toolbarMissing=@()
-foreach($item in $toolbarEntries){
-    if($item -eq 'CLOUD'){
-        if(-not $toolbar.Contains('AeroHelmCloudButton')){$toolbarMissing+=$item}
-    }elseif(-not $toolbar.Contains('NewToolbarButton("'+$item+'"')){
-        $toolbarMissing+=$item
-    }
+$items=@('CLOUD','PATHS','SURVEY','VISION','LINK','OPS','INTEL','MORE')
+$missing=@()
+foreach($item in $items){
+ $needle= if($item -eq 'CLOUD'){'new ToolStripButton("CLOUD")'}
+    elseif($item -eq 'MORE'){'new ToolStripDropDownButton("MORE")'}
+    else {'NewToolbarButton("'+$item+'"'}
+ if(-not $cloud.Contains($needle)){$missing+=$item}
 }
-Write-Host 'Nine-panel static source audit (NOT runtime certification):'
+if(-not (Test-Path -LiteralPath (Join-Path $root 'plugins/VihangaSharedUi.cs')) -or
+   -not $project.Contains('VihangaSharedUi.cs') -or
+   (Test-Path -LiteralPath (Join-Path $root 'plugins/AeroHelmTouchPanel.cs')) -or
+   $cloud.Contains('AEROHELM_TOUCH_STARTUP')){
+ throw 'Obsolete TOUCH UI or missing Vihanga shared components.'
+}
+Write-Host 'Native GCS source bindings (NOT a Windows or aircraft acceptance test):'
 $records | Format-Table workspace,source_status,native_windows_runtime -AutoSize | Out-Host
-Write-Host "Toolbar modules expected: $($toolbarEntries -join ', ')"
-Write-Host "Toolbar modules missing from source: $($toolbarMissing -join ', ')"
-Write-Host 'Cloud M2/V3 research services are staged and cannot be marked live by source checks.'
-Write-Host 'Real native Windows compilation, DLL loading, cloud auth and HUD remain test gates.'
+Write-Host "Toolbar: $($items -join ', ') | Missing: $($missing -join ', ')"
 if($Export){
-    $target=Join-Path $root 'build-logs\aerohelm-module-audit.json'
-    New-Item -Path (Split-Path -Parent $target) -ItemType Directory -Force | Out-Null
-    [ordered]@{
-        schema='aerohelm.module-audit.v1'
-        audited_utc=[DateTime]::UtcNow.ToString('o')
-        source_only=$true
-        toolbar_missing=$toolbarMissing
-        workspace_records=$records
-        physical_flight_authorized=$false
-    } | ConvertTo-Json -Depth 8 |
-        Set-Content -LiteralPath $target -Encoding UTF8
-    Write-Host "Static audit report: $target"
+ $target=Join-Path $root 'build-logs/aerohelm-module-audit.json'
+ New-Item -Path (Split-Path -Parent $target) -ItemType Directory -Force | Out-Null
+ [ordered]@{schema='vihanga.module-audit.v1';audited_utc=[DateTime]::UtcNow.ToString('o');
+  source_only=$true;toolbar_missing=$missing;workspace_records=$records;physical_flight_authorized=$false} |
+    ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $target -Encoding UTF8
+ Write-Host "Source audit: $target"
 }
-if(@($records | Where-Object {$_.source_status -ne 'SOURCE WIRED'}).Count -gt 0 -or
-   $toolbarMissing.Count -gt 0){
-    throw 'Missing GCS sources/bindings. Do NOT attempt to install an incomplete plugin.'
+if(@($records | Where-Object {$_.source_status -ne 'SOURCE WIRED'}).Count -gt 0 -or $missing.Count -gt 0){
+ throw 'Missing Vihanga source bindings; refusing release.'
 }
