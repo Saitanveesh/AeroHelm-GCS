@@ -217,6 +217,44 @@ namespace AeroHelm.GcsCloud
         {
             try
             {
+                if (VihangaLinkSession.UsesDedicatedRelay)
+                {
+                    if (!VihangaLinkSession.Authenticated)
+                    {
+                        cloudEvidence.Text = "Private relay: sign in to view telemetry.";
+                        return;
+                    }
+                    string verified = await Task.Run(() =>
+                    {
+                        Uri origin = new Uri(VihangaLinkSession.TargetOrigin + "/");
+                        var request = (HttpWebRequest)WebRequest.Create(
+                            new Uri(origin, "api/v1/mavlink/health"));
+                        request.Method = "GET";
+                        request.AllowAutoRedirect = false;
+                        request.Timeout = 8000;
+                        using (var response = (HttpWebResponse)request.GetResponse())
+                        using (var reader = new System.IO.StreamReader(response.GetResponseStream()))
+                        {
+                            if (response.StatusCode != HttpStatusCode.OK)
+                                throw new WebException("Private relay health unavailable.");
+                            var data = new JavaScriptSerializer()
+                                .Deserialize<Dictionary<string,object>>(reader.ReadToEnd());
+                            object online, hb, att;
+                            bool connected = data.TryGetValue("device_online", out online) &&
+                                             online is bool && (bool)online;
+                            bool heartbeat = data.TryGetValue(
+                                "native_hud_heartbeat_ready", out hb) && hb is bool && (bool)hb;
+                            bool attitude = data.TryGetValue(
+                                "attitude_stream_active", out att) && att is bool && (bool)att;
+                            return !connected ? "Private relay: Pi disconnected" :
+                                heartbeat && attitude ? "Private relay: heartbeat + attitude live" :
+                                heartbeat ? "Private relay: ATTITUDE missing" :
+                                "Private relay: waiting for MAVLink heartbeat";
+                        }
+                    });
+                    if (!IsDisposed && !Disposing) cloudEvidence.Text = verified;
+                    return;
+                }
                 string status=await Task.Run(()=>{
                     try
                     {
