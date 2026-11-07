@@ -44,8 +44,8 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         direct = source("plugins/AeroHelmPilotDirectWindow.cs")
         self.assertIn('new AeroHelmLinkSelector()', cloud)
         self.assertIn('AeroHelmLinkNavigation.Open(MainV2.instance,', cloud)
-        self.assertIn("NO AUTO-FAILOVER", selector)
-        self.assertIn("PILOT BACKUP", selector)
+        self.assertIn("No automatic radio switchover.", selector)
+        self.assertIn('new VihangaLinkChoice("Direct telemetry"', selector)
         self.assertIn("main.doConnect(MainV2.comPort,port,baud,true,true)", direct)
         self.assertIn("MessageBoxButtons.YesNo", direct)
         self.assertIn('"GET","api/v1/mavlink/health"', cloud)
@@ -112,7 +112,7 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
 
     def test_manifest_diagnosis_is_read_only_and_verify_fails_closed(self):
         release = source("scripts/Consolidate-AeroHelmWindows.ps1")
-        self.assertIn("ValidateSet('Inspect','Build','Verify','Diagnose')", release)
+        self.assertIn("ValidateSet('Inspect','Build','Verify','Diagnose','Bootstrap')", release)
         self.assertIn("if($Stage -eq 'Verify'){ Assert-PluginLayout }", release)
         self.assertIn("Git source commit", release)
         self.assertIn("Cloud plugin DLL SHA256", release)
@@ -196,10 +196,38 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("string selectedLease=leaseId.Text;",ops)
         self.assertNotIn('Task.Run(()=>RequestWithLease("renew",missionId.Text,leaseId.Text))',ops)
 
+    def test_fresh_clone_requires_empty_runtime_and_skips_legacy_profile(self):
+        release=source("scripts/Consolidate-AeroHelmWindows.ps1")
+        installer=source("scripts/Build-Integrated-AeroHelm.ps1")
+        branding=source("scripts/Install-AeroHelmBranding.ps1")
+        self.assertIn("$freshBootstrap=($Stage -eq 'Bootstrap')",release)
+        self.assertIn("Fresh bootstrap requires an empty runtime directory.",release)
+        self.assertIn("if($freshBootstrap){$buildArgs+='-SkipLegacySettings'}",release)
+        self.assertIn("if(-not $freshBootstrap)",release)
+        self.assertIn("if($freshBootstrap)",release)
+        self.assertIn("$brandingParams['SkipLegacySettings']=$true",installer)
+        self.assertIn("if (-not $SkipLegacySettings -and -not (Test-Path",branding)
+
+    def test_connection_screen_uses_independent_drawn_cards_and_short_status(self):
+        selector=source("plugins/AeroHelmLinkSelector.cs")
+        link=source("plugins/AeroHelmWorkspace.cs")
+        self.assertIn("internal sealed class VihangaLinkChoice : Control",selector)
+        self.assertIn('new VihangaLinkChoice("Cloud telemetry"',selector)
+        self.assertIn('new VihangaLinkChoice("Direct telemetry"',selector)
+        self.assertIn('new VihangaLinkChoice("Attitude monitor"',selector)
+        self.assertNotIn("private static Button Action(",selector)
+        self.assertIn("AccessibleRole=AccessibleRole.PushButton",selector)
+        self.assertIn('showDetails.Text = "Technical details"',link)
+        self.assertIn("ShowSelectedReport()",link)
+        self.assertIn('"ATTITUDE  " + (localAtt',link)
+        self.assertNotIn("Observed ATTITUDE:",link)
+        self.assertNotIn("No authenticated duplex request has been sent.",link)
+
     def test_native_mission_planner_hud_handles_narrow_flight_panel(self):
         flight=source("GCSViews/FlightData.cs")
-        self.assertIn("tabControlactions.ClientSize.Width < 560",flight)
-        self.assertIn('Settings.Instance.GetBoolean("tabControlactions_Multiline"',flight)
+        self.assertIn("tabControlactions.Multiline = false;",flight)
+        self.assertIn('new ToolStripMenuItem("Switch tab")',flight)
+        self.assertNotIn("tabControlactions.ClientSize.Width < 560",flight)
         self.assertIn("tabQuick.AutoScroll=needScroll;",flight)
         self.assertIn("minimumWidth=tableLayoutPanelQuick.ColumnCount>1 ? 440 : 240",flight)
         self.assertIn("tableLayoutPanelQuick.Width=width;",flight)
@@ -252,7 +280,7 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("internal string AttitudeTroubleshooting",bridge)
         self.assertIn("MAVLink ATTITUDE (message 30)",bridge)
         self.assertIn("localHb && !localAtt",link)
-        self.assertIn("ATTITUDE STREAM DIAGNOSIS:",link)
+        self.assertIn("ATTITUDE  \" + (localAtt",link)
         self.assertIn("M1 ATTITUDE API NOT DEPLOYED (HTTP 404)",link)
         self.assertNotIn("ORACLE M1 UPDATE REQUIRED",link)
 
@@ -273,7 +301,7 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("'Vihanga GCS.xml'", branding)
         self.assertIn("'AeroHelm GCS.xml'", branding)
         self.assertIn("'config.xml'", branding)
-        self.assertIn("if (-not (Test-Path -LiteralPath $newProfile -PathType Leaf))", branding)
+        self.assertIn("if (-not $SkipLegacySettings -and -not (Test-Path -LiteralPath $newProfile -PathType Leaf))", branding)
         self.assertIn("Copy-Item -LiteralPath $sourceProfile -Destination $newProfile", branding)
         self.assertIn("Invoke-FreshReleaseStep -StepArgs @('Build','-Apply','-WithBranding')", repair)
 

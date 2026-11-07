@@ -25,10 +25,13 @@ display native values for other telemetry types without proving ATTITUDE.
   scrolling rather than squeezing values into unreadable columns.
 - OPS, INTEL and SETTINGS use a shared WinForms width reflow; LINK wraps
   buttons and exposes a specific **real HB but no ATTITUDE** status.
-- Upstream native Mission Planner FLIGHT action tabs switch to multiple
-  rows when their pane is narrower than 560 pixels; QuickView retains
-  readable column widths with viewport scrolling instead of compressing
-  the readouts. No aircraft commands or HUD angles are altered.
+- Native Flight Data uses a single compact tab row and an explicit
+  **Switch tab** context menu (right-click the tab strip). QuickView keeps
+  readable columns with horizontal scrolling instead of squeezing values.
+  No aircraft commands or HUD angles are altered.
+- PATHS uses theme-independent, keyboard-accessible charcoal cards rather
+  than theme-recolored green buttons. LINK defaults to a short status;
+  optional technical details expose raw counters when needed.
 - FLEET and INTEL request V2 first, then the same-origin R2 fleet view, then
   the existing M1 registry; only 404 triggers fallback. Authentication errors
   are not bypassed. Profile labels identify M1 registry vs R2 observations.
