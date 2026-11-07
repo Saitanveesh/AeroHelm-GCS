@@ -141,9 +141,13 @@ namespace AeroHelm.GcsCloud
                 ()=>SortParameterTargets()));
             paramPanel.Controls.Add(ActionButton("Compare parameter snapshot",
                 async()=>await CompareParameters()));
-            paramPanel.Controls.Add(ActionButton("Request read-only parameter refresh from Pi",
+            var refreshFromPi = ActionButton("Request read-only parameter refresh from Pi",
                 async()=>await Run(()=>OperationsApi.Request("POST",
-                    "api/v1/vehicles/"+Id()+"/parameters/refresh"),"Read-only parameter capture")));
+                    "api/v1/vehicles/"+Id()+"/parameters/refresh"),"Read-only parameter capture"));
+            // Private telemetry relay has a Pi-local disarmed snapshot option,
+            // not an operator-accessible remote stream/parameter command route.
+            refreshFromPi.Visible = !VihangaLinkSession.UsesDedicatedRelay;
+            paramPanel.Controls.Add(refreshFromPi);
             paramPanel.Controls.Add(ActionButton("Inspect parameter snapshot completeness",
                 async()=>await ParameterSnapshotStatus()));
             paramPanel.Controls.Add(new Label{Text="Use SETUP/local connection for supported authorized changes. This panel never writes values.",
@@ -353,8 +357,9 @@ namespace AeroHelm.GcsCloud
             report.Text="Querying authenticated parameter cache state...";
             try
             {
-                var body=await Task.Run(()=>OperationsApi.Request("GET",
-                    "api/v1/vehicles/"+subject+"/parameters"));
+                var body=await Task.Run(()=>VihangaLinkSession.UsesDedicatedRelay ?
+                    VihangaLinkSession.ReadParameters(subject) :
+                    OperationsApi.Request("GET","api/v1/vehicles/"+subject+"/parameters"));
                 if(IsDisposed || Disposing) return;
                 if(vehicle.Text!=aircraftAtRequest)
                 {
@@ -369,8 +374,14 @@ namespace AeroHelm.GcsCloud
                     "Received parameters: "+Convert.ToString(result["count"])+
                     " / "+Convert.ToString(result["expected"])+Environment.NewLine+
                     "Verified complete: "+complete+Environment.NewLine+
-                    "Captured at (UTC): "+(result.ContainsKey("captured_at")?
-                        Convert.ToString(result["captured_at"]):"unknown")+Environment.NewLine+
+                    (VihangaLinkSession.UsesDedicatedRelay ?
+                        "Oldest sample age (ms): " +
+                            (result.ContainsKey("age_ms") ?
+                                Convert.ToString(result["age_ms"]) : "unknown") :
+                        "Captured at (UTC): " +
+                            (result.ContainsKey("captured_at") ?
+                                Convert.ToString(result["captured_at"]) : "unknown"))+
+                    Environment.NewLine+
                     "This is a previously collected Pi snapshot, not a live parameter read. "+
                     "It cannot authorize remote configuration, mission upload or armed operation.";
             }
@@ -426,6 +437,47 @@ namespace AeroHelm.GcsCloud
             SortedDictionary<string,double> parsed;
             try { parsed=ParseParameterTargets(); }
             catch(Exception ex){report.Text=ex.Message;return;}
+            if (VihangaLinkSession.UsesDedicatedRelay)
+            {
+                await Run(() =>
+                {
+                    var raw = VihangaLinkSession.ReadParameters(Id(), true);
+                    var payload = json.Deserialize<Dictionary<string,object>>(raw);
+                    object rowsObject;
+                    if (!payload.TryGetValue("values", out rowsObject))
+                        throw new InvalidDataException("Private parameter snapshot unavailable.");
+                    var rows = rowsObject as Dictionary<string,object>;
+                    if (rows == null)
+                        throw new InvalidDataException("Invalid private parameter snapshot.");
+                    int matching = 0, different = 0, unavailable = 0;
+                    foreach (var item in parsed)
+                    {
+                        object rawEntry;
+                        var entry = rows.TryGetValue(item.Key, out rawEntry) ?
+                            rawEntry as Dictionary<string,object> : null;
+                        object reported;
+                        if (entry == null || !entry.TryGetValue("float32", out reported) ||
+                            reported == null)
+                        {
+                            unavailable++;
+                            continue;
+                        }
+                        double observed = Convert.ToDouble(reported,
+                            CultureInfo.InvariantCulture);
+                        double delta = Math.Abs(observed - item.Value);
+                        if (delta <= Math.Max(0.00001, Math.Abs(item.Value) * 0.000001))
+                            matching++;
+                        else different++;
+                    }
+                    return "PRIVATE READ-ONLY SNAPSHOT" + Environment.NewLine +
+                        "Matched: " + matching + Environment.NewLine +
+                        "Different: " + different + Environment.NewLine +
+                        "Missing/unsupported integer encodings: " + unavailable +
+                        Environment.NewLine +
+                        "Only REAL32 values are interpreted; no FC write was sent.";
+                }, "Private parameter drift");
+                return;
+            }
             await Run(()=>OperationsApi.Request("POST",
                  "api/v2/vehicles/"+Id()+"/parameters/compare",
                  new{values=parsed}),"Read-only configuration drift");
