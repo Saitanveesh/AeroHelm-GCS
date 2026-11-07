@@ -23,6 +23,9 @@ import threading
 import time
 from urllib.parse import urlsplit
 
+# MAVLink2 parser also accepts MAVLink1 envelopes; preserve original
+# FC packet version when forwarding raw msg.get_msgbuf() bytes.
+os.environ["MAVLINK20"] = "1"
 from pymavlink import mavutil
 import websockets
 
