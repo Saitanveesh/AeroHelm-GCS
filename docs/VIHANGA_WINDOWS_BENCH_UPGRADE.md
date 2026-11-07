@@ -81,6 +81,48 @@ The currently installed native application is still named MissionPlanner.exe
 and plugin AeroHelm.Cloud.Plugin.Validation.dll for compatibility. Its
 operator-facing title is Vihanga GCS.
 
+### When release verification reports a stale manifest
+
+Do not manually change `build-logs/aerohelm-consolidated-release.json`,
+copy old DLLs over the new runtime, delete the working backup or run
+`git reset --hard`. The manifest records the **exact Git source commit**,
+compiled `MissionPlanner.exe` hash and installed plugin DLL hash.
+A source update after a prior build is expected to invalidate the old
+manifest until that new source is compiled.
+
+Fetch the latest fix and diagnose without modifying the installed runtime:
+
+~~~powershell
+git fetch origin feat/vihanga-phase3-native-toolbar
+git pull --ff-only origin feat/vihanga-phase3-native-toolbar
+if ($LASTEXITCODE -ne 0) { throw 'Could not fast-forward to reviewed source.' }
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\Consolidate-AeroHelmWindows.ps1 -Stage Diagnose
+if ($LASTEXITCODE -ne 0) { throw 'Read-only diagnostics could not run.' }
+~~~
+
+`-Stage Diagnose` prints separate recorded-vs-actual fields without
+changing the manifest. To create a valid manifest for the **new commit**
+you must successfully rebuild and reinstall with rollback protection,
+with all Mission Planner windows closed:
+
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\Repair-AeroHelmWindows.ps1 -Apply
+if ($LASTEXITCODE -ne 0) { throw 'Transactional repair failed; preserve runtime backup and build logs.' }
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\Consolidate-AeroHelmWindows.ps1 -Stage Verify
+if ($LASTEXITCODE -ne 0) { throw 'Verification failed; do not clean or launch yet.' }
+~~~
+
+If the diagnostics show an EXE/DLL hash mismatch even when the commit
+matches, inspect the corresponding binary, the `build-logs` build report,
+duplicate plugins and installed assembly paths. **Do not rebaseline hashes
+to bypass a mismatch.**
+
+The cleanup script now keeps `Get-ChildItem ... -Force -ErrorAction Stop`
+on one command line, so Windows PowerShell 5.1 does not attempt to
+execute `-ErrorAction` as an independent command. Dry-run cleanup is safe
+to retry only after updating the source; `-Apply` additionally requires
+a verified runtime.
+
 ## 3. Clean obsolete generated files, not the last-good backup
 
 The installer moves only **known** obsolete AeroHelm plugin DLLs to its

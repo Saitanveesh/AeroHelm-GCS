@@ -93,7 +93,7 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn(
             "Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop",
             cleanup)
-        self.assertNotIn("-Force\\n                             -ErrorAction Stop", cleanup)
+        self.assertNotIn("-Force\n                             -ErrorAction Stop", cleanup)
         self.assertIn("if(-not $Apply)", cleanup)
         self.assertIn("Consolidate-AeroHelmWindows.ps1", cleanup)
 
