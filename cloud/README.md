@@ -25,6 +25,7 @@ navigation, airspace approval or safety-case acceptance.
 | `app/scheduler.py` | Database expiry sweeper; never automatically requeues an expired job |
 | `app/analytics.py` | Cloud-side, tenant-scoped fleet and mission analysis requests and durable results |
 | `app/compute_worker.py` | Separate isolated analytics processor; no GCS or FC dependencies |
+| `edge/bridge.py` | Pi read-only normalized observation uplink, including optional bounded device-reported ATTITUDE; never opens UART |
 | `tools/sim_edge.py` | Workflow-only fake edge ACKs; no flight dynamics or FC access |
 | `tools/virtual_world.py` | Bounded multi-UAV virtual route interpolation and sequential telemetry; **not** SITL or actual flight |
 | `tools/doctor.py` | Safe non-deploying local unit, disposable PostgreSQL and image verification |
@@ -32,6 +33,22 @@ navigation, airspace approval or safety-case acceptance.
 | `migrations/` | Alembic schema revision with explicit startup version pinning |
 | `compose.yaml` | Private reference PostgreSQL/API/scheduler/compute environment, not Internet-facing |
 | `tests/` | Safety, tenant isolation, epoch fencing, state transitions, persistence and replay contracts |
+
+## Device-reported attitude (R2 staging; not the live M1 HUD)
+
+The Pi UART-owning agent may supply actual MAVLink ATTITUDE roll/pitch as
+`roll_deg`, `pitch_deg` and `attitude_age_ms` together to the bounded
+observation sidecar. R2 validates types/ranges, stores the authenticated
+device observation and publishes a freshness-gated `attitude` object
+from GET `/api/v1/vehicles/{vehicle_id}/telemetry`. The isolated
+`fleet_health` worker reports `device_reported_attitude_sources`.
+No flight commands or reconfiguration of the FC are performed.
+
+**R2 has not been deployed to the running M1 endpoint.** M1 operator JWT
+is not interchangeable with R2 OIDC service identity. This addition
+does not repair missing ATTITUDE packets in M1 WebSocket forwarding or
+prove a physically valid horizon; the Pi UART owner and M1 relay need
+their own real-packet acceptance tests.
 
 ## Prerequisites
 

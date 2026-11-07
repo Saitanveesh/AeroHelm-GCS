@@ -53,7 +53,9 @@ def test_thin_client_submits_and_cloud_worker_aggregates_fleet():
         assert client.post("/api/v1/device/telemetry",
                            headers=dev("PIX-01"),
                            json={**sample(opened.json()["session_epoch"], 1),
-                                 "battery_pct": 12, "gps_fix_type": 1}
+                                 "battery_pct": 12, "gps_fix_type": 1,
+                                  "roll_deg": 4.0, "pitch_deg": -2.0,
+                                  "attitude_age_ms": 100}
                            ).status_code == 202
         response = submit(client)
         assert response.status_code == 202
@@ -70,9 +72,11 @@ def test_thin_client_submits_and_cloud_worker_aggregates_fleet():
         assert report["physical_control_enabled"] is False
         assert report["result"]["vehicle_count"] == 2
         assert report["result"]["fresh_sources"] == 1
+        assert report["result"]["device_reported_attitude_sources"] == 1
         px = next(v for v in report["result"]["vehicles"]
                   if v["vehicle_id"] == "PIX-01")
         assert px["fresh"] is True
+        assert px["reported_attitude_fresh"] is True
         assert set(px["advisory_risks"]) == {
             "REPORTED_LOW_BATTERY", "REPORTED_GNSS_DEGRADED",
         }

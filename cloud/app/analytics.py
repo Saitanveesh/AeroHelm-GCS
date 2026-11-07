@@ -41,6 +41,15 @@ def _fleet_health(db: Session, tenant: str, timestamp: float) -> dict:
             0.0, timestamp - recent.received_at)
         fresh = age is not None and age <= 5.0
         obs = (recent.observation or {}) if recent else {}
+        attitude_age = obs.get("attitude_age_ms")
+        # Server-side freshness never trusts a received old device angle.
+        attitude_fresh = (
+            fresh and type(attitude_age) is int
+            and 0 <= attitude_age <= 2500
+            and obs.get("roll_deg") is not None
+            and obs.get("pitch_deg") is not None
+            and age * 1000 + attitude_age <= 2500
+        )
         risks = []
         if not fresh:
             risks.append("TELEMETRY_STALE")
@@ -51,6 +60,7 @@ def _fleet_health(db: Session, tenant: str, timestamp: float) -> dict:
         details.append({
             "vehicle_id": vehicle.name, "kind": vehicle.kind,
             "fresh": fresh, "age_s": round(age, 3) if age is not None else None,
+            "reported_attitude_fresh": attitude_fresh,
             "advisory_risks": risks,
             "active_virtual_mission": vehicle.active_mission,
             "observation_provenance": (
@@ -61,6 +71,8 @@ def _fleet_health(db: Session, tenant: str, timestamp: float) -> dict:
         "kind": "fleet_health", "generated_at": timestamp,
         "vehicles": details, "vehicle_count": len(details),
         "fresh_sources": sum(bool(row["fresh"]) for row in details),
+        "device_reported_attitude_sources": sum(
+            bool(row["reported_attitude_fresh"]) for row in details),
         "at_risk_count": sum(bool(row["advisory_risks"]) for row in details),
         "flight_authorized": False,
         "assessment": "NON_AUTHORITATIVE_CLOUD_OBSERVATION",

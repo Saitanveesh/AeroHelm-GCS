@@ -17,13 +17,21 @@ local producer integration is **NOT completed by these files**.
 One UTF-8 JSON object per line, max 2048 bytes:
 
 ```json
-{"captured_at_ms":1770000000000,"mode":"STABILIZE","armed":false,"latitude":12.9716,"longitude":77.5946,"altitude_m":31.2,"battery_pct":72.0,"gps_fix_type":3}
+{"captured_at_ms":1770000000000,"mode":"STABILIZE","armed":false,"latitude":12.9716,"longitude":77.5946,"altitude_m":31.2,"battery_pct":72.0,"gps_fix_type":3,"roll_deg":1.2,"pitch_deg":-0.8,"attitude_age_ms":80}
 ```
 
 `captured_at_ms` must be UNIX milliseconds recorded immediately when the
 existing Pi agent observes the live packet. The example timestamp is
 **illustrative**; use the actual current clock during operation. Samples
-older than 2.5 s (or more than 0.5 s in future) are dropped. Reject unknown
+older than 2.5 s (or more than 0.5 s in future) are dropped. Optional
+`roll_deg`, `pitch_deg`, and `attitude_age_ms` must be supplied together
+only after the **existing single Pi UART owner** has validated a real
+MAVLink ATTITUDE (message 30) packet and measured its age. Neither the
+Pi sidecar nor cloud validates raw FC CRC, and neither fabricates angles.
+Cloud GET and worker reports label values DEVICE_REPORTED_UNVERIFIED and
+expire attitude after a 2.5 s combined age budget. These normalized samples
+are **not** a replacement for the live M1 MAVLink WSS stream used by
+Mission Planner's native HUD. Reject unknown
 fields, NaN, invalid coordinates and invalid types. The Pi bridge
 maintains a 16-record drop-oldest queue and never blocks the UART reader
 during cloud backpressure. No historical log replay is treated as live.
