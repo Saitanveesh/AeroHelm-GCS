@@ -1,3 +1,11 @@
+> **Phase-3 update (November 2026):** The TOUCH tile shell was retired
+> in `feat/vihanga-phase3-native-toolbar`. The operator interface is the
+> existing Mission Planner toolbar plus MORE (Fleet, Security, Analytics,
+> Parameters, Settings). See
+> [VIHANGA_PHASE3_HANDOVER.md](VIHANGA_PHASE3_HANDOVER.md) for current
+> release gates; the older nine-tile workflow below is archival and should
+> not be used for deployment.
+
 # AeroHelm — Consolidated final-stage integration gates
 
 **Status:** source committed on `feat/gcs-research-cybershield-twin-ui`.

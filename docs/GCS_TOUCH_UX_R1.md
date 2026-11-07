@@ -1,3 +1,8 @@
+> Historical design record. The nine-tile TOUCH shell was removed in
+> `feat/vihanga-phase3-native-toolbar`; see
+> [VIHANGA_PHASE3_HANDOVER.md](VIHANGA_PHASE3_HANDOVER.md).
+> The instructions below do not apply to current native Vihanga builds.
+
 # AeroHelm Ground Station — Touch UX R1
 
 **Authoritative code repository:** `Saitanveesh/AeroHelm-GCS`

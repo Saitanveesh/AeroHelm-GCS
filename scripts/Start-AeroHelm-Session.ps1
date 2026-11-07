@@ -127,7 +127,7 @@ if ($SkipBridge -or $UseLegacyPythonBridge) { $launchArgs += '-NoInternalBridge'
 if ($ShowNativeToolbar) { $launchArgs += '-ShowNativeToolbar' }
 Write-Host 'Starting VIHANGA: native Mission Planner controls with cloud inspection and manual radio backup.'
 Write-Host 'Native TCP is loopback-only (127.0.0.1:5760); GCS outbound MAVLink is discarded.'
-& powershell @touchArgs
+& powershell @launchArgs
 if ($LASTEXITCODE -ne 0) {
     throw 'Vihanga ground station launcher failed.'
 }

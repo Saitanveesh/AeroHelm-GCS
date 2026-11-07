@@ -104,7 +104,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmSurveyWindow()
         {
-            Text = "AeroHelm SURVEY — Offline autonomous mission draft";
+            Text = "VIHANGA SURVEY — Offline autonomous mission draft";
             StartPosition = FormStartPosition.CenterParent;
             Width = 820;
             Height = 680;
@@ -236,7 +236,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmVisionWindow()
         {
-            Text = "AeroHelm VISION — Private cameras";
+            Text = "VIHANGA VISION — Private cameras";
             Width = 760;
             Height = 405;
             MinimumSize = new Drawing.Size(620,360);
@@ -437,7 +437,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmLinkWindow()
         {
-            Text = "AeroHelm LINK — Cloud link diagnostics";
+            Text = "VIHANGA LINK — Cloud link diagnostics";
             Width = 870; Height = 580;
             MinimumSize = new Drawing.Size(700,480);
             StartPosition = FormStartPosition.CenterParent;

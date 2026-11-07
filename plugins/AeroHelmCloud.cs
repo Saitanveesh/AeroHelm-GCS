@@ -1,4 +1,4 @@
-// AeroHelm Cloud — isolated Mission Planner plugin (first integration milestone).
+// VIHANGA Cloud — isolated Mission Planner plugin (first integration milestone).
 // No MAVLink transport is installed or replaced by this plugin.
 // Cloud "Connect" is an operator telemetry VIEW session, never flight authority.
 // Requires HTTPS except loopback development. Credentials/tokens stay in memory.
@@ -382,7 +382,7 @@ namespace AeroHelm.GcsCloud
 
         public CloudWindow()
         {
-            Text = "AeroHelm Cloud — Aircraft registry";
+            Text = "VIHANGA Cloud — Aircraft registry";
             StartPosition = FormStartPosition.CenterParent;
             Width = 570;
             Height = 490;

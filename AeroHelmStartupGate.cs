@@ -24,7 +24,7 @@ namespace MissionPlanner
                               "1",StringComparison.Ordinal))
                 return true;
             // Directly launching the compiled AeroHelm GCS must also require
-            // login before exposing the touch aircraft workspace.
+            // login before exposing authenticated network workspaces.
             // The explicit --local-maintenance path above remains offline.
             string compiled = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
                 "plugins", "AeroHelm.Cloud.Plugin.Validation.dll");
@@ -32,9 +32,10 @@ namespace MissionPlanner
             try
             {
                 string branding=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"logo.txt");
-                return File.Exists(branding) &&
-                       File.ReadAllText(branding).Trim().Equals("AeroHelm GCS",
-                                                               StringComparison.OrdinalIgnoreCase);
+                if (!File.Exists(branding)) return false;
+                string title = File.ReadAllText(branding).Trim();
+                return title.Equals("Vihanga GCS", StringComparison.OrdinalIgnoreCase) ||
+                       title.Equals("AeroHelm GCS", StringComparison.OrdinalIgnoreCase);
             }
             catch (IOException) { return false; }
             catch (UnauthorizedAccessException) { return false; }
@@ -59,7 +60,7 @@ namespace MissionPlanner
 
         public AeroHelmStartupWindow()
         {
-            Text="AeroHelm GCS — Cloud sign in";
+            Text="VIHANGA GCS — Cloud sign in";
             StartPosition=FormStartPosition.CenterScreen;
             Width=680;Height=325;
             FormBorderStyle=FormBorderStyle.FixedDialog;
@@ -89,7 +90,7 @@ namespace MissionPlanner
             Add(panel,0,"Cloud URL",origin);
             Add(panel,1,"Username",user);
             Add(panel,2,"Password",password);
-            login.Text="Sign in to AeroHelm";
+            login.Text="Sign in to VIHANGA";
             login.AutoSize=true;
             login.Click+=async(s,e)=>await Login();
             kerberos.Text="Windows SSO (Kerberos)";

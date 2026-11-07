@@ -1,4 +1,4 @@
-# AeroHelm GCS product-facing branding overlay.
+# Vihanga GCS product-facing branding overlay.
 # Keeps upstream GPL licenses, copyright headers, and source attribution intact.
 # Run only after closing Mission Planner; never install a logo from an untrusted path.
 param(
@@ -11,7 +11,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $runtime = Join-Path $root "bin\Release\net461"
 $exe = Join-Path $runtime "MissionPlanner.exe"
 if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
-    throw "Build the AeroHelm Mission Planner fork before applying branding."
+    throw "Build the Mission Planner-derived Vihanga GCS before applying branding."
 }
 if (Get-Process -Name MissionPlanner -ErrorAction SilentlyContinue) {
     throw "Close Mission Planner first to avoid overwriting in-use assets."
@@ -35,7 +35,7 @@ $title = Join-Path $runtime 'logo.txt'
 if (Test-Path -LiteralPath $title) {
     Copy-Item -LiteralPath $title -Destination (Join-Path $backup 'logo.txt') -Force
 }
-[IO.File]::WriteAllText($title, "AeroHelm GCS" + [Environment]::NewLine,
+[IO.File]::WriteAllText($title, "Vihanga GCS" + [Environment]::NewLine,
     (New-Object System.Text.UTF8Encoding($false)))
 
 # Keep exact user-supplied trademark artwork. We deliberately do not invent it.
@@ -52,6 +52,6 @@ foreach ($asset in @(
         Set-BrandFile -Name $asset.name -Path $asset.path
     }
 }
-Write-Host "AeroHelm GCS title installed. Original runtime assets backed up under: $backup"
+Write-Host "Vihanga GCS title installed. Original runtime assets backed up under: $backup"
 Write-Host "Original Mission Planner configuration stays on disk; the logo.txt product label may select a different settings XML."
 Write-Host "Upstream copyright and GPL notices are intentionally retained."
