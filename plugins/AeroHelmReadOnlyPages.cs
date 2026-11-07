@@ -41,7 +41,7 @@ namespace AeroHelm.GcsCloud
 
             Text = "VIHANGA — " + section;
             StartPosition = FormStartPosition.CenterParent;
-            MinimumSize = new Drawing.Size(720,580);
+            MinimumSize = new Drawing.Size(560,440);
             Width = 1020;
             Height = 720;
             BackColor = Background;
@@ -52,16 +52,16 @@ namespace AeroHelm.GcsCloud
 
             var layout = new TableLayoutPanel {
                 Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5,
-                BackColor = Background, Padding = new Padding(18)
+                BackColor = Background, Padding = new Padding(10)
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,76));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,68));
             // Multi-row actions are visible on touch screens instead of
             // disappearing into a hard-to-use horizontal scrollbar.
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,
                 section == "ANALYTICS" ? 142 : 112));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,148));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent,64));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent,36));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute,35));
             Controls.Add(layout);
 
@@ -72,7 +72,7 @@ namespace AeroHelm.GcsCloud
             header.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             header.Controls.Add(new Label {
                 Text = section, Dock = DockStyle.Fill,
-                Font = new Drawing.Font("Segoe UI Semibold",22f,Drawing.FontStyle.Bold),
+                Font = new Drawing.Font("Segoe UI Semibold",18f,Drawing.FontStyle.Bold),
                 TextAlign = Drawing.ContentAlignment.MiddleLeft, ForeColor = Ink
             },0,0);
             header.Controls.Add(new Label {
@@ -213,7 +213,10 @@ namespace AeroHelm.GcsCloud
             table.ColumnHeadersHeight = 42;
             table.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
             table.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            table.ScrollBars = ScrollBars.Both;
             table.RowTemplate.Height = 44;
+            table.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders;
+            table.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
             table.AccessibleName = section + " read-only cloud evidence table";
             table.AllowUserToAddRows = false;
             table.AllowUserToDeleteRows = false;
@@ -244,6 +247,7 @@ namespace AeroHelm.GcsCloud
             layout.Controls.Add(detail,0,3);
 
             state.Dock = DockStyle.Fill;
+            state.AutoEllipsis = true;
             state.TextAlign = Drawing.ContentAlignment.MiddleLeft;
             state.ForeColor = Muted;
             state.Text = "UNKNOWN  |  Press Refresh; never interpret an absent sample as a safe aircraft.";
@@ -255,6 +259,9 @@ namespace AeroHelm.GcsCloud
                 Regex.IsMatch(configuredAircraft,@"\A[A-Za-z0-9_-]{3,64}\z",
                     RegexOptions.CultureInvariant))
                 vehicleId.Text = configuredAircraft; // Identifier only; not proof of live link.
+            layout.SizeChanged += (s,e) => ReflowToolbar(layout,bar);
+            bar.ControlAdded += (s,e) => ReflowToolbar(layout,bar);
+            ReflowToolbar(layout,bar);
             KeyDown += (s,e) => {
                 if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; }
             };
@@ -273,6 +280,24 @@ namespace AeroHelm.GcsCloud
             };
         }
 
+        // Resize action rows on DPI or window changes, retaining scroll access.
+        private static void ReflowToolbar(TableLayoutPanel layout, FlowLayoutPanel bar)
+        {
+            if (layout.IsDisposed || bar.IsDisposed || bar.ClientSize.Width < 220) return;
+            int available = Math.Max(200,bar.ClientSize.Width-26);
+            int used = 0, rows = 1;
+            foreach(Control item in bar.Controls)
+            {
+                if(!item.Visible) continue;
+                int width = Math.Min(available,item.Width+item.Margin.Horizontal);
+                if(used>0 && used+width>available) { rows++; used=0; }
+                used+=width;
+            }
+            int desired = Math.Min(188,Math.Max(62,rows*52+6));
+            if(Math.Abs(layout.RowStyles[1].Height-desired)>3)
+                layout.RowStyles[1].Height=desired;
+        }
+
         private void ActionButton(FlowLayoutPanel parent, string caption, string operation)
         {
             var button = new Button {
@@ -289,9 +314,32 @@ namespace AeroHelm.GcsCloud
 
         private void SetColumns(params string[] captions)
         {
-            table.Columns.Clear();
-            foreach (var caption in captions)
-                table.Columns.Add("c"+table.Columns.Count,caption);
+            table.SuspendLayout();
+            try
+            {
+                table.Columns.Clear();
+                bool compact = captions.Length <= 2;
+                // Long security/metric values wrap; fleet/history tables
+                // retain readable columns and scroll horizontally.
+                table.AutoSizeColumnsMode = compact ?
+                    DataGridViewAutoSizeColumnsMode.Fill :
+                    DataGridViewAutoSizeColumnsMode.AllCells;
+                table.AutoSizeRowsMode = compact ?
+                    DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders :
+                    DataGridViewAutoSizeRowsMode.None;
+                table.DefaultCellStyle.WrapMode = compact ?
+                    DataGridViewTriState.True : DataGridViewTriState.False;
+                foreach (var caption in captions)
+                    table.Columns.Add("c"+table.Columns.Count,caption);
+                if(compact && table.Columns.Count==2)
+                {
+                    table.Columns[0].FillWeight=38;
+                    table.Columns[1].FillWeight=62;
+                    table.Columns[0].MinimumWidth=120;
+                    table.Columns[1].MinimumWidth=160;
+                }
+            }
+            finally { table.ResumeLayout(); }
         }
 
         private static Dictionary<string,object> AsObject(object o)
