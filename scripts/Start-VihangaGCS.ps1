@@ -9,10 +9,10 @@ param(
     [string]$LinkOrigin = ''
 )
 $ErrorActionPreference = 'Stop'
-if($LocalDirectBackup -and $LinkOrigin) {
+$requestedLinkOrigin = if ($LinkOrigin) { $LinkOrigin } else { $env:VIHANGA_LINK_ORIGIN }
+if($LocalDirectBackup -and $requestedLinkOrigin) {
     throw 'Dedicated cloud telemetry cannot be selected for an offline direct backup session.'
 }
-$requestedLinkOrigin = if ($LinkOrigin) { $LinkOrigin } else { $env:VIHANGA_LINK_ORIGIN }
 if ($requestedLinkOrigin) {
     $linkUri = $null
     if (-not [Uri]::TryCreate($requestedLinkOrigin,[UriKind]::Absolute,[ref]$linkUri) -or
