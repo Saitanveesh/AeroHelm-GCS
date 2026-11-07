@@ -161,9 +161,9 @@ namespace AeroHelm.GcsCloud
                        reset.AttitudeGapEvents==0 && reset.RejectedEvidence==0,
                        "new session cannot inherit previous live state");
                 // A dedicated relay token must never replace the M1 JWT.
-                Program.AeroHelmOperatorToken = "m1-original-token";
-                Program.AeroHelmCloudOrigin = "https://m1-backend.ts.net";
-                Program.AeroHelmTokenExpiresUtc = DateTime.UtcNow.AddMinutes(5);
+                global::MissionPlanner.Program.AeroHelmOperatorToken = "m1-original-token";
+                global::MissionPlanner.Program.AeroHelmCloudOrigin = "https://m1-backend.ts.net";
+                global::MissionPlanner.Program.AeroHelmTokenExpiresUtc = DateTime.UtcNow.AddMinutes(5);
                 Environment.SetEnvironmentVariable("VIHANGA_LINK_ORIGIN",
                     "https://relay-backend.ts.net");
                 try
@@ -175,7 +175,7 @@ namespace AeroHelm.GcsCloud
                     Assert(VihangaLinkSession.Authenticated &&
                            VihangaLinkSession.AccessToken == "separate-relay-token",
                         "dedicated JWT authenticates only the configured private relay");
-                    Assert(Program.AeroHelmOperatorToken == "m1-original-token",
+                    Assert(global::MissionPlanner.Program.AeroHelmOperatorToken == "m1-original-token",
                         "relay sign-in must never overwrite Oracle M1 operator token");
                     var uri = AeroHelmReceiveOnlyBridge.PrivateWebSocketUri();
                     Assert(uri.Scheme == "wss" &&
