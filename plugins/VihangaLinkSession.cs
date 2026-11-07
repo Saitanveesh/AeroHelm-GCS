@@ -1,6 +1,8 @@
 // Separate private telemetry relay authentication for Vihanga.
 // Never overwrite Oracle M1 login credentials or persist relay access tokens.
 using System;
+using System.IO;
+using System.Net;
 
 namespace AeroHelm.GcsCloud
 {
@@ -93,6 +95,41 @@ namespace AeroHelm.GcsCloud
                 relayOrigin = origin;
                 relayToken = token;
                 relayExpiresUtc = DateTime.UtcNow.AddSeconds(expiresIn - 15);
+            }
+        }
+
+        // Parameter inspection is a distinct authenticated GET-only operation.
+        // It never opens an FC write path or redirects a bearer token.
+        internal static string ReadParameters(string vehicleId, bool values = false)
+        {
+            if (!UsesDedicatedRelay || !Authenticated)
+                throw new InvalidOperationException("Private telemetry relay sign-in required.");
+            if (string.IsNullOrWhiteSpace(vehicleId) || vehicleId.Length > 64)
+                throw new ArgumentException("Invalid aircraft identifier.");
+            foreach (char ch in vehicleId)
+            {
+                if (!(char.IsLetterOrDigit(ch) && ch <= 127) &&
+                    ch != '-' && ch != '_')
+                    throw new ArgumentException("Invalid aircraft identifier.");
+            }
+            string destination = TargetOrigin;
+            string token = AccessToken;
+            var path = "api/v1/vehicles/" + Uri.EscapeDataString(vehicleId) +
+                       "/parameters" + (values ? "/values" : "");
+            var uri = new Uri(new Uri(destination + "/"), path);
+            var request = (HttpWebRequest)WebRequest.Create(uri);
+            request.Method = "GET";
+            request.AllowAutoRedirect = false;
+            request.Timeout = 10000;
+            request.ReadWriteTimeout = 10000;
+            request.Accept = "application/json";
+            request.Headers[HttpRequestHeader.Authorization] = "Bearer " + token;
+            using (var response = (HttpWebResponse)request.GetResponse())
+            using (var reader = new StreamReader(response.GetResponseStream()))
+            {
+                if (response.StatusCode != HttpStatusCode.OK)
+                    throw new IOException("Unexpected private snapshot response.");
+                return reader.ReadToEnd();
             }
         }
 
