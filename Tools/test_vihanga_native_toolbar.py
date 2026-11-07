@@ -104,6 +104,20 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("Start-VihangaGCS.ps1", source("scripts/Start-AeroHelm-Touch.ps1"))
 
 
+    def test_certification_gate_never_self_certifies_flight(self):
+        script = source("scripts/Test-VihangaCertification.ps1")
+        windows = source("scripts/Test-AeroHelmWindowsPages.ps1")
+        for field in ("exact_native_binary_hashes_verified",
+                      "exact_commit_github_ci_passed",
+                      "private_cloud_pi_preflight_passed",
+                      "external_operator_evidence_present",
+                      "operational_flight_certified=$false"):
+            self.assertIn(field, script)
+        self.assertIn("Test-VihangaCertification.ps1", windows)
+        self.assertIn("-RunSourceTests", script)
+        self.assertIn("RequireSoftwareGate", script)
+        self.assertNotIn("flight_certified=$true", script)
+
     def test_local_acceptance_scripts_target_current_branch(self):
         for path in ("scripts/Test-AeroHelmPrivatePreflight.ps1",
                      "scripts/Inspect-AeroHelmWindowsStage.ps1"):

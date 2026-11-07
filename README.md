@@ -70,7 +70,8 @@ the prior runtime, and stops if duplicate plugin files or an unknown TCP
 listener are detected. The old `Start-AeroHelm-Touch.ps1` name remains
 only as a command-line compatibility alias; it does not load TOUCH.
 
-See [Phase-3 handover](docs/VIHANGA_PHASE3_HANDOVER.md),
+See [certification procedure](docs/VIHANGA_CERTIFICATION.md),
+[Phase-3 handover](docs/VIHANGA_PHASE3_HANDOVER.md),
 [Windows safe refresh](docs/GCS_SAFE_REFRESH_POWERSHELL.md), and
 [upstream build reference](docs/UPSTREAM_BUILD_REFERENCE.md).
 

@@ -104,6 +104,15 @@ operation semantics have been tested together. R2 virtual mission state is
 not evidence of a Pixhawk command. The cloud R2 feature stack is a
 separate sequence of draft pull requests, not part of this Windows GCS PR.
 
+## Release assessment
+
+The fail-closed assessment script `scripts/Test-VihangaCertification.ps1`
+checks exact-commit source tests, EXE/DLL SHA-256, matching GitHub Actions
+results, fresh read-only cloud/Pi observations, and separate operator
+acceptance evidence. Its report always sets
+`operational_flight_certified=false`; external authorization is required.
+See [certification procedure](VIHANGA_CERTIFICATION.md).
+
 ## Open integration gates
 
 - Exact-commit Windows CI and hands-on GUI acceptance.

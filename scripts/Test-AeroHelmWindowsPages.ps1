@@ -11,6 +11,7 @@ $productionScripts = @(
     'scripts/Start-AeroHelm-DirectBackup.ps1',
     'scripts/Start-AeroHelm-Touch.ps1',
     'scripts/Start-VihangaGCS.ps1',
+    'scripts/Test-VihangaCertification.ps1',
     'scripts/Update-AeroHelmLatest.ps1',
     'scripts/Repair-AeroHelmWindows.ps1',
     'scripts/Consolidate-AeroHelmWindows.ps1',
@@ -294,5 +295,11 @@ foreach ($excluded in @('obj3','Tools')) {
     Require-Text $mainProject ('<Compile Remove="'+$excluded+'\**" />') "Main GCS must exclude $excluded from SDK default compilation."
 }
 Require-Text $project 'AeroHelmReadOnlyPages.cs' 'Native plugin project must compile new pages.'
+$certification = Read-Source 'scripts/Test-VihangaCertification.ps1'
+Require-Text $certification 'operational_flight_certified=$false' 'Assessment must never automatically certify flight.'
+Require-Text $certification 'exact_native_binary_hashes_verified' 'Assessment must verify installed EXE and plugin hashes.'
+Require-Text $certification 'exact_commit_github_ci_passed' 'Assessment must reject absent exact-head CI.'
+Require-Text $certification 'private_cloud_pi_preflight_passed' 'Assessment must verify private cloud evidence.'
+Require-Text $certification 'external_operator_evidence_present' 'Hardware acceptance must remain independent.'
 Write-Host 'PASS: Windows native toolbar and read-only workspace source contracts.' -ForegroundColor Green
 Write-Host 'Remaining gates: MSBuild, plugin load, Windows UI smoke, Pi/Pixhawk bench acceptance.'
