@@ -2272,6 +2272,13 @@ namespace MissionPlanner
 
                 Settings.Instance.Save();
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                log.Error("Cannot save operator settings", ex);
+                CustomMessageBox.Show("The ground-station settings could not be saved. " +
+                    "Check write access to the per-user profile folder and any Windows " +
+                    "security restrictions.\n\n" + ex.Message);
+            }
             catch (Exception ex)
             {
                 CustomMessageBox.Show(ex.ToString());
