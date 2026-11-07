@@ -109,7 +109,15 @@ Launch the verified build with the new dedicated private relay origin:
 
 This does not replace Oracle M1 authentication. The PATHS connection
 prompts for a separate new relay login when LinkOrigin is configured.
-Open PATHS -> Attitude monitor to observe actual message IDs. Then
+The simplified operator toolbar retains native DATA / PLAN / SETUP /
+CONFIG plus PATHS / CAMERA / TOOLS. PATHS has just two connection choices:
+Cloud telemetry and Direct USB/radio. Independent cloud ATTITUDE, LINK,
+SURVEY and Settings live under TOOLS. Simulation mission previews appear
+under TOOLS only when a dedicated relay origin is configured.
+Experimental Operations and Fleet/INTEL pages are hidden by default;
+they can be inspected in a development profile by setting
+VIHANGA_ADVANCED_TOOLS=1 before launching.
+Open TOOLS -> Attitude monitor to observe actual message IDs. Then
 choose PATHS -> Cloud telemetry to connect the native HUD. Disconnect
 a previous USB/radio connection deliberately; automatic link transfer
 is disabled.
