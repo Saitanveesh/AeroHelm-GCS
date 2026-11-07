@@ -499,6 +499,52 @@ namespace AeroHelm.GcsCloud
             });
         }
 
+        // GET /api/v1/mavlink/health proves that the deployed M1 read-only
+        // telemetry service answered; it does not prove attitude, KDC, or R2.
+        private static string LegacyM1Capabilities(string healthJson)
+        {
+            var decoder=new JavaScriptSerializer();
+            var health=decoder.DeserializeObject(healthJson) as Dictionary<string,object>;
+            if(health==null) throw new InvalidOperationException("Invalid M1 health response.");
+            return decoder.Serialize(new Dictionary<string,object> {
+                {"api_profile","M1 telemetry / legacy operator JWT"},
+                {"m1_mavlink_health_route","AVAILABLE (authenticated GET)"},
+                {"pi_device_connected_reported",Display(Value(health,"pi_connected"))},
+                {"fresh_mavlink_reported",Display(Value(health,"fresh_mavlink"))},
+                {"v2_fleet_security_history","NOT SUPPORTED BY M1"},
+                {"v3_research_and_digital_shadow","NOT DEPLOYED"},
+                {"kerberos_kdc_and_spnego","NOT PROVISIONED"},
+                {"mavlink_heartbeat_and_attitude_counts","NOT VERIFIED BY CAPABILITIES"}
+            });
+        }
+
+        // Degraded M1 metrics: counts come from a bounded registry response,
+        // not R2 server analytics. No invented live, mission or risk totals.
+        private static string LegacyM1RegistryMetrics(string registryJson)
+        {
+            var decoder=new JavaScriptSerializer();
+            var entries=decoder.DeserializeObject(registryJson) as object[];
+            if(entries==null) throw new InvalidOperationException("Invalid M1 registry response.");
+            if(entries.Length>128) throw new InvalidOperationException(
+                "M1 registry exceeds bounded 128-aircraft view.");
+            int count=0;
+            foreach(var entry in entries)
+            {
+                var row=AsObject(entry);
+                var id=Value(row,"vehicle_id") as string;
+                if(!string.IsNullOrEmpty(id) &&
+                   Regex.IsMatch(id,@"\A[A-Za-z0-9_-]{3,64}\z",RegexOptions.CultureInvariant))
+                    count++;
+            }
+            return decoder.Serialize(new Dictionary<string,object> {
+                {"vehicles",count},
+                {"virtual_vehicles","NOT REPORTED BY M1"},
+                {"hardware_observation_only","NOT REPORTED BY M1"},
+                {"fresh_telemetry_sources","NOT VERIFIED BY REGISTRY"},
+                {"queued_virtual_jobs","NOT AVAILABLE ON M1"}
+            });
+        }
+
         private async Task LoadAsync(string operation)
         {
             if (busy || IsDisposed || Disposing) return;
@@ -612,15 +658,43 @@ namespace AeroHelm.GcsCloud
             {
                 bool usedM1Registry = false;
                 bool usedCloudControlPlane = false;
+                bool usedM1Capabilities = false;
+                bool usedR2Capabilities = false;
+                bool usedM1Metrics = false;
                 var response = await Task.Run(() => {
                     try { return OperationsApi.Request("GET",route); }
                     catch (WebException ex)
                     {
                         var http = ex.Response as HttpWebResponse;
-                        if ((operation != "fleet" && operation != "discover") ||
-                            http == null || http.StatusCode != HttpStatusCode.NotFound)
-                            throw;
+                        if(http==null || http.StatusCode!=HttpStatusCode.NotFound)
+                            throw; // 401/403 and network failures never bypass authentication.
                         http.Dispose();
+                        if(operation=="capabilities")
+                        {
+                            try
+                            {
+                                var r2=OperationsApi.Request("GET","api/v1/capabilities");
+                                usedR2Capabilities=true;
+                                return r2;
+                            }
+                            catch(WebException r2Failure)
+                            {
+                                var r2Http=r2Failure.Response as HttpWebResponse;
+                                if(r2Http==null || r2Http.StatusCode!=HttpStatusCode.NotFound)
+                                    throw;
+                                r2Http.Dispose();
+                            }
+                            var health=OperationsApi.Request("GET","api/v1/mavlink/health");
+                            usedM1Capabilities=true;
+                            return LegacyM1Capabilities(health);
+                        }
+                        if(operation=="cloudMetrics")
+                        {
+                            var legacyMetrics=OperationsApi.Request("GET","api/v1/vehicles");
+                            usedM1Metrics=true;
+                            return LegacyM1RegistryMetrics(legacyMetrics);
+                        }
+                        if(operation!="fleet" && operation!="discover") throw;
                         // New independent cloud R1/R2 fleet observations.
                         // Never issue commands to discover fleet identity.
                         try
@@ -654,10 +728,30 @@ namespace AeroHelm.GcsCloud
                     RenderResearch(operation,parsed);
                 else
                     Render(operation,parsed);
-                state.Text = "OBSERVED  " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'",
+                if(usedM1Metrics)
+                    detail.Text="M1 REGISTRY-ONLY VIEW: the registered-aircraft count is " +
+                        "calculated from a bounded registry GET, not server analytics." +
+                        Environment.NewLine +
+                        "Queued jobs, fresh telemetry, virtual fleet and risk totals are unavailable." +
+                        Environment.NewLine +
+                        "Deploy and authenticate the separate R2 cloud service for actual " +
+                        "server-side fleet aggregation; M1 JWT is not an R2 OIDC identity.";
+                if(usedM1Capabilities)
+                    detail.Text="M1 TELEMETRY SERVICE DETECTED via authenticated health GET." +
+                        Environment.NewLine +
+                        "R2 control plane and V3 research routes are not available on this origin." +
+                        Environment.NewLine +
+                        "This is not a live-attitude, KDC, or flight clearance check.";
+                state.Text = "OBSERVED  "  + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'",
                     CultureInfo.InvariantCulture) +
                     (usedM1Registry ?
-                        "  |  LEGACY M1 REGISTRY; RISK/HISTORY NOT AVAILABLE" :
+                        "  |  M1 REGISTRY ONLY; RISK/HISTORY UNAVAILABLE" :
+                     usedM1Metrics ?
+                        "  |  M1 REGISTRY COUNT; R2 ANALYTICS NOT DEPLOYED" :
+                     usedM1Capabilities ?
+                        "  |  M1 HEALTH RESPONDED; HB/ATT COUNTS UNVERIFIED" :
+                     usedR2Capabilities ?
+                        "  |  R2 CAPABILITIES ENDPOINT RESPONDED; CHECK IDENTITY" :
                      usedCloudControlPlane ?
                         "  |  CLOUD R2 DEVICE-REPORTED; NOT FLIGHT-CLEARED" :
                         "  |  Read-only cloud snapshot; NOT an aircraft safety clearance.");
@@ -672,18 +766,27 @@ namespace AeroHelm.GcsCloud
                 if (http == null)
                     detail.Text = "Unable to retrieve " + operation + ": " + ex.Message;
                 else if (http.StatusCode == System.Net.HttpStatusCode.NotFound)
-                    detail.Text = "Read-only cloud capability/aircraft not found (HTTP 404)." +
+                {
+                    detail.Text = "NOT DEPLOYED (HTTP 404): " + route +
                         Environment.NewLine +
-                        (operation == "capabilities" || operation == "researchFleet" ||
-                         operation == "integrity" || operation == "digitalShadow" ||
-                         operation == "cyberShadow" || operation == "visionEvents" ||
-                         operation == "evidence" ?
-                         "Research V3 is not deployed or enabled on this Oracle server. " +
-                         "A digital shadow/twin lab cannot become operational from GCS code alone." :
-                         "This action requires AeroHelm v2 endpoints not provided by M1.") +
+                        (operation == "researchFleet" || operation == "integrity" ||
+                         operation == "digitalShadow" || operation == "cyberShadow" ||
+                         operation == "visionEvents" || operation == "evidence" ?
+                         "This V3 research route is not installed on the selected cloud origin." :
+                         "This operation is not provided by the selected M1 or R2 API profile.") +
                         Environment.NewLine +
-                        "Kerberos requires a provisioned KDC, SPNEGO gateway and identity policy. " +
-                        "No Kerberos authentication is active in this GCS.";
+                        "No data or successful security posture has been inferred.";
+                    if(operation=="posture")
+                    {
+                        SetColumns("Security control","Verified state");
+                        table.Rows.Add("Cloud posture API","NOT DEPLOYED ON THIS ORIGIN");
+                        table.Rows.Add("Tailscale ACLs / HTTPS identity","NOT CHECKED BY THIS VIEW");
+                        table.Rows.Add("JWT permissions and audit retention","NOT CHECKED BY THIS VIEW");
+                        table.Rows.Add("Kerberos KDC / SPNEGO","NOT PROVISIONED");
+                        table.Rows.Add("Remote flight commands","NOT AVAILABLE THROUGH READ-ONLY GCS BRIDGE");
+                        detail.Text+="\r\nThese are client-side safety boundaries, NOT a server posture report.";
+                    }
+                }
                 else if (http.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
                          http.StatusCode == System.Net.HttpStatusCode.Forbidden)
                     detail.Text = "Cloud authentication/permission failed (HTTP " +
