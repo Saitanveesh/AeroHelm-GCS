@@ -212,6 +212,18 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("VihangaAdaptivePanel.Attach(this,fleetPanel,missionPanel,paramPanel,hPanel,secPanel)",intel)
         self.assertIn("WrapContents = true, AutoScroll = true",link)
 
+    def test_ops_intel_negotiate_m1_without_cross_origin_token_forwarding(self):
+        ops=source("plugins/AeroHelmOperations.cs")
+        intel=source("plugins/AeroHelmPlatformV2.cs")
+        self.assertIn("internal static class AeroHelmBackendProfile",ops)
+        self.assertIn("Same signed-in HTTPS origin only.",ops)
+        self.assertIn('OperationsApi.Request("GET","api/v1/fleet/status")',ops)
+        self.assertIn('OperationsApi.Request("GET","api/v1/vehicles")',ops)
+        self.assertIn('OperationsApi.Request("GET","api/v1/mavlink/health")',ops)
+        self.assertIn('AeroHelmBackendProfile.IsRouteAbsent(ex)',ops)
+        self.assertIn('AeroHelmBackendProfile.ReadFleet("api/v2/fleet")',intel)
+        self.assertNotIn("cloud_flight_authorized=true",ops)
+
     def test_m1_capability_negotiation_preserves_absent_features(self):
         pages=source("plugins/AeroHelmReadOnlyPages.cs")
         for required in ("LegacyM1Capabilities", "LegacyM1RegistryMetrics",
