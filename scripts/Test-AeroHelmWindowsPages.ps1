@@ -266,7 +266,15 @@ if($httpCatch -lt 0 -or $operationCatch -lt 0 -or $httpCatch -gt $operationCatch
 Require-Text $cloud 'NewToolbarButton("PATHS"' 'The independent connection module must be visible in toolbar.'
 Require-Text $project 'AeroHelmLinkSelector.cs' 'PATHS source must be compiled into plugin.'
 Require-Text $project 'AeroHelmCloudAttitudeWindow.cs' 'Real-only cloud attitude viewer must compile into plugin.'
-Require-Text $observedAttitude 'api/v1/mavlink/attitude' 'Cloud attitude must be read from JWT-protected real packet endpoint.'
+Require-Text $observedAttitude 'AeroHelmReceiveOnlyBridge.PrivateWebSocketUri()' 'Cloud attitude preview must use authenticated MAVLink WSS rather than an undeployed REST endpoint.'
+Require-Text $observedAttitude 'ws.Options.SetRequestHeader("Authorization"' 'Attitude WSS must use the existing operator session.'
+Require-Text $observedAttitude 'AeroHelmReceiveOnlyBridge.TryReadAttitude(' 'Attitude preview must decode genuine CRC-verified MAVLink packets.'
+Require-Text $observedAttitude 'quality.Snapshot()' 'Attitude preview must enforce packet freshness.'
+if($observedAttitude.Contains('api/v1/mavlink/attitude') -or
+   $observedAttitude.Contains('ws.SendAsync(') -or
+   $observedAttitude.Contains('ws.Send(')){
+    throw 'Cloud attitude preview must neither rely on M1 REST endpoints nor send aircraft commands.'
+}
 Require-Text $observedAttitude 'canvas.Stale()' 'Cloud attitude must fail closed when stale or unreachable.'
 Require-Text $paths 'AeroHelmLinkPath.CloudAttitudePreview' 'PATHS must expose real-only cloud attitude view.'
 Require-Text $directBackup 'AcknowledgePilotAuthority' 'Offline native radio backup requires explicit pilot opt-in.'
@@ -288,6 +296,7 @@ Require-Text $cloud 'AeroHelmIconPainter.Make(label,20)' 'AeroHelm toolbar needs
 Require-Text $cloud 'main.MenuSimulation.Visible = false' 'Hide Simulation toolbar in default GCS profile.'
 Require-Text $cloud 'main.MenuHelp.Visible = false' 'Hide Help toolbar in default GCS profile.'
 Require-Text $nativeBridge 'ws.ReceiveAsync' 'Cloud receiver must be authenticated and read only.'
+Require-Text $nativeBridge 'internal static Uri PrivateWebSocketUri()' 'MAVLink WSS URI must be shared between the native bridge and the attitude monitor.'
 if ($nativeBridge.Contains('ws.SendAsync') -or $nativeBridge.Contains('ws.Send(')) {
     throw 'Native GCS must not send packets over the cloud WebSocket.'
 }
