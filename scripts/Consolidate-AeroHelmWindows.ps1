@@ -142,6 +142,8 @@ if($Stage -in @('Verify','Diagnose')){
     return
 }
 $freshBootstrap=($Stage -eq 'Bootstrap')
+$partialBootstrap=$false
+$partialInventory=@()
 if(-not $Apply){
     throw 'Build changes runtime binaries. Use -Stage Bootstrap -Apply -WithBranding for a clean clone, or -Stage Build -Apply for an existing verified runtime.'
 }
@@ -149,12 +151,11 @@ if($freshBootstrap){
     if(Test-Path -LiteralPath $exe -PathType Leaf){
         throw 'Existing MissionPlanner.exe found. Bootstrap cannot overwrite an existing runtime. Use -Stage Build -Apply.'
     }
-    # Never delete unexpected files from a purportedly new checkout.
+    # A failed first build can leave unverified output behind. Preserve it
+    # in a separate, verified snapshot before resuming; never delete it blindly.
     if(Test-Path -LiteralPath $runtime -PathType Container){
         $existing=@(Get-ChildItem -LiteralPath $runtime -Force -ErrorAction Stop)
-        if($existing.Count -ne 0){
-            throw 'Fresh bootstrap requires an empty runtime directory. Existing build files were not touched.'
-        }
+        $partialBootstrap=($existing.Count -gt 0)
     }
 }
 if(Get-Process MissionPlanner -ErrorAction SilentlyContinue){
@@ -190,7 +191,39 @@ if(-not $freshBootstrap){
     }
 }
 else {
-    Write-Host 'FRESH INSTALL: no prior runtime is present or replaced.'
+    if($partialBootstrap){
+        $runtimeBytes=(Get-ChildItem -LiteralPath $runtime -Recurse -File -Force -ErrorAction Stop |
+            Measure-Object -Property Length -Sum).Sum
+        $driveLetter=[System.IO.Path]::GetPathRoot($runtime).Substring(0,1)
+        $drive=Get-PSDrive -Name $driveLetter -ErrorAction Stop
+        if($drive.Free -lt ([double]$runtimeBytes * 1.15 + 250MB)){
+            throw 'Not enough free disk space to preserve partial native build output.'
+        }
+        $stamp=(Get-Date -Format 'yyyyMMdd-HHmmss') + '-' +
+            [Guid]::NewGuid().ToString('N').Substring(0,8)
+        $backupRoot=Join-Path (Split-Path -Parent $root) 'AeroHelm-GCS-release-backups'
+        $backup=Join-Path $backupRoot ('partial-bootstrap-' + $stamp)
+        $snapshot=Join-Path $backup 'runtime'
+        $partialInventory=@(Get-ChildItem -LiteralPath $runtime -Recurse -File -Force -ErrorAction Stop |
+            ForEach-Object {
+                [pscustomobject]@{
+                    RelativePath=$_.FullName.Substring($runtime.Length).TrimStart('\')
+                    SHA256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                }
+            })
+        Write-Host "Preserving unverified partial build output in $snapshot"
+        Copy-Runtime $runtime $snapshot $false
+        foreach($entry in $partialInventory){
+            $saved=Join-Path $snapshot $entry.RelativePath
+            if(-not (Test-Path -LiteralPath $saved -PathType Leaf) -or
+               (Get-FileHash -LiteralPath $saved -Algorithm SHA256).Hash -ne $entry.SHA256){
+                throw "Partial runtime backup failed verification: $($entry.RelativePath)"
+            }
+        }
+        Write-Host 'Partial build snapshot verified; resuming bootstrap without deleting prior files.'
+    } else {
+        Write-Host 'FRESH INSTALL: no prior runtime is present or replaced.'
+    }
     Write-Host 'Build must pass before a first-release manifest is created.'
 }
 # Any failure after backup restores the whole former runtime (not just plugin).
@@ -255,7 +288,11 @@ try{
     Move-Item -LiteralPath $tempManifest -Destination $manifestPath -Force
     Write-Host "CONSOLIDATED BUILD COMPLETE: $manifestPath" -ForegroundColor Green
     if($freshBootstrap){
-        Write-Host 'Clean-source first install; previous runtime backup: none (not required).'
+        if($partialBootstrap){
+            Write-Host "Unverified partial-build backup retained: $snapshot"
+        } else {
+            Write-Host 'Clean-source first install; previous runtime backup: none (not required).'
+        }
     } else {
         Write-Host "Backup retained: $snapshot"
     }
@@ -265,8 +302,26 @@ try{
 catch {
     $failure=$_
     if($freshBootstrap){
-        Write-Warning 'Fresh install failed; no previous binaries exist in this checkout.'
-        Write-Warning 'Any partial build files remain unverified. Do not launch.'
+        if($partialBootstrap -and $snapshot){
+            Write-Warning "Bootstrap failed; restoring preserved partial native output from $snapshot"
+            try {
+                Copy-Runtime $snapshot $runtime $true
+                foreach($entry in $partialInventory){
+                    $restored=Join-Path $runtime $entry.RelativePath
+                    if(-not (Test-Path -LiteralPath $restored -PathType Leaf) -or
+                       (Get-FileHash -LiteralPath $restored -Algorithm SHA256).Hash -ne $entry.SHA256){
+                        throw "Restored partial file mismatch: $($entry.RelativePath)"
+                    }
+                }
+                Write-Warning 'Unverified partial output restored. Do not launch.'
+            }
+            catch {
+                Write-Error "CRITICAL: partial-build restoration failed. Keep GCS stopped. Snapshot: $snapshot"
+            }
+        } else {
+            Write-Warning 'Fresh install failed; no previous verified runtime exists in this checkout.'
+            Write-Warning 'Any partial build files remain unverified. Do not launch.'
+        }
     }
     else {
         Write-Warning "Consolidation failed; restoring old runtime from $snapshot"
