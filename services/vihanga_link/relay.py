@@ -10,6 +10,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 import hashlib
 import hmac
+import math
 import os
 import re
 import struct
@@ -127,6 +128,17 @@ def valid_evidence(packet: bytes, message_id: int) -> bool:
             valid_frame_crc(packet))
 
 
+def valid_native_attitude(packet: bytes) -> bool:
+    """Only finite and physically representable ID30 angles can mark HUD live."""
+    if not valid_evidence(packet, 30):
+        return False
+    offset = 6 if packet[0] == 0xFE else 10
+    roll, pitch = struct.unpack_from("<ff", packet, offset + 4)
+    return (math.isfinite(roll) and math.isfinite(pitch) and
+            abs(roll * 180.0 / math.pi) <= 180.0 and
+            abs(pitch * 180.0 / math.pi) <= 90.0)
+
+
 @dataclass
 class LinkState:
     fc_system_id: int = 1
@@ -170,6 +182,9 @@ class LinkState:
             self.foreign_system_frames += 1
             return
         if msg_id in (0, 22, 30) and not valid_evidence(packet, msg_id):
+            self.rejected += 1
+            return
+        if msg_id == 30 and not valid_native_attitude(packet):
             self.rejected += 1
             return
         now = time.monotonic()
