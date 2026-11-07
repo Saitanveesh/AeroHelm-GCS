@@ -266,7 +266,9 @@ class LinkState:
         """A Pi reply confirms transport, not arrival of real FC telemetry."""
         try:
             ack = json.loads(text)
-            if (isinstance(ack, dict) and ack.get("type") == "disarmed_stream_probe_ack" and
+            if (isinstance(ack, dict) and self.probe_request_id and
+                    self.probe_status == "QUEUED_ON_PRIVATE_LINK" and
+                    ack.get("type") == "disarmed_stream_probe_ack" and
                     ack.get("request_id") == self.probe_request_id and
                     ack.get("status") in ("QUEUED", "REFUSED_DISARM_REQUIRED",
                                           "REFUSED_DISABLED", "REFUSED_RATE_LIMIT",
