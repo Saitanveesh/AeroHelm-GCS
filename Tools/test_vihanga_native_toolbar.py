@@ -62,7 +62,7 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn('"api/v1/operations/calibrations"', ops)
         self.assertIn('"api/v2/fleet"', intel)
         self.assertIn('"api/v2/security/posture"', intel)
-        self.assertIn('"api/v1/vehicles/"+Id()+"/parameters"', intel)
+        self.assertIn('"api/v1/vehicles/"+subject+"/parameters"', intel)
         self.assertIn('vehicle.Text=""', intel)
 
     def test_new_cloud_fleet_contract_is_visible_without_mutation(self):
@@ -81,7 +81,7 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
             self.assertIn(event, intel)
         self.assertIn("InvalidateMissionValidation()", intel)
         self.assertIn("lastMissionPlan", intel)
-        self.assertIn("Plan changed during validation", intel)
+        self.assertIn("Plan or aircraft changed during validation", intel)
         self.assertIn("Revalidate before starting a passive shadow", intel)
         self.assertIn("new SortedDictionary<string,double>(StringComparer.Ordinal)", intel)
         self.assertIn("Duplicate parameter:", intel)
