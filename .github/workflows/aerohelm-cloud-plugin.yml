@@ -49,7 +49,7 @@ on:
       - "Tools/AeroHelmSurveyTests/**"
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
-      - "Tools/test_aerohelm_touch_ux.py"
+      - "Tools/test_vihanga_native_toolbar.py"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
       - "scripts/Update-AeroHelmLatest.ps1"
       - "Tools/fixtures/physics_lab_hover.json"
@@ -91,7 +91,7 @@ on:
       - "Plugins/AeroHelmCloud/**"
       - "Tools/AeroHelmMavlinkBridgeTests/**"
       - "Tools/test_aerohelm_offline_gcs.py"
-      - "Tools/test_aerohelm_touch_ux.py"
+      - "Tools/test_vihanga_native_toolbar.py"
       - "scripts/Run-AeroHelmOfflineChecks.ps1"
       - "scripts/Update-AeroHelmLatest.ps1"
       - "Tools/fixtures/physics_lab_hover.json"
@@ -119,7 +119,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Portable offline GCS safety, icons and TCP policy tests
-        run: python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_aerohelm_touch_ux
+        run: python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_vihanga_native_toolbar
 
   plugin-build:
     runs-on: windows-latest

@@ -69,44 +69,37 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertNotIn('ws.SendAsync(', link)
 
     def test_hud_uses_real_flight_data_and_fails_closed_when_stale(self):
-        home = source("plugins/AeroHelmTouchPanel.cs")
-        self.assertIn('AeroHelmLinkNavigation.Open(', home)
-        navigator = source("plugins/AeroHelmLinkSelector.cs")
-        self.assertIn('main.doConnect(MainV2.comPort,"TCP","57600"', navigator)
-        self.assertIn('AeroHelmLinkPath.PilotDirect', navigator)
-        self.assertIn('bridge.Start()', navigator)
-        self.assertIn('NO AUTO-FAILOVER', navigator)
-        self.assertIn("RefreshCloudStatusAsync", home)
-        self.assertIn("native_hud_heartbeat_ready", home)
-        # The refresh uses an explicit nullable heartbeat evidence value,
-        # not a cached green state or an inferred physical-aircraft link.
-        self.assertIn("cloudHeartbeatLive = fresh && connected ? heartbeatLive : (bool?)false;", home)
-        self.assertIn("if (heartbeatLive == false)", home)
-        self.assertIn("CLOUD / NO LIVE HEARTBEAT", home)
-        self.assertIn("cloudStatusCheckedUtc = DateTime.MinValue;", home)
-        self.assertIn("if (!bridge.IsListening && !bridge.Start())", navigator)
-        self.assertIn("MainV2.comPort.BaseStream.IsOpen", navigator)
-        self.assertIn("attitude_stream_active", home)
-        self.assertIn("cloudHealthTimer.Interval = 5000", home)
-        self.assertIn("CLOUD / STALE OR DISCONNECTED", home)
+        selector = source("plugins/AeroHelmLinkSelector.cs")
+        cloud = source("plugins/AeroHelmCloud.cs")
+        self.assertIn('main.doConnect(MainV2.comPort,"TCP","57600"', selector)
+        self.assertIn('AeroHelmLinkPath.PilotDirect', selector)
+        self.assertIn('bridge.Start()', selector)
+        self.assertIn('NO AUTO-FAILOVER', selector)
+        self.assertIn('if (!bridge.IsListening && !bridge.Start())', selector)
+        self.assertIn('MainV2.comPort.BaseStream.IsOpen', selector)
+        self.assertIn('_cloudLinkWatchdog.Interval=5000', cloud)
+        self.assertIn('native_hud_heartbeat_ready', cloud)
+        self.assertIn('attitude_stream_active', cloud)
+        self.assertIn('CLOUD HEARTBEAT/ATTITUDE MISSING', cloud)
+        self.assertIn('NO automatic failover', cloud)
 
     def test_module_icons_and_reduced_operator_toolbar(self):
         toolbar = source("plugins/AeroHelmCloud.cs")
-        art = source("plugins/AeroHelmTouchPanel.cs")
+        icons = source("plugins/VihangaSharedUi.cs")
         self.assertIn("AeroHelmIconPainter.Make(label,20)", toolbar)
-        for icon in ("CLOUD", "SURVEY", "VISION", "LINK",
-                     "OPS", "INTEL", "TOUCH", "PATHS"):
-            if icon in ("CLOUD", "VISION"):
-                self.assertIn(f'AeroHelmIconPainter.Make("{icon}"', toolbar)
-            else:
-                self.assertIn(f'NewToolbarButton("{icon}"', toolbar)
-        for icon in ("CLOUD", "SURVEY", "INTEL", "TOUCH", "PATHS"):
-            self.assertIn(f'case "{icon}":', art)
+        for icon in ("CLOUD", "SURVEY", "VISION", "LINK", "OPS",
+                     "INTEL", "PATHS"):
+            self.assertIn(f'case "{icon}":', icons)
+        self.assertIn('new ToolStripDropDownButton("MORE")', toolbar)
+        for module in ("FLEET", "SECURITY", "ANALYTICS"):
+            self.assertIn(f'new AeroHelmReadOnlyPage("{module}")', toolbar)
+        self.assertIn('new VihangaSettingsWindow()', toolbar)
+        self.assertNotIn("AeroHelmTouchPanel", toolbar)
         self.assertIn("main.MenuSimulation.Visible = false", toolbar)
         self.assertIn("main.MenuHelp.Visible = false", toolbar)
 
     def test_no_second_python_bridge_when_native_receiver_enabled(self):
-        launch = source("scripts/Start-AeroHelm-Touch.ps1")
+        launch = source("scripts/Start-VihangaGCS.ps1")
         session = source("scripts/Start-AeroHelm-Session.ps1")
         self.assertIn("AEROHELM_CLOUD_READONLY", launch)
         self.assertIn("AEROHELM_INTERNAL_TCP_BRIDGE", launch)
@@ -115,7 +108,7 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertIn("UseLegacyPythonBridge", session)
 
     def test_release_never_silently_uses_stale_exe_or_legacy_plugins(self):
-        launch = source("scripts/Start-AeroHelm-Touch.ps1")
+        launch = source("scripts/Start-VihangaGCS.ps1")
         release = source("scripts/Consolidate-AeroHelmWindows.ps1")
         for required in (
             "aerohelm-consolidated-release.json",
@@ -136,22 +129,18 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertNotIn("git reset", release)
 
     def test_cloud_and_local_link_banners_are_independent_and_bounded(self):
-        home = source("plugins/AeroHelmTouchPanel.cs")
+        cloud = source("plugins/AeroHelmCloud.cs")
         bridge = source("plugins/AeroHelmReceiveOnlyBridge.cs")
-        self.assertIn("bridge.CompactSummary", home)
-        self.assertIn("bridgeDiagnosticsTip.SetToolTip", home)
-        self.assertIn("bridgeDiagnosticsTip.Dispose();", home)
-        self.assertIn("Dock = DockStyle.Bottom, Height = 56", home)
-        self.assertIn("CLOUD / FRAMES FRESH, HUD UNVERIFIED", home)
-        self.assertIn("LEGACY SERVER", home)
+        selector = source("plugins/AeroHelmLinkSelector.cs")
+        self.assertIn("_paths.ToolTipText", cloud)
+        self.assertIn("CLOUD STALE/OFFLINE", cloud)
+        self.assertIn("PILOT DIRECT is independent", cloud)
         self.assertIn("PORT 5760 OCCUPIED", bridge)
         self.assertIn("internal string CompactSummary", bridge)
-        self.assertNotIn("linkStatus.Text += ", home)
-        self.assertNotIn("bridge.Summary + \"  |  READ ONLY\"", home)
-        self.assertIn("READ ONLY", home)
+        self.assertIn("NO AUTO-FAILOVER", selector)
 
     def test_no_native_bridge_launch_with_existing_local_listener(self):
-        launcher = source("scripts/Start-AeroHelm-Touch.ps1")
+        launcher = source("scripts/Start-VihangaGCS.ps1")
         session = source("scripts/Start-AeroHelm-Session.ps1")
         self.assertIn("if (-not $NoInternalBridge)", launcher)
         self.assertIn("Get-NetTCPConnection -LocalPort 5760 -State Listen", launcher)
@@ -185,21 +174,16 @@ class OfflineGcsContracts(unittest.TestCase):
 
     def test_explicit_cloud_and_pilot_radio_backup_paths(self):
         selector = source("plugins/AeroHelmLinkSelector.cs")
-        panel = source("plugins/AeroHelmTouchPanel.cs")
-        plugin = source("plugins/AeroHelmCloud.cs")
+        toolbar = source("plugins/AeroHelmCloud.cs")
         csproj = source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
         self.assertIn("AeroHelmLinkPath { Cancel, CloudReadOnly, PilotDirect, CloudAttitudePreview }", selector)
         self.assertIn("NO AUTO-FAILOVER", selector)
         self.assertIn("normal COM port and baud controls", selector)
-        self.assertIn("new AeroHelmLinkSelector()", panel)
-        self.assertIn("AeroHelmLinkNavigation.Open(gcs,chosen,heartbeat)", panel)
         self.assertIn("if (!bridge.IsListening && !bridge.Start())", selector)
-        # Native Flight Data selection occurs in the explicit link path
-        # controller, after the pilot has selected their desired route.
         self.assertIn("main.MenuFlightData.PerformClick();", selector)
         self.assertIn("main.doConnect(MainV2.comPort", selector)
-        self.assertIn('NewToolbarButton("PATHS"', plugin)
-        self.assertIn("AeroHelmLinkNavigation.Open(MainV2.instance,", plugin)
+        self.assertIn('NewToolbarButton("PATHS"', toolbar)
+        self.assertIn("AeroHelmLinkNavigation.Open(MainV2.instance,", toolbar)
         self.assertIn("AeroHelmLinkSelector.cs", csproj)
         self.assertNotIn("Stop-Process", selector)
         self.assertNotIn("command_long_send", selector)
@@ -208,7 +192,7 @@ class OfflineGcsContracts(unittest.TestCase):
         session = source("scripts/Start-AeroHelm-Session.ps1")
         self.assertEqual(session.count("AEROHELM_VISION_AUTO_OPEN"), 1)
         self.assertEqual(session.count("AEROHELM_CLOUD_URL"), 1)
-        self.assertEqual(session.count("$touchArgs = @("), 1)
+        self.assertEqual(session.count("$launchArgs = @("), 1)
         self.assertEqual(session.count("Start-Process -FilePath $python.Source"), 1)
         self.assertEqual(session.count("Stop-Process -Id $listenerPid"), 1)
         self.assertEqual(session.count("Get-NetTCPConnection -LocalPort 5760"), 2)
@@ -251,21 +235,17 @@ class OfflineGcsContracts(unittest.TestCase):
         self.assertNotIn("Stop-Process", update)
 
     def test_paths_cloud_retry_and_local_radio_are_separate(self):
-        home=source("plugins/AeroHelmTouchPanel.cs")
         selector=source("plugins/AeroHelmLinkSelector.cs")
         toolbar=source("plugins/AeroHelmCloud.cs")
         project=source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
-        self.assertIn('new AeroHelmLinkSelector()',home)
         self.assertIn('AeroHelmLinkPath.PilotDirect',selector)
         self.assertIn('bridge.Start()',selector)
         self.assertIn('main.doConnect(MainV2.comPort,"TCP","57600"',selector)
-        self.assertIn('AeroHelmLinkNavigation.Open(',home)
         self.assertIn('OperationsApi.Request("GET","api/v1/mavlink/paths")',selector)
         self.assertIn('NO AUTO-FAILOVER',selector)
         self.assertIn('new AeroHelmLinkSelector()',toolbar)
         self.assertIn('NewToolbarButton("PATHS"',toolbar)
         self.assertIn('AeroHelmLinkSelector.cs',project)
-        self.assertIn('case "PATHS":',home)
         self.assertIn("AeroHelm will not change control authority automatically.", selector)
         self.assertIn("MainV2.comPort.BaseStream.IsOpen",selector)
         self.assertIn("Disconnect it ",selector)
@@ -276,7 +256,7 @@ class OfflineGcsContracts(unittest.TestCase):
         paths = source("plugins/AeroHelmLinkSelector.cs")
         project = source("Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj")
         backup = source("scripts/Start-AeroHelm-DirectBackup.ps1")
-        touch = source("scripts/Start-AeroHelm-Touch.ps1")
+        touch = source("scripts/Start-VihangaGCS.ps1")
         self.assertIn("api/v1/mavlink/attitude", cloud)
         self.assertIn("canvas.Stale()", cloud)
         self.assertIn("float.IsNaN(roll)", cloud)
