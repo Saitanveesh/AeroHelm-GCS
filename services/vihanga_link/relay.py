@@ -434,8 +434,9 @@ def create_app(config: Config | None = None) -> FastAPI:
             state.connected = True
             state.epoch += 1
             state.clear_session()
-        await ws.accept()
         try:
+            # A failed handshake must release the reserved publisher slot.
+            await ws.accept()
             while True:
                 # A dead Pi session may not monopolize the sole device slot.
                 packet = await asyncio.wait_for(ws.receive_bytes(), timeout=12)
@@ -456,8 +457,9 @@ def create_app(config: Config | None = None) -> FastAPI:
         queue: asyncio.Queue[tuple[float, bytes]] = asyncio.Queue(maxsize=32)
         async with state.lock:
             state.viewers.add(queue)
-        await ws.accept()
         try:
+            # A failed viewer handshake must not leak a buffered queue.
+            await ws.accept()
             while time.time() < expiry:
                 # Always observe disconnect and JWT expiry, including when no
                 # telemetry exists. Viewer-originated bytes are NEVER routed
