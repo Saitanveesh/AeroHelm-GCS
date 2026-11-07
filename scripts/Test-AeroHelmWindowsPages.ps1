@@ -231,6 +231,19 @@ Require-Text $paths 'bridge.Start()' 'A failed initial local cloud bridge must b
 Require-Text $paths 'No automatic radio switchover.' 'Flight authority must never switch automatically.'
 Require-Text $paths 'internal sealed class VihangaLinkChoice : Control' 'PATHS must use theme-independent accessible surfaces.'
 Require-Text $paths 'api/v1/mavlink/paths' 'PATHS must show actual authenticated cloud link evidence.'
+# WebException is derived from InvalidOperationException on .NET Framework.
+# The more specific handler must precede the generic operational handler.
+$refreshStart = $paths.IndexOf('private async Task RefreshEvidenceAsync()')
+$refreshEnd = if($refreshStart -ge 0) { $paths.IndexOf('private void Select(', $refreshStart) } else { -1 }
+if($refreshStart -lt 0 -or $refreshEnd -lt $refreshStart) {
+    throw 'PATHS diagnostics exception contract missing.'
+}
+$refresh = $paths.Substring($refreshStart, $refreshEnd-$refreshStart)
+$httpCatch = $refresh.LastIndexOf('catch(WebException ex)')
+$operationCatch = $refresh.IndexOf('catch(InvalidOperationException)')
+if($httpCatch -lt 0 -or $operationCatch -lt 0 -or $httpCatch -gt $operationCatch) {
+    throw 'PATHS diagnostics must catch WebException before InvalidOperationException.'
+}
 Require-Text $cloud 'NewToolbarButton("PATHS"' 'The independent connection module must be visible in toolbar.'
 Require-Text $project 'AeroHelmLinkSelector.cs' 'PATHS source must be compiled into plugin.'
 Require-Text $project 'AeroHelmCloudAttitudeWindow.cs' 'Real-only cloud attitude viewer must compile into plugin.'
