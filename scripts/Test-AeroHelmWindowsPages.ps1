@@ -11,6 +11,7 @@ $productionScripts = @(
     'scripts/Start-AeroHelm-DirectBackup.ps1',
     'scripts/Start-AeroHelm-Touch.ps1',
     'scripts/Start-VihangaGCS.ps1',
+    'scripts/Test-VihangaPassiveBench.ps1',
     'scripts/Test-VihangaCertification.ps1',
     'scripts/Update-AeroHelmLatest.ps1',
     'scripts/Repair-AeroHelmWindows.ps1',

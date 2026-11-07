@@ -120,6 +120,16 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("windows_ui_smoke_verified=$false", ci)
         self.assertIn("physical_flight_authorized=$false", ci)
 
+    def test_passive_bench_never_opens_flight_controller_port(self):
+        inventory = source("scripts/Test-VihangaPassiveBench.ps1")
+        self.assertIn("SerialPort]::GetPortNames()", inventory)
+        self.assertIn("Test-NetConnection -ComputerName", inventory)
+        self.assertIn("physical_flight_authorized=$false", inventory)
+        self.assertIn("mavlink_heartbeat_verified=$false", inventory)
+        for forbidden in ("SerialPort]::Open(", "doConnect(", "MAV_CMD",
+                          "PARAM_SET", "Remove-Item", "Stop-Process"):
+            self.assertNotIn(forbidden, inventory)
+
     def test_certification_gate_never_self_certifies_flight(self):
         script = source("scripts/Test-VihangaCertification.ps1")
         windows = source("scripts/Test-AeroHelmWindowsPages.ps1")
