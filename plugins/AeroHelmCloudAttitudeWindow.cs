@@ -5,6 +5,7 @@ extern alias FrameworkDrawing;
 using Drawing = FrameworkDrawing::System.Drawing;
 using Drawing2D = FrameworkDrawing::System.Drawing.Drawing2D;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.WebSockets;
 using System.Threading;
@@ -28,6 +29,7 @@ namespace AeroHelm.GcsCloud
         private long heartbeatsReceived;
         private long attitudesReceived;
         private long framesRejected;
+        private readonly Dictionary<int, long> messageIds = new Dictionary<int, long>();
         private float lastRoll;
         private float lastPitch;
 
@@ -48,7 +50,7 @@ namespace AeroHelm.GcsCloud
             header.TextAlign = Drawing.ContentAlignment.MiddleCenter;
             header.ForeColor = Drawing.Color.FromArgb(220, 220, 220);
             info.Dock = DockStyle.Bottom;
-            info.Height = 88;
+            info.Height = 106;
             info.TextAlign = Drawing.ContentAlignment.MiddleCenter;
             info.Text = connectionIssue;
             info.ForeColor = Drawing.Color.FromArgb(236, 187, 121);
@@ -79,7 +81,8 @@ namespace AeroHelm.GcsCloud
             string counts = "MAVLink frames " + framesReceived +
                 "   HB " + heartbeatsReceived +
                 "   ATT " + attitudesReceived +
-                "   rejected " + framesRejected;
+                "   rejected " + framesRejected +
+                "   other IDs " + OtherMessageIdSummary();
             if (live)
             {
                 info.Text = "LIVE / roll " + lastRoll.ToString("F1",
@@ -95,12 +98,26 @@ namespace AeroHelm.GcsCloud
                     "HEARTBEAT RECEIVED; ATTITUDE (ID 30) NOT FRESH." :
                     "Connected; waiting for genuine MAVLink HEARTBEAT and ATTITUDE.") +
                     Environment.NewLine + counts +
-                    Environment.NewLine + "Check Pixhawk-to-Pi UART stream output and cloud relay.";
+                    Environment.NewLine + "ID 30 not received: inspect FC-to-Pi stream rates, then M1 relay.";
             }
             else
             {
                 info.Text = connectionIssue + Environment.NewLine + counts;
             }
+        }
+
+        private string OtherMessageIdSummary()
+        {
+            var keys = new List<int>(messageIds.Keys);
+            keys.Sort();
+            var fragments = new List<string>();
+            foreach (int id in keys)
+            {
+                if (id == 0 || id == 30) continue;
+                fragments.Add(id + ":" + messageIds[id]);
+                if (fragments.Count == 6) break;
+            }
+            return fragments.Count == 0 ? "none" : string.Join(",", fragments);
         }
 
         private async Task WatchAsync()
@@ -139,6 +156,7 @@ namespace AeroHelm.GcsCloud
                         streamConnected = true;
                         framesReceived = heartbeatsReceived = attitudesReceived =
                             framesRejected = 0;
+                        messageIds.Clear();
                         RefreshDisplay();
 
                         var packet = new byte[512];
@@ -170,6 +188,8 @@ namespace AeroHelm.GcsCloud
                                 framesRejected++;
                                 continue;
                             }
+                            if (messageIds.ContainsKey(id)) messageIds[id]++;
+                            else if (messageIds.Count < 256) messageIds[id] = 1;
                             if (id == 0)
                             {
                                 if (AeroHelmReceiveOnlyBridge.HasValidTelemetryChecksum(
