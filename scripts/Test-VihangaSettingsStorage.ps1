@@ -12,7 +12,7 @@ try {
     $payload = [Text.Encoding]::UTF8.GetBytes('Vihanga GCS local-profile write preflight')
     [IO.File]::WriteAllBytes($probe, $payload)
     $actual = [IO.File]::ReadAllBytes($probe)
-    if (-not [Linq.Enumerable]::SequenceEqual[byte]($payload, $actual)) {
+    if (-not ([Convert]::ToBase64String($payload) -eq [Convert]::ToBase64String($actual))) {
         throw 'Local profile write/read integrity check failed.'
     }
     Write-Host "PROFILE STORAGE READY: $directory" -ForegroundColor Green
