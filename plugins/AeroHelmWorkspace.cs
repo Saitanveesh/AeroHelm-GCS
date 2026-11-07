@@ -430,15 +430,18 @@ namespace AeroHelm.GcsCloud
         private readonly Label duplexStatus = new Label();
         private readonly Label freshness = new Label();
         private readonly CheckBox autoRefresh = new CheckBox();
+        private readonly CheckBox showDetails = new CheckBox();
         private readonly System.Windows.Forms.Timer refreshTimer = new System.Windows.Forms.Timer();
         private bool checking;
         private bool diagnosticPending;
-        private string lastDuplexResult = "No authenticated duplex request has been sent.";
+        private string lastDuplexResult = "Not requested";
+        private string lastSummary = "Link check has not run.";
+        private string lastTechnical = "Link check has not run.";
 
         public AeroHelmLinkWindow()
         {
-            Text = "VIHANGA LINK — Cloud link diagnostics";
-            Width = 870; Height = 580;
+            Text = "Vihanga GCS | Link status";
+            Width = 790; Height = 530;
             MinimumSize = new Drawing.Size(560,420);
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -448,8 +451,8 @@ namespace AeroHelm.GcsCloud
                 RowCount = 5, ColumnCount = 1 };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(layout);
             var linkHeading = new TableLayoutPanel {
@@ -458,9 +461,10 @@ namespace AeroHelm.GcsCloud
             linkHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,75));
             linkHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,25));
             freshness.Dock = DockStyle.Fill;
-            freshness.Text = "LINK / UNKNOWN — no connection check has run";
+            freshness.Text = "Link | Not checked";
             freshness.ForeColor = Drawing.Color.FromArgb(210,210,210);
-            freshness.Font = new Drawing.Font("Segoe UI Semibold",15,Drawing.FontStyle.Bold);
+            freshness.Font = new Drawing.Font("Segoe UI Semibold",13,Drawing.FontStyle.Bold);
+            freshness.AutoEllipsis = true;
             freshness.TextAlign = Drawing.ContentAlignment.MiddleLeft;
             linkHeading.Controls.Add(freshness,0,0);
             var linkHome = new Button {
@@ -478,29 +482,34 @@ namespace AeroHelm.GcsCloud
             url.BackColor = Drawing.Color.FromArgb(34,34,34);
             url.ForeColor = Drawing.Color.White;
             layout.Controls.Add(url, 0, 1);
-            check.Text = "CHECK CLOUD + MAVLINK";
+            check.Text = "Check now";
             check.Width = 225; check.Height = 41;
             check.FlatStyle = FlatStyle.Flat;
             check.FlatAppearance.BorderSize = 0;
             check.BackColor = Drawing.Color.FromArgb(38,38,38);
             check.ForeColor = Drawing.Color.White;
             check.Click += async (s,e) => await CheckAsync();
-            autoRefresh.Text = "Monitor every 15 seconds (read only)";
+            autoRefresh.Text = "Auto refresh (15 s)";
             autoRefresh.AutoSize = true;
             autoRefresh.ForeColor = Drawing.Color.FromArgb(210,210,210);
             autoRefresh.Margin = new Padding(12,11,0,0);
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, AutoScroll = true };
             buttons.Controls.Add(check);
             buttons.Controls.Add(autoRefresh);
+            showDetails.Text = "Technical details";
+            showDetails.AutoSize = true;
+            showDetails.ForeColor = Drawing.Color.FromArgb(210,210,210);
+            showDetails.Margin = new Padding(12,11,0,0);
+            buttons.Controls.Add(showDetails);
             layout.Controls.Add(buttons, 0, 2);
             // Full duplex means authenticated diagnostic request/ACK only:
             // never forward GCS MAVLink, arm, calibrate, or change an FC parameter.
             var duplexBar = new FlowLayoutPanel {
                 Dock = DockStyle.Fill, WrapContents = true, AutoScroll = true
             };
-            duplexPing.Text = "PI ROUND-TRIP PING";
+            duplexPing.Text = "Ping Pi";
             duplexPing.Width = 190; duplexPing.Height = 40;
-            duplexStatusQuery.Text = "PI UPLINK COUNTERS";
+            duplexStatusQuery.Text = "Pi counters";
             duplexStatusQuery.Width = 190; duplexStatusQuery.Height = 40;
             foreach (var b in new[] { duplexPing, duplexStatusQuery })
             {
@@ -514,10 +523,16 @@ namespace AeroHelm.GcsCloud
             duplexStatusQuery.Click += async (s,e) => await ProbeDuplexAsync("uplink_status");
             duplexStatus.Width = 330; duplexStatus.Height = 40;
             duplexStatus.TextAlign = Drawing.ContentAlignment.MiddleLeft;
-            duplexStatus.Text = "DUPLEX / not tested";
+            duplexStatus.Text = "Pi diagnostics: not requested";
             duplexStatus.ForeColor = Drawing.Color.FromArgb(220,210,186);
             duplexBar.Controls.Add(duplexStatus);
+            duplexBar.Visible = false;
             layout.Controls.Add(duplexBar,0,3);
+            showDetails.CheckedChanged += (s,e) => {
+                layout.RowStyles[3].Height = showDetails.Checked ? 84 : 0;
+                duplexBar.Visible = showDetails.Checked;
+                ShowSelectedReport();
+            };
             refreshTimer.Interval = 15000;
             refreshTimer.Tick += async (s,e) => await CheckAsync();
             autoRefresh.CheckedChanged += (s,e) => {
@@ -530,15 +545,21 @@ namespace AeroHelm.GcsCloud
             output.Dock = DockStyle.Fill;
             output.Multiline = true;
             output.ReadOnly = true;
-            output.ScrollBars = ScrollBars.Vertical;
+            output.ScrollBars = ScrollBars.Both;
             output.Font = new Drawing.Font("Consolas", 10);
-            output.Text = "No test has run. Link diagnostics are informational and do not establish flight safety.";
+            output.Text = lastSummary;
             output.BackColor = Drawing.Color.FromArgb(25,25,25);
             output.ForeColor = Drawing.Color.FromArgb(230,230,230);
             output.BorderStyle = BorderStyle.None;
             layout.Controls.Add(output, 0, 4);
             Shown += async (s,e) => await CheckAsync();
             FormClosing += (s,e) => refreshTimer.Stop();
+        }
+
+        private void ShowSelectedReport()
+        {
+            if(IsDisposed || Disposing) return;
+            output.Text = showDetails.Checked ? lastTechnical : lastSummary;
         }
 
         // Do not send the operator JWT to an origin typed into LINK. Only the
@@ -623,9 +644,7 @@ namespace AeroHelm.GcsCloud
                 lastDuplexResult = summary;
                 duplexStatus.Text = summary.StartsWith("DUPLEX / ACK",
                     StringComparison.Ordinal) ? "DUPLEX / ACK VERIFIED" : "DUPLEX / NO ACK";
-                output.AppendText(Environment.NewLine + Environment.NewLine +
-                    summary + Environment.NewLine +
-                    "Authenticated diagnostics only. Flight commands remain blocked.");
+                ShowSelectedReport();
             }
             catch (Exception ex)
             {
@@ -634,9 +653,7 @@ namespace AeroHelm.GcsCloud
                 // JWT, private device identity or user-supplied URL.
                 lastDuplexResult = "DUPLEX / unavailable: " + ex.GetType().Name;
                 duplexStatus.Text = "DUPLEX / UNAVAILABLE";
-                output.AppendText(Environment.NewLine + Environment.NewLine +
-                    lastDuplexResult + Environment.NewLine +
-                    "Check signed-in cloud, staged backend and Pi duplex opt-in.");
+                ShowSelectedReport();
             }
             finally
             {
@@ -762,64 +779,79 @@ namespace AeroHelm.GcsCloud
                 bool localHb = nativeEvidence != null && nativeEvidence.NativeHeartbeatFresh;
                 bool localAtt = nativeEvidence != null && nativeEvidence.NativeAttitudeFresh;
                 if (!fresh)
-                    freshness.Text = "LINK / STALE OR NO PIXHAWK STREAM";
+                    freshness.Text = "Link | Telemetry stale";
                 else if (realHeartbeat == false)
-                    freshness.Text = "LINK / NO REAL HEARTBEAT — HUD CANNOT CONNECT";
+                    freshness.Text = "Link | Heartbeat missing";
                 else if (realAttitude == false || (localHb && !localAtt))
-                    freshness.Text = "LINK / REAL HEARTBEAT, NO ATTITUDE — HUD INVALID";
+                    freshness.Text = "Link | Attitude missing";
                 else if (realHeartbeat == true && realAttitude == true)
-                    freshness.Text = "LINK / REAL HEARTBEAT + ATTITUDE RECEIVED";
+                    freshness.Text = "Link | Heartbeat + attitude live";
                 else
-                    freshness.Text = "LINK / CLOUD FRAMES — HUD DATA UNVERIFIED";
+                    freshness.Text = "Link | Attitude unverified";
                 freshness.ForeColor = (!fresh || realHeartbeat == false ||
                     realAttitude == false || (localHb && !localAtt)) ? Drawing.Color.FromArgb(255,184,150) :
                     realHeartbeat == true && realAttitude == true ?
                     Drawing.Color.FromArgb(196,236,196) :
                     Drawing.Color.FromArgb(243,211,166);
-                output.Text =
-                    "Cloud: " + Convert.ToString(h["status"]) + Environment.NewLine +
-                    "Mode: " + Convert.ToString(h["mode"]) + Environment.NewLine +
-                    "Aircraft: " + Convert.ToString(m["vehicle_id"]) + Environment.NewLine +
-                    "Pi device connected: " + Convert.ToString(m["device_online"]) + Environment.NewLine +
-                    "Fresh MAVLink: " + Convert.ToString(m["fresh"]) + Environment.NewLine +
-                    "Total frames: " + Convert.ToString(m["frames_received"]) + Environment.NewLine +
-                    "GCS viewers: " + Convert.ToString(m["viewers"]) +
-                    (Convert.ToString(m["viewers"],CultureInfo.InvariantCulture) == "0" ?
-                        " (none attached; click FLIGHT)" : "") + Environment.NewLine +
-                    "Observed ATTITUDE: " + attitudePreview + Environment.NewLine +
-                    "API HTTP response: " + result.apiMs.ToString(CultureInfo.InvariantCulture) + " ms" + Environment.NewLine +
-                    "Link endpoint response: " + result.linkMs.ToString(CultureInfo.InvariantCulture) + " ms" + Environment.NewLine +
-                    "Frame rate (5s): " + Convert.ToString(m.ContainsKey("frame_rate_5s") ? m["frame_rate_5s"] : "server update required") + Environment.NewLine +
-                    "Heartbeat age: " + Convert.ToString(m.ContainsKey("heartbeat_age_ms") ? m["heartbeat_age_ms"] : "unknown") + " ms" + Environment.NewLine +
-                    "Real HEARTBEAT frames: " + Convert.ToString(m.ContainsKey("heartbeat_frames_received") ?
-                        m["heartbeat_frames_received"] : "UNKNOWN (upgrade backend)") + Environment.NewLine +
-                    "Real ATTITUDE frames: " + Convert.ToString(m.ContainsKey("attitude_frames_received") ?
-                        m["attitude_frames_received"] : "UNKNOWN (upgrade backend)") + Environment.NewLine +
-                    "ATTITUDE age: " + Convert.ToString(m.ContainsKey("last_attitude_age_ms") ?
-                        m["last_attitude_age_ms"] : "UNKNOWN") + " ms" + Environment.NewLine +
-                    "Live heartbeat ready: " + Convert.ToString(realHeartbeat.HasValue ?
-                        (object)realHeartbeat.Value : "UNKNOWN") + Environment.NewLine +
-                    "Live attitude ready: " + Convert.ToString(realAttitude.HasValue ?
-                        (object)realAttitude.Value : "UNKNOWN") + Environment.NewLine +
-                    "Native GCS link: " + (nativeEvidence == null ?
-                        "EXTERNAL OR DISABLED" : nativeEvidence.Summary) +
-                        Environment.NewLine +
-                    "ATTITUDE STREAM DIAGNOSIS: " + (nativeEvidence == null ?
-                        "Native receiver unavailable; no local HB/ATT packet evidence." :
+                var pi = m.ContainsKey("device_online") &&
+                    m["device_online"] is bool && (bool)m["device_online"];
+                string localSummary = nativeEvidence == null ? "Not attached" :
+                    localHb ? (localAtt ? "HB + ATT live" :
+                        "HB live / ATT missing") : "Heartbeat unavailable";
+                string serverProfile = result.attitudeNote.IndexOf("HTTP 404",
+                    StringComparison.OrdinalIgnoreCase)>=0 ?
+                    "M1 legacy (attitude API absent)" :
+                    result.attitudeNote=="OK" ? "Attitude API available" :
+                    "Attitude API unverified";
+                lastSummary =
+                    "CLOUD     " + Convert.ToString(h["status"]) + Environment.NewLine +
+                    "AIRCRAFT  " + Convert.ToString(m["vehicle_id"]) + Environment.NewLine +
+                    "PI        " + (pi ? "Connected" : "Not connected") + Environment.NewLine +
+                    "MAVLINK   " + (fresh ? "Receiving" : "Stale / missing") + Environment.NewLine +
+                    "NATIVE    " + localSummary + Environment.NewLine +
+                    "ATTITUDE  " + (localAtt ? "Fresh packets received" :
+                        "No live roll/pitch (message 30)") + Environment.NewLine +
+                    "SERVER    " + serverProfile + Environment.NewLine +
+                    "LATENCY   API " + result.apiMs.ToString(CultureInfo.InvariantCulture) +
+                        " ms / MAVLink " + result.linkMs.ToString(CultureInfo.InvariantCulture) +
+                        " ms" + Environment.NewLine +
+                    "UPDATED   " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'",
+                        CultureInfo.InvariantCulture) + Environment.NewLine +
+                    "MODE      Read-only";
+                lastTechnical = lastSummary + Environment.NewLine + Environment.NewLine +
+                    "SERVER COUNTERS" + Environment.NewLine +
+                    "Frames: " + Convert.ToString(m.ContainsKey("frames_received") ?
+                        m["frames_received"] : "Unavailable") +
+                    " | viewers: " + Convert.ToString(m.ContainsKey("viewers") ?
+                        m["viewers"] : "Unavailable") + Environment.NewLine +
+                    "Frame rate (5 s): " + Convert.ToString(m.ContainsKey("frame_rate_5s") ?
+                        m["frame_rate_5s"] : "Not reported") + Environment.NewLine +
+                    "Heartbeat frames: " + Convert.ToString(m.ContainsKey("heartbeat_frames_received") ?
+                        m["heartbeat_frames_received"] : "Not reported") + Environment.NewLine +
+                    "Attitude frames: " + Convert.ToString(m.ContainsKey("attitude_frames_received") ?
+                        m["attitude_frames_received"] : "Not reported") + Environment.NewLine +
+                    "Attitude age (ms): " + Convert.ToString(m.ContainsKey("last_attitude_age_ms") ?
+                        m["last_attitude_age_ms"] : "Not reported") + Environment.NewLine +
+                    "Queued-frame drops: " + Convert.ToString(m.ContainsKey("viewer_frames_dropped") ?
+                        m["viewer_frames_dropped"] : "Not reported") + Environment.NewLine +
+                    "M1 attitude view: " + attitudePreview + Environment.NewLine +
+                    "NATIVE BRIDGE" + Environment.NewLine +
+                    (nativeEvidence == null ? "Unavailable" : nativeEvidence.Summary) +
+                    Environment.NewLine +
+                    (nativeEvidence == null ? "No local evidence" :
                         nativeEvidence.AttitudeTroubleshooting) + Environment.NewLine +
-                    "Dropped queued frames: " + Convert.ToString(m.ContainsKey("viewer_frames_dropped") ? m["viewer_frames_dropped"] : "unknown") + Environment.NewLine +
-                    "UTC checked: " + DateTime.UtcNow.ToString("u", CultureInfo.InvariantCulture) +
-                    Environment.NewLine + Environment.NewLine +
-                    "Diagnostics only. Fresh telemetry is not proof of safe flight or command authority." +
-                    Environment.NewLine + Environment.NewLine + lastDuplexResult;
+                    "PI DIAGNOSTICS  " + lastDuplexResult;
+                ShowSelectedReport();
             }
             catch (Exception ex)
             {
                 if (IsDisposed || Disposing) return;
-                freshness.Text = "LINK / UNAVAILABLE — NO VERIFIED TELEMETRY";
+                freshness.Text = "Link | Unavailable";
                 freshness.ForeColor = Drawing.Color.FromArgb(255,184,150);
-                output.Text = "Link check failed: " + ex.Message +
-                    "\nCheck Tailscale, cloud API, hostname and TLS. No certificate checks were disabled.";
+                lastSummary = "Cloud link unavailable. Check private HTTPS, sign-in and Pi service.";
+                lastTechnical = lastSummary + Environment.NewLine +
+                    "Error category: " + ex.GetType().Name;
+                ShowSelectedReport();
             }
             finally
             {
