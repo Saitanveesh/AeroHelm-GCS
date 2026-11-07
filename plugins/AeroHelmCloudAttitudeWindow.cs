@@ -125,8 +125,8 @@ namespace AeroHelm.GcsCloud
             poll.Start();
             while (!shutdown.IsCancellationRequested)
             {
-                if (string.IsNullOrWhiteSpace(Program.AeroHelmOperatorToken) ||
-                    DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc)
+                if (string.IsNullOrWhiteSpace(VihangaLinkSession.AccessToken) ||
+                    DateTime.UtcNow >= VihangaLinkSession.ExpiresUtc)
                 {
                     connectionIssue = "Cloud session expired or not authenticated. Sign in again.";
                     streamConnected = false;
@@ -144,12 +144,12 @@ namespace AeroHelm.GcsCloud
                         shutdown.Token))
                     using (var ws = new ClientWebSocket())
                     {
-                        var lifetime = Program.AeroHelmTokenExpiresUtc - DateTime.UtcNow;
+                        var lifetime = VihangaLinkSession.ExpiresUtc - DateTime.UtcNow;
                         if (lifetime <= TimeSpan.Zero) break;
                         linked.CancelAfter(lifetime);
                         ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
                         ws.Options.SetRequestHeader("Authorization",
-                            "Bearer " + Program.AeroHelmOperatorToken);
+                            "Bearer " + VihangaLinkSession.AccessToken);
                         connectionIssue = "Connecting to authenticated MAVLink WSS viewer.";
                         RefreshDisplay();
                         await ws.ConnectAsync(url, linked.Token);
@@ -220,7 +220,7 @@ namespace AeroHelm.GcsCloud
                 catch (OperationCanceledException)
                 {
                     connectionIssue = DateTime.UtcNow >=
-                        Program.AeroHelmTokenExpiresUtc ?
+                        VihangaLinkSession.ExpiresUtc ?
                         "Cloud session expired. Sign in again." :
                         "Cloud viewer disconnected.";
                 }
@@ -238,7 +238,7 @@ namespace AeroHelm.GcsCloud
                     RefreshDisplay();
                 }
                 if (shutdown.IsCancellationRequested ||
-                    DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc)
+                    DateTime.UtcNow >= VihangaLinkSession.ExpiresUtc)
                     break;
                 try { await Task.Delay(1800, shutdown.Token); }
                 catch (OperationCanceledException) { break; }
