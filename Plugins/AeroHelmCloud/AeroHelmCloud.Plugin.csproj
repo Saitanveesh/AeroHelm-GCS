@@ -15,6 +15,7 @@
     <Compile Include="..\..\plugins\AeroHelmLinkSelector.cs" Link="AeroHelmLinkSelector.cs" />
     <Compile Include="..\..\plugins\VihangaLinkSession.cs" Link="VihangaLinkSession.cs" />
     <Compile Include="..\..\plugins\VihangaLinkLoginWindow.cs" Link="VihangaLinkLoginWindow.cs" />
+    <Compile Include="..\..\plugins\VihangaMissionPreviewWindow.cs" Link="VihangaMissionPreviewWindow.cs" />
     <Compile Include="..\..\plugins\AeroHelmPilotDirectWindow.cs" Link="AeroHelmPilotDirectWindow.cs" />
     <Compile Include="..\..\plugins\AeroHelmCloudAttitudeWindow.cs" Link="AeroHelmCloudAttitudeWindow.cs" />
     <Compile Include="..\..\plugins\AeroHelmWorkspace.cs" Link="AeroHelmWorkspace.cs" />
