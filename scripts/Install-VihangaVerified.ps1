@@ -49,9 +49,11 @@ if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
     if (Test-Path -LiteralPath $runtime -PathType Container) {
         $partial = @(Get-ChildItem -LiteralPath $runtime -Force -ErrorAction Stop)
         if ($partial.Count -gt 0) {
-            throw "Partial native runtime found at $runtime. Inspect and preserve it before attempting a fresh bootstrap. Nothing was deleted."
+            Write-Warning 'Partial first-build runtime detected. Bootstrap will preserve an external SHA256-verified snapshot before retrying.'
         }
     }
+} elseif (-not (Test-Path -LiteralPath (Join-Path $root 'build-logs\aerohelm-consolidated-release.json') -PathType Leaf)) {
+    Write-Warning 'Existing native EXE has no release manifest. Build will back up the entire unverified runtime before rebuilding.'
 }
 Invoke-CheckedScript 'Windows source contracts' 'Test-AeroHelmWindowsPages.ps1' @()
 Invoke-CheckedScript "Native release $stage" 'Consolidate-AeroHelmWindows.ps1' @('-Stage',$stage,'-Apply','-WithBranding')
