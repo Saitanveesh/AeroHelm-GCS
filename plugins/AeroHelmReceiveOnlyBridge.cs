@@ -118,8 +118,8 @@ namespace AeroHelm.GcsCloud
         internal bool Start()
         {
             if (cancellation != null) return true; // Already listening; idempotent retry.
-            if (string.IsNullOrEmpty(Program.AeroHelmOperatorToken) ||
-                DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc)
+            if (string.IsNullOrEmpty(VihangaLinkSession.AccessToken) ||
+                DateTime.UtcNow >= VihangaLinkSession.ExpiresUtc)
             {
                 state = "LOGIN REQUIRED; SIGN IN BEFORE CLOUD VIEW";
                 return false;
@@ -158,7 +158,7 @@ namespace AeroHelm.GcsCloud
                 catch (SocketException) when (stop.IsCancellationRequested) { return; }
                 catch (OperationCanceledException) when (!stop.IsCancellationRequested)
                 {
-                    state = DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc ?
+                    state = DateTime.UtcNow >= VihangaLinkSession.ExpiresUtc ?
                         "CLOUD SESSION EXPIRED; SIGN IN AGAIN" : "LOCAL TCP DISCONNECTED";
                 }
                 catch (Exception ex) when (!stop.IsCancellationRequested)
@@ -174,7 +174,7 @@ namespace AeroHelm.GcsCloud
         internal static Uri PrivateWebSocketUri()
         {
             Uri origin;
-            if (!Uri.TryCreate(Program.AeroHelmCloudOrigin, UriKind.Absolute, out origin) ||
+            if (!Uri.TryCreate(VihangaLinkSession.CloudOrigin, UriKind.Absolute, out origin) ||
                 origin.Scheme != Uri.UriSchemeHttps ||
                 !(origin.Host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase) ||
                   origin.IsLoopback) || origin.UserInfo.Length != 0 ||
@@ -197,8 +197,8 @@ namespace AeroHelm.GcsCloud
         {
             // Never retain JWT beyond the connection. A separate login is NOT
             // required because startup authentication already provided it.
-            if (string.IsNullOrEmpty(Program.AeroHelmOperatorToken) ||
-                DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc)
+            if (string.IsNullOrEmpty(VihangaLinkSession.AccessToken) ||
+                DateTime.UtcNow >= VihangaLinkSession.ExpiresUtc)
             {
                 state = "CLOUD SESSION EXPIRED; SIGN IN AGAIN";
                 return;
@@ -209,7 +209,7 @@ namespace AeroHelm.GcsCloud
             {
                 // A live WebSocket must not outlive the authenticated operator
                 // session merely because its handshake succeeded earlier.
-                var lifetime = Program.AeroHelmTokenExpiresUtc - DateTime.UtcNow;
+                var lifetime = VihangaLinkSession.ExpiresUtc - DateTime.UtcNow;
                 if (lifetime <= TimeSpan.Zero)
                 {
                     state = "CLOUD SESSION EXPIRED; SIGN IN AGAIN";
@@ -223,7 +223,7 @@ namespace AeroHelm.GcsCloud
                 Interlocked.Exchange(ref validAttitudeSamples, 0);
                 ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
                 ws.Options.SetRequestHeader("Authorization",
-                    "Bearer " + Program.AeroHelmOperatorToken);
+                    "Bearer " + VihangaLinkSession.AccessToken);
                 state = "CONNECTING AUTHENTICATED CLOUD STREAM";
                 await ws.ConnectAsync(url, linked.Token);
                 cloudStreamOpen = true;
@@ -296,7 +296,7 @@ namespace AeroHelm.GcsCloud
                     // DrainGcsAsync is cancellation-aware and has no send path.
                     var ignored = drain;
                     if (!stop.IsCancellationRequested)
-                        state = DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc ?
+                        state = DateTime.UtcNow >= VihangaLinkSession.ExpiresUtc ?
                             "CLOUD SESSION EXPIRED; SIGN IN AGAIN" : "NATIVE TCP DISCONNECTED";
                 }
             }
