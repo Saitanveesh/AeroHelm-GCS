@@ -57,8 +57,7 @@ foreach($relative in $relatives){
     [long]$size=0
     while($pending.Count -gt 0){
         $directory=$pending.Pop()
-        foreach($child in @(Get-ChildItem -LiteralPath $directory -Force
-                             -ErrorAction Stop)){
+        foreach($child in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)){
             if(($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){
                 throw "Cleanup target contains a reparse point; inspect: $($child.FullName)"
             }

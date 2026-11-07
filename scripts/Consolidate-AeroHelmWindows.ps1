@@ -2,7 +2,7 @@
 # Default is INSPECT ONLY. -Stage Build -Apply is explicit and fully backed up.
 # Requires an already fetched/checked-out reviewed GCS development branch.
 param(
-    [ValidateSet('Inspect','Build','Verify')]
+    [ValidateSet('Inspect','Build','Verify','Diagnose')]
     [string]$Stage='Inspect',
     [switch]$Apply,
     [switch]$WithBranding
@@ -98,18 +98,46 @@ if($Stage -eq 'Inspect'){
     Write-Host 'Next: close Mission Planner, update to the reviewed head via git pull --ff-only, then run -Stage Build -Apply.'
     return
 }
-if($Stage -eq 'Verify'){
+if($Stage -in @('Verify','Diagnose')){
     if(-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)){
-        throw 'No release manifest found; run -Stage Build -Apply first.'
+        throw 'Release manifest missing. Existing runtime is not verified; rebuild with -Stage Build -Apply after backing it up.'
     }
     $manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    Assert-PluginLayout
-    if($manifest.git_commit -ne $commit -or
-       $manifest.executable_sha256 -ne (Hash $exe) -or
-       $manifest.plugin_sha256 -ne (Hash $plugin)){
-        throw 'Build manifest does not match CURRENT checkout and runtime. Old or replaced artifacts detected.'
+    # Diagnose is read-only and reports mismatches; Verify additionally enforces
+    # the installed plugin layout. Neither mode rewrites a manifest or DLL.
+    if($Stage -eq 'Verify'){ Assert-PluginLayout }
+    $actualExeHash=Hash $exe
+    $actualPluginHash=Hash $plugin
+    $differences=@()
+    foreach($entry in @(
+        @{Field='Manifest schema'; Recorded=[string]$manifest.schema; Actual='aerohelm.gcs.consolidation.v1'},
+        @{Field='Source branch'; Recorded=[string]$manifest.source_branch; Actual=$expectedBranch},
+        @{Field='Git source commit'; Recorded=[string]$manifest.git_commit; Actual=$commit},
+        @{Field='MissionPlanner.exe SHA256'; Recorded=[string]$manifest.executable_sha256; Actual=[string]$actualExeHash},
+        @{Field='Cloud plugin DLL SHA256'; Recorded=[string]$manifest.plugin_sha256; Actual=[string]$actualPluginHash},
+        @{Field='Full native build completed'; Recorded=[string]$manifest.native_build_reported_success; Actual='True'},
+        @{Field='Plugin install completed'; Recorded=[string]$manifest.plugin_installer_reported_success; Actual='True'}
+    )){
+        if(-not [string]::Equals($entry.Recorded,$entry.Actual,[StringComparison]::OrdinalIgnoreCase)){
+            $differences += [pscustomobject]@{
+                Field=$entry.Field; Recorded=$entry.Recorded; Actual=$entry.Actual
+            }
+        }
     }
-    Write-Host 'VERIFY PASSED: actual EXE/DLL file hashes match the locally recorded release manifest.'
+    if($differences.Count -gt 0){
+        Write-Warning 'Release verification differences (read-only; no files changed):'
+        $differences | Format-Table -AutoSize -Wrap | Out-Host
+        if($Stage -eq 'Verify'){
+            throw 'Build manifest does not match CURRENT checkout and runtime. Rebuild the exact source with the transactional Windows repair; never edit the manifest to bypass a mismatch.'
+        }
+        Write-Warning 'DIAGNOSE ONLY: runtime remains unverified. No rebuild, cleanup or flight action was performed.'
+        return
+    }
+    if($Stage -eq 'Diagnose'){
+        Write-Host 'DIAGNOSE: all recorded hashes and source identity match. Installed plugin layout has NOT been validated; run -Stage Verify.'
+        return
+    }
+    Write-Host 'VERIFY PASSED: source commit, installed EXE/DLL hashes and build/install state match the locally recorded release manifest.'
     Write-Host 'Source & artifact verification is NOT a Windows UI smoke test or real aircraft acceptance.'
     return
 }

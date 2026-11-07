@@ -88,6 +88,24 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("Sort parameter targets locally", intel)
         self.assertIn("ParseParameterTargets()", intel)
 
+    def test_cleanup_source_has_valid_get_child_item_invocation(self):
+        cleanup = source("scripts/Cleanup-AeroHelmGenerated.ps1")
+        self.assertIn(
+            "Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop",
+            cleanup)
+        self.assertNotIn("-Force\\n                             -ErrorAction Stop", cleanup)
+        self.assertIn("if(-not $Apply)", cleanup)
+        self.assertIn("Consolidate-AeroHelmWindows.ps1", cleanup)
+
+    def test_manifest_diagnosis_is_read_only_and_verify_fails_closed(self):
+        release = source("scripts/Consolidate-AeroHelmWindows.ps1")
+        self.assertIn("ValidateSet('Inspect','Build','Verify','Diagnose')", release)
+        self.assertIn("if($Stage -eq 'Verify'){ Assert-PluginLayout }", release)
+        self.assertIn("Git source commit", release)
+        self.assertIn("Cloud plugin DLL SHA256", release)
+        self.assertIn("never edit the manifest to bypass a mismatch", release)
+        self.assertIn("No rebuild, cleanup or flight action", release)
+
     def test_release_pins_source_and_native_binary_hashes(self):
         launcher = source("scripts/Start-VihangaGCS.ps1")
         release = source("scripts/Consolidate-AeroHelmWindows.ps1")
