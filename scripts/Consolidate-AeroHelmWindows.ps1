@@ -2,7 +2,7 @@
 # Default is INSPECT ONLY. -Stage Build -Apply is explicit and fully backed up.
 # Requires an already fetched/checked-out reviewed GCS development branch.
 param(
-    [ValidateSet('Inspect','Build','Verify','Diagnose')]
+    [ValidateSet('Inspect','Build','Verify','Diagnose','Bootstrap')]
     [string]$Stage='Inspect',
     [switch]$Apply,
     [switch]$WithBranding
@@ -141,38 +141,57 @@ if($Stage -in @('Verify','Diagnose')){
     Write-Host 'Source & artifact verification is NOT a Windows UI smoke test or real aircraft acceptance.'
     return
 }
+$freshBootstrap=($Stage -eq 'Bootstrap')
 if(-not $Apply){
-    throw 'Build changes runtime binaries. Re-run with -Stage Build -Apply after INSPECT and source update.'
+    throw 'Build changes runtime binaries. Use -Stage Bootstrap -Apply -WithBranding for a clean clone, or -Stage Build -Apply for an existing verified runtime.'
+}
+if($freshBootstrap){
+    if(Test-Path -LiteralPath $exe -PathType Leaf){
+        throw 'Existing MissionPlanner.exe found. Bootstrap cannot overwrite an existing runtime. Use -Stage Build -Apply.'
+    }
+    # Never delete unexpected files from a purportedly new checkout.
+    if(Test-Path -LiteralPath $runtime -PathType Container){
+        $existing=@(Get-ChildItem -LiteralPath $runtime -Force -ErrorAction Stop)
+        if($existing.Count -ne 0){
+            throw 'Fresh bootstrap requires an empty runtime directory. Existing build files were not touched.'
+        }
+    }
 }
 if(Get-Process MissionPlanner -ErrorAction SilentlyContinue){
     throw 'Close every Mission Planner window BEFORE backup/build. Current binaries will not be overwritten while running.'
 }
-if(-not (Test-Path -LiteralPath $exe -PathType Leaf)){
-    throw 'No existing Mission Planner runtime. Run the reviewed build script manually first.'
-}
-# Full-runtime backup can be large: refuse to start if the drive cannot
-# hold at least one verified copy plus a safety buffer.
-$runtimeBytes=(Get-ChildItem -LiteralPath $runtime -Recurse -File -ErrorAction Stop |
-    Measure-Object -Property Length -Sum).Sum
-$driveLetter=[System.IO.Path]::GetPathRoot($runtime).Substring(0,1)
-$drive=Get-PSDrive -Name $driveLetter -ErrorAction Stop
-if($drive.Free -lt ([double]$runtimeBytes * 1.15 + 250MB)){
-    throw 'Not enough free disk space to snapshot the complete old GCS runtime safely.'
+if(-not $freshBootstrap -and
+   -not (Test-Path -LiteralPath $exe -PathType Leaf)){
+    throw 'Existing build runtime not found. Use -Stage Bootstrap for a clean clone.'
 }
 New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
-$stamp=(Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
-# Full runtime snapshots must live OUTSIDE the SDK-style source tree.
-# The old design placed runtime/Plugins/*.cs under build-logs, where the
-# project's default Compile glob compiled them as duplicate classes.
-# Existing historical backups in build-logs are preserved; csproj excludes them.
-$backupRoot=Join-Path (Split-Path -Parent $root) 'AeroHelm-GCS-release-backups'
-$backup=Join-Path $backupRoot $stamp
-$snapshot=Join-Path $backup 'runtime'
-$oldHash=Hash $exe
-Write-Host "Backing up the COMPLETE old runtime to $snapshot"
-Copy-Runtime $runtime $snapshot $false
-if((Hash (Join-Path $snapshot 'MissionPlanner.exe')) -ne $oldHash){
-    throw 'Release backup failed hash verification; original runtime remains untouched.'
+$backup=$null
+$snapshot=$null
+$oldHash=$null
+if(-not $freshBootstrap){
+    # Existing installations always use a full external runtime snapshot.
+    $runtimeBytes=(Get-ChildItem -LiteralPath $runtime -Recurse -File -ErrorAction Stop |
+        Measure-Object -Property Length -Sum).Sum
+    $driveLetter=[System.IO.Path]::GetPathRoot($runtime).Substring(0,1)
+    $drive=Get-PSDrive -Name $driveLetter -ErrorAction Stop
+    if($drive.Free -lt ([double]$runtimeBytes * 1.15 + 250MB)){
+        throw 'Not enough free disk space to snapshot the previous runtime.'
+    }
+    $stamp=(Get-Date -Format 'yyyyMMdd-HHmmss') + '-' +
+        [Guid]::NewGuid().ToString('N').Substring(0,8)
+    $backupRoot=Join-Path (Split-Path -Parent $root) 'AeroHelm-GCS-release-backups'
+    $backup=Join-Path $backupRoot $stamp
+    $snapshot=Join-Path $backup 'runtime'
+    $oldHash=Hash $exe
+    Write-Host "Backing up complete previous runtime: $snapshot"
+    Copy-Runtime $runtime $snapshot $false
+    if((Hash (Join-Path $snapshot 'MissionPlanner.exe')) -ne $oldHash){
+        throw 'Runtime backup verification failed; original runtime remains untouched.'
+    }
+}
+else {
+    Write-Host 'FRESH INSTALL: no prior runtime is present or replaced.'
+    Write-Host 'Build must pass before a first-release manifest is created.'
 }
 # Any failure after backup restores the whole former runtime (not just plugin).
 try{
@@ -191,13 +210,15 @@ try{
     # Archive only exact known obsolete DLL names; never delete arbitrary
     # Mission Planner or third-party plugins. The installer already archives
     # the dynamic AeroHelmCloud.cs source when it installs the new plugin.
-    $knownObsolete=@('AeroHelmCloud.dll','AeroHelm.Cloud.Plugin.dll')
-    $old=Join-Path $backup 'obsolete-plugin-archive'
-    foreach($name in $knownObsolete){
-        $candidate=Join-Path $plugins $name
-        if(Test-Path -LiteralPath $candidate -PathType Leaf){
-            New-Item -Path $old -ItemType Directory -Force | Out-Null
-            Move-Item -LiteralPath $candidate -Destination (Join-Path $old $name) -ErrorAction Stop
+    if(-not $freshBootstrap){
+        $knownObsolete=@('AeroHelmCloud.dll','AeroHelm.Cloud.Plugin.dll')
+        $old=Join-Path $backup 'obsolete-plugin-archive'
+        foreach($name in $knownObsolete){
+            $candidate=Join-Path $plugins $name
+            if(Test-Path -LiteralPath $candidate -PathType Leaf){
+                New-Item -Path $old -ItemType Directory -Force | Out-Null
+                Move-Item -LiteralPath $candidate -Destination (Join-Path $old $name) -ErrorAction Stop
+            }
         }
     }
     Assert-PluginLayout
@@ -232,22 +253,32 @@ try{
         Set-Content -LiteralPath $tempManifest -Encoding UTF8 -ErrorAction Stop
     Move-Item -LiteralPath $tempManifest -Destination $manifestPath -Force
     Write-Host "CONSOLIDATED BUILD COMPLETE: $manifestPath" -ForegroundColor Green
-    Write-Host "Backup retained: $snapshot"
+    if($freshBootstrap){
+        Write-Host 'Clean-source first install; previous runtime backup: none (not required).'
+    } else {
+        Write-Host "Backup retained: $snapshot"
+    }
     Write-Host "Compiled plugin fingerprint: $($newHash.Substring(0,16))"
     Write-Host 'Run -Stage Verify before launching the native ground station.'
 }
 catch {
     $failure=$_
-    Write-Warning "Consolidation failed; restoring old runtime from $snapshot"
-    try {
-        Copy-Runtime $snapshot $runtime $true
-        if((Hash $exe) -ne $oldHash){
-            throw 'Original executable hash does not match saved snapshot.'
-        }
-        Write-Warning 'Original runtime restored; existing Git source checkout was NOT reset.'
+    if($freshBootstrap){
+        Write-Warning 'Fresh install failed; no previous binaries exist in this checkout.'
+        Write-Warning 'Any partial build files remain unverified. Do not launch.'
     }
-    catch {
-        Write-Error "CRITICAL: automatic runtime restore failed. Keep Mission Planner stopped. Snapshot: $snapshot"
+    else {
+        Write-Warning "Consolidation failed; restoring old runtime from $snapshot"
+        try {
+            Copy-Runtime $snapshot $runtime $true
+            if((Hash $exe) -ne $oldHash){
+                throw 'Original executable hash does not match saved snapshot.'
+            }
+            Write-Warning 'Previous runtime restored; Git source checkout was not reset.'
+        }
+        catch {
+            Write-Error "CRITICAL: automatic runtime restore failed. Keep Mission Planner stopped. Snapshot: $snapshot"
+        }
     }
     throw $failure
 }
