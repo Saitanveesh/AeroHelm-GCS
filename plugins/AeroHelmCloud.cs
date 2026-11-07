@@ -30,16 +30,15 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _paths;
         private ToolStripButton _ops;
         private ToolStripButton _intel;
-        private ToolStripButton _touch;
+        private ToolStripDropDownButton _workspaces;
         internal static AeroHelmReceiveOnlyBridge ActiveNativeBridge;
-        private EventHandler _touchStartupShown;
-        private bool _simulationWasVisible;
+                private bool _simulationWasVisible;
         private bool _helpWasVisible;
         private readonly System.Windows.Forms.Timer _cloudLinkWatchdog =
             new System.Windows.Forms.Timer();
         private bool _cloudProbeBusy;
 
-        public override string Name { get { return "AeroHelm Cloud"; } }
+        public override string Name { get { return "Vihanga Ground Station"; } }
         public override string Version { get { return "0.3.0-rc1"; } }
         public override string Author { get { return "AeroHelm Contributors"; } }
 
@@ -53,7 +52,7 @@ namespace AeroHelm.GcsCloud
             // Place a distinct, text-only button immediately after HELP instead.
             _button = new ToolStripButton("CLOUD");
             _button.Name = "AeroHelmCloudButton";
-            _button.ToolTipText = "AeroHelm Cloud: login, aircraft registry and view sessions (no flight commands)";
+            _button.ToolTipText = "Vihanga cloud: authenticated telemetry viewing (no remote flight commands)";
             _button.Image = AeroHelmIconPainter.Make("CLOUD", 20);
             _button.ImageScaling = ToolStripItemImageScaling.None;
             _button.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
@@ -118,18 +117,30 @@ namespace AeroHelm.GcsCloud
             };
             menu.Items.Insert(at++, _intel);
 
-            // Single touch-first entry point for nine actual workspaces.
-            // Existing classic buttons are retained as a fallback for
-            // mouse/keyboard operators and older Mission Planner workflows.
-            _touch = NewToolbarButton("TOUCH", "Open nine-module AeroHelm touch workspace");
-            _touch.Font = new FrameworkDrawing::System.Drawing.Font(
-                "Segoe UI Semibold", 10f, FrameworkDrawing::System.Drawing.FontStyle.Bold);
-            _touch.Click += delegate
+            // Secondary workspaces remain available without replacing native
+            // Flight Data, Flight Plan, Setup or Configuration controls.
+            _workspaces = new ToolStripDropDownButton("MORE")
             {
-                using (var panel = new AeroHelmTouchPanel())
-                    panel.ShowDialog(MainV2.instance);
+                Name = "VihangaMoreButton",
+                ToolTipText = "Fleet, security, analytics, parameters and settings",
+                Image = AeroHelmIconPainter.Make("SETTINGS",20),
+                ImageScaling = ToolStripItemImageScaling.None,
+                DisplayStyle = ToolStripItemDisplayStyle.ImageAndText,
+                ForeColor = FrameworkDrawing::System.Drawing.Color.White,
+                Margin = new Padding(4,0,4,0),
+                AutoSize = true
             };
-            menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _touch);
+            _workspaces.DropDownItems.Add("FLEET",null,(s,e) =>
+                ShowWorkspace(new AeroHelmReadOnlyPage("FLEET")));
+            _workspaces.DropDownItems.Add("SECURITY",null,(s,e) =>
+                ShowWorkspace(new AeroHelmReadOnlyPage("SECURITY")));
+            _workspaces.DropDownItems.Add("ANALYTICS",null,(s,e) =>
+                ShowWorkspace(new AeroHelmReadOnlyPage("ANALYTICS")));
+            _workspaces.DropDownItems.Add("PARAMETERS",null,(s,e) =>
+                ShowWorkspace(new AeroHelmIntelWindow("PARAMETERS")));
+            _workspaces.DropDownItems.Add("SETTINGS",null,(s,e) =>
+                ShowWorkspace(new VihangaSettingsWindow()));
+            menu.Items.Insert(at++, _workspaces);
 
             // Independent connection module. Explicit operator choice:
             // CLOUD is receive-only; DIRECT exposes native COM/radio controls.
@@ -144,8 +155,8 @@ namespace AeroHelm.GcsCloud
                             picker.Selection,null);
                 }
             };
-            menu.Items.Insert(menu.Items.IndexOf(_touch) + 1, _paths);
-            // This monitor stays active after the TOUCH window closes and the
+            menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _paths);
+            // This monitor stays active while the native Flight Data workspace is in use and the
             // pilot opens native Flight Data. It NEVER connects to a radio,
             // sends MAVLink or initiates failover. Its only output is a
             // persistent, nonmodal LINK/PATHS warning to the operator.
@@ -179,34 +190,7 @@ namespace AeroHelm.GcsCloud
                 ActiveNativeBridge.Start(); // Fail closed if login/port unavailable.
             }
 
-            // Dedicated Windows tablet/kiosk mode is opt-in. Native Mission
-            // Planner still starts normally first, including existing
-            // AeroHelm operator login and all radio/USB recovery paths.
-            if (string.Equals(Environment.GetEnvironmentVariable("AEROHELM_TOUCH_STARTUP"),
-                              "1", StringComparison.Ordinal))
-            {
-                Action openTouch = () =>
-                {
-                    if (main.IsDisposed) return;
-                    using (var panel = new AeroHelmTouchPanel())
-                        panel.ShowDialog(main);
-                };
-                if (main.Visible && main.IsHandleCreated)
-                {
-                    main.BeginInvoke(openTouch);
-                }
-                else
-                {
-                    _touchStartupShown = (sender, args) =>
-                    {
-                        main.Shown -= _touchStartupShown;
-                        _touchStartupShown = null;
-                        if (!main.IsDisposed && main.IsHandleCreated)
-                            main.BeginInvoke(openTouch);
-                    };
-                    main.Shown += _touchStartupShown;
-                }
-            }
+            // Mission Planner remains the operator's primary workspace.
             return true;
         }
 
@@ -275,6 +259,12 @@ namespace AeroHelm.GcsCloud
             finally { _cloudProbeBusy = false; }
         }
 
+        private static void ShowWorkspace(Form window)
+        {
+            using (window)
+                window.ShowDialog(MainV2.instance);
+        }
+
         private static ToolStripButton NewToolbarButton(string label, string tip)
         {
             return new ToolStripButton(label)
@@ -322,11 +312,6 @@ namespace AeroHelm.GcsCloud
                 var main = MainV2.instance;
                 if (main != null && !main.IsDisposed)
                 {
-                    if (_touchStartupShown != null)
-                    {
-                        main.Shown -= _touchStartupShown;
-                        _touchStartupShown = null;
-                    }
                     main.MenuSimulation.Visible = _simulationWasVisible;
                     main.MenuHelp.Visible = _helpWasVisible;
                     main.MainMenu.Items.Remove(_button);
@@ -336,13 +321,13 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_paths);
                     main.MainMenu.Items.Remove(_ops);
                     main.MainMenu.Items.Remove(_intel);
-                    main.MainMenu.Items.Remove(_touch);
+                    main.MainMenu.Items.Remove(_workspaces);
                 }
                 // Every toolbar item owns its native bitmap. Release all
                 // symbols when the plugin is unloaded; do not leak WinForms
                 // GDI handles across repeated plugin lifecycle tests.
-                foreach(var item in new ToolStripButton[]{
-                    _button,_survey,_vision,_link,_ops,_intel,_touch,_paths
+                foreach(ToolStripItem item in new ToolStripItem[]{
+                    _button,_survey,_vision,_link,_ops,_intel,_workspaces,_paths
                 })
                 {
                     if(item.Image!=null)
@@ -360,7 +345,7 @@ namespace AeroHelm.GcsCloud
                 _paths = null;
                 _ops = null;
                 _intel = null;
-                _touch = null;
+                _workspaces = null;
             }
             return true;
         }

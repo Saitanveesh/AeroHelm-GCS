@@ -14,7 +14,7 @@ using System.Windows.Forms;
 
 namespace AeroHelm.GcsCloud
 {
-    // A standalone touch-friendly view for Fleet, Security, and Analytics.
+    // Native read-only workspace for Fleet, Security, and Analytics.
     // It consumes EXISTING JWT-protected endpoints, not new control endpoints.
     internal sealed class AeroHelmReadOnlyPage : Form
     {
@@ -39,7 +39,7 @@ namespace AeroHelm.GcsCloud
             if (section != "FLEET" && section != "SECURITY" && section != "ANALYTICS")
                 throw new ArgumentException("Unsupported read-only module.", "module");
 
-            Text = "AeroHelm — " + section;
+            Text = "VIHANGA — " + section;
             StartPosition = FormStartPosition.CenterParent;
             MinimumSize = new Drawing.Size(720,580);
             Width = 1020;

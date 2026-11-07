@@ -67,7 +67,7 @@ namespace AeroHelm.GcsCloud
 
         public AeroHelmOpsWindow()
         {
-            Text="AeroHelm OPS — Autonomous simulation and supervised maintenance";
+            Text="VIHANGA — Operations | Simulator and Bench Maintenance";
             StartPosition=FormStartPosition.CenterParent;
             Width=860;Height=730;
             MinimumSize=new Drawing.Size(740,620);
@@ -189,7 +189,7 @@ namespace AeroHelm.GcsCloud
 
             foreach(var panel in new[]{sim,maint,policyPage})
             {
-                var home=new Button {Text="← HOME / CLOSE OPS",Width=300,Height=42};
+                var home=new Button {Text="CLOSE OPS",Width=300,Height=42};
                 home.Click+=(s,e)=>Close();
                 panel.Controls.Add(home);
                 panel.Controls.SetChildIndex(home,0);

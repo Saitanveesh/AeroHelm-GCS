@@ -27,17 +27,18 @@ namespace AeroHelm.GcsCloud
         private readonly TextBox targets=new TextBox();
         private readonly Label banner=new Label();
         private string lastMissionHash;
+        private string lastMissionPlan;
         private bool running;
 
         public AeroHelmIntelWindow(string initialTab = "FLEET")
         {
-            Text="AeroHelm INTEL — Mission assurance and fleet intelligence";
+            Text="VIHANGA — Fleet Intelligence";
             StartPosition=FormStartPosition.CenterParent;
             Width=920;Height=740;MinimumSize=new Drawing.Size(750,550);
             var header=new FlowLayoutPanel{Dock=DockStyle.Top,Height=42,Padding=new Padding(8)};
             header.Controls.Add(new Label{Text="Aircraft:",Width=65,
                 TextAlign=Drawing.ContentAlignment.MiddleRight,Height=26});
-            vehicle.Text="AH-HW-001";vehicle.Width=160;header.Controls.Add(vehicle);
+            vehicle.Text="";vehicle.Width=160;vehicle.AccessibleName="Aircraft identifier";header.Controls.Add(vehicle);
             banner.Text="ANALYSIS ONLY — no mission upload, flight command, calibration or parameter write.";
             banner.AutoSize=true;banner.ForeColor=Drawing.Color.DarkRed;header.Controls.Add(banner);
             var tabs=new TabControl{Dock=DockStyle.Fill};
@@ -102,6 +103,10 @@ namespace AeroHelm.GcsCloud
             opts.Controls.Add(new Label{Text="Nominal speed (m/s)",AutoSize=true});
             opts.Controls.Add(speed);
             missionPanel.Controls.Add(opts);
+            points.TextChanged += (s,e) => InvalidateMissionValidation();
+            fence.TextChanged += (s,e) => InvalidateMissionValidation();
+            altitude.ValueChanged += (s,e) => InvalidateMissionValidation();
+            speed.ValueChanged += (s,e) => InvalidateMissionValidation();
             missionPanel.Controls.Add(ActionButton("Validate route & compute integrity SHA-256",
                 async()=>await ValidateMission()));
             missionPanel.Controls.Add(ActionButton("Start passive mission shadow",
@@ -232,6 +237,12 @@ namespace AeroHelm.GcsCloud
             return parsed;
         }
 
+        private void InvalidateMissionValidation()
+        {
+            lastMissionHash = null;
+            lastMissionPlan = null;
+        }
+
         private object BuildPlan()
         {
             var track=ReadCoordinates(points.Text,2,120);
@@ -250,13 +261,21 @@ namespace AeroHelm.GcsCloud
             object plan;
             try{plan=BuildPlan();}
             catch(Exception ex){report.Text=ex.Message;return;}
+            string submittedPlan = json.Serialize(plan);
+            InvalidateMissionValidation();
             running=true;
             try
             {
                 var body=await Task.Run(()=>OperationsApi.Request(
                     "POST","api/v2/missions/validate",plan));
                 var response=json.Deserialize<Dictionary<string,object>>(body);
-                lastMissionHash=Convert.ToString(response["mission_sha256"]);
+                string hash=Convert.ToString(response["mission_sha256"]);
+                if (string.IsNullOrWhiteSpace(hash))
+                    throw new InvalidOperationException("Cloud did not return a verified mission hash.");
+                if (!string.Equals(json.Serialize(BuildPlan()),submittedPlan,StringComparison.Ordinal))
+                    throw new InvalidOperationException("Plan changed during validation. Validate the current plan again.");
+                lastMissionHash=hash;
+                lastMissionPlan=submittedPlan;
                 report.Text="PREFLIGHT (advisory, NEVER flight authorization)\r\n"+body;
             }
             catch(Exception ex){report.Text=Explain(ex);}
@@ -270,6 +289,12 @@ namespace AeroHelm.GcsCloud
             object plan;
             try{plan=BuildPlan();}
             catch(Exception ex){report.Text=ex.Message;return;}
+            if (!string.Equals(lastMissionPlan,json.Serialize(plan),StringComparison.Ordinal))
+            {
+                report.Text="The route or operating limits changed. Revalidate before starting a passive shadow.";
+                InvalidateMissionValidation();
+                return;
+            }
             // The backend independently validates geometry and hash matching.
             await Run(()=>OperationsApi.Request("POST",
                  "api/v2/missions/shadow/"+Id(),
@@ -305,7 +330,7 @@ namespace AeroHelm.GcsCloud
 
         private async Task CompareParameters()
         {
-            var parsed=new Dictionary<string,double>();
+            var parsed=new SortedDictionary<string,double>(StringComparer.Ordinal);
             try
             {
                 foreach(string line in targets.Lines)
@@ -321,7 +346,9 @@ namespace AeroHelm.GcsCloud
                     string key=parts[0].Trim();
                     if(key.Length<1||key.Length>16||key.Any(x=>!char.IsLetterOrDigit(x)&&x!='_'))
                         throw new ArgumentException("Invalid parameter name");
-                    parsed[key]=value;
+                    if(parsed.ContainsKey(key))
+                        throw new ArgumentException("Duplicate parameter: "+key);
+                    parsed.Add(key,value);
                 }
                 if(parsed.Count<1||parsed.Count>300)
                     throw new ArgumentException("Supply 1–300 parameters");

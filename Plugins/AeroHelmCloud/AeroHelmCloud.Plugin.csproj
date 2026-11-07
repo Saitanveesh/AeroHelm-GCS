@@ -19,7 +19,7 @@
     <Compile Include="..\..\plugins\AeroHelmSurveyPlanner.cs" Link="AeroHelmSurveyPlanner.cs" />
     <Compile Include="..\..\plugins\AeroHelmOperations.cs" Link="AeroHelmOperations.cs" />
     <Compile Include="..\..\plugins\AeroHelmPlatformV2.cs" Link="AeroHelmPlatformV2.cs" />
-    <Compile Include="..\..\plugins\AeroHelmTouchPanel.cs" Link="AeroHelmTouchPanel.cs" />
+    <Compile Include="..\..\plugins\VihangaSharedUi.cs" Link="VihangaSharedUi.cs" />
     <Compile Include="..\..\plugins\AeroHelmReadOnlyPages.cs" Link="AeroHelmReadOnlyPages.cs" />
     <Compile Include="..\..\plugins\AeroHelmTwinLabWindow.cs" Link="AeroHelmTwinLabWindow.cs" />
     <Compile Include="..\..\plugins\AeroHelmFleetLabWindow.cs" Link="AeroHelmFleetLabWindow.cs" />
