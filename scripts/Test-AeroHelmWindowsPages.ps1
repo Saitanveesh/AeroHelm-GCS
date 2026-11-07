@@ -150,6 +150,9 @@ Require-Text $cloud 'MainV2.instance' 'Native Mission Planner must remain the ro
 Require-Text $cloud 'CheckCloudLinkAsync()' 'PATHS status monitor missing.'
 Require-Text $cloud '"GET","api/v1/mavlink/health"' 'Live heartbeat and attitude check missing.'
 Require-Text $cloud 'CLOUD HEARTBEAT/ATTITUDE MISSING' 'Stale HUD evidence must fail closed.'
+Require-Text $cloud 'bool hb=streamOpen && bridge.NativeHeartbeatFresh;' 'Cloud HUD heartbeat must require an open stream.'
+Require-Text $cloud 'bool att=streamOpen && bridge.NativeAttitudeFresh;' 'Cloud HUD attitude must require an open stream.'
+Require-Text $cloud '_hudEvidence.Visible=cloudMode;' 'Cloud telemetry warning must remain visible when the stream drops.'
 if ($cloud.Contains('AEROHELM_TOUCH_STARTUP') -or $cloud.Contains('AeroHelmTouchPanel')) {
     throw 'Obsolete TOUCH startup is still present.'
 }
