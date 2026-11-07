@@ -40,8 +40,25 @@ try {
 
     if (-not $SkipBranding) {
         Write-Host "[5/5] Install Vihanga GCS product title and optional logo" -ForegroundColor Cyan
-        & powershell -ExecutionPolicy Bypass -File .\scripts\Install-AeroHelmBranding.ps1 -LogoPath $LogoPath -IconPath $IconPath
-        if ($LASTEXITCODE -ne 0) { throw "Branding installation failed." }
+        # PowerShell 5.1 drops empty strings when forwarding arguments to a
+        # second powershell.exe process. Optional artwork must be omitted,
+        # not passed as -LogoPath/-IconPath with missing values.
+        $brandingParams=@{}
+        if (-not [string]::IsNullOrWhiteSpace($LogoPath)) {
+            $brandingParams['LogoPath']=$LogoPath
+        }
+        if (-not [string]::IsNullOrWhiteSpace($IconPath)) {
+            $brandingParams['IconPath']=$IconPath
+        }
+        # Invoke the PowerShell script directly so a path containing spaces
+        # remains a single argument and terminating errors propagate.
+        & (Join-Path $PSScriptRoot 'Install-AeroHelmBranding.ps1') @brandingParams
+        if (-not $?) { throw "Branding installation failed." }
+        $label=Join-Path $root 'bin\Release\net461\logo.txt'
+        if(-not (Test-Path -LiteralPath $label -PathType Leaf) -or
+           (Get-Content -LiteralPath $label -Raw).Trim() -ne 'Vihanga GCS') {
+            throw 'Branding completed without the expected Vihanga GCS title.'
+        }
     }
     else {
         Write-Host "[5/5] Branding skipped by operator request."

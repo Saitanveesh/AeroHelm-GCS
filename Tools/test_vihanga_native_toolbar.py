@@ -196,6 +196,17 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("string selectedLease=leaseId.Text;",ops)
         self.assertNotIn('Task.Run(()=>RequestWithLease("renew",missionId.Text,leaseId.Text))',ops)
 
+    def test_branding_handles_no_custom_artwork(self):
+        build = source("scripts/Build-Integrated-AeroHelm.ps1")
+        branding = source("scripts/Install-AeroHelmBranding.ps1")
+        self.assertIn("if (-not [string]::IsNullOrWhiteSpace($LogoPath))", build)
+        self.assertIn("if (-not [string]::IsNullOrWhiteSpace($IconPath))", build)
+        self.assertIn("Install-AeroHelmBranding.ps1') @brandingParams", build)
+        self.assertNotIn("-LogoPath $LogoPath -IconPath $IconPath", build)
+        self.assertIn("Branding completed without the expected Vihanga GCS title.", build)
+        self.assertIn("build-logs\\branding-backups", branding)
+        self.assertIn("requires an existing PNG file.", branding)
+
     def test_branding_preserves_operator_settings(self):
         branding = source("scripts/Install-AeroHelmBranding.ps1")
         repair = source("scripts/Repair-AeroHelmWindows.ps1")

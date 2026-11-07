@@ -16,8 +16,23 @@ if (!(Test-Path -LiteralPath $exe -PathType Leaf)) {
 if (Get-Process -Name MissionPlanner -ErrorAction SilentlyContinue) {
     throw "Close Mission Planner first to avoid overwriting in-use assets."
 }
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$backup = Join-Path $runtime ("aerohelm-brand-backup-" + $stamp)
+# Fail before writing title/settings if explicitly requested artwork is invalid.
+foreach($requested in @(
+    @{name='logo2.png';path=$LogoPath},
+    @{name='icon.png';path=$IconPath},
+    @{name='splashbg.png';path=$SplashPath}
+)){
+    if(-not [string]::IsNullOrWhiteSpace($requested.path) -and
+       (-not (Test-Path -LiteralPath $requested.path -PathType Leaf) -or
+        [IO.Path]::GetExtension($requested.path).ToLowerInvariant() -ne '.png')){
+        throw "$($requested.name) requires an existing PNG file."
+    }
+}
+# Keep branding backups outside the installed runtime to prevent exponential
+# growth when a future release snapshots the complete runtime again.
+$stamp=(Get-Date -Format 'yyyyMMdd-HHmmss') + '-' +
+    [Guid]::NewGuid().ToString('N').Substring(0,8)
+$backup=Join-Path (Join-Path $root 'build-logs\branding-backups') $stamp
 New-Item -ItemType Directory -Path $backup -Force | Out-Null
 
 function Set-BrandFile {

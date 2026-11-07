@@ -183,6 +183,13 @@ Require-Text $bridgeHarnessProject 'AeroHelmLinkQuality.cs' 'Offline native test
 Require-Text $nativeBridge 'HB ' 'Heartbeat freshness must be explicit.'
 Require-Text $bridgeContracts 'AeroHelmReceiveOnlyBridge.TryReadAttitude' 'Native parser regression tests missing.'
 Require-Text $integratedBuild 'AeroHelmMavlinkBridgeTests.csproj' 'Native bridge tests must run before plugin installation.'
+Require-Text $integratedBuild "brandingParams['LogoPath']=" 'Optional custom logo must be passed only when supplied.'
+Require-Text $integratedBuild "brandingParams['IconPath']=" 'Optional custom icon must be passed only when supplied.'
+Require-Text $integratedBuild "Install-AeroHelmBranding.ps1') @brandingParams" 'Branding must use direct PowerShell splatting, not empty native argument forwarding.'
+if ($integratedBuild.Contains('-LogoPath $LogoPath -IconPath $IconPath')) {
+    throw 'Branding still forwards empty optional paths to powershell.exe.'
+}
+Require-Text (Read-Source 'scripts/Install-AeroHelmBranding.ps1') 'build-logs\branding-backups' 'Branding backups must not accumulate in active runtime.'
 Require-Text $integratedBuild 'feat/gcs-research-cybershield-twin-ui' 'Build launcher must accept the reviewed research branch.'
 Require-Text $integratedBuild 'feat/vihanga-phase3-native-toolbar' 'Build launcher must accept the current Vihanga release branch.'
 Require-Text $latestLauncher "feat/vihanga-phase3-native-toolbar" 'Updater must target the current Vihanga release branch.'
