@@ -297,7 +297,7 @@ Require-Text $privatePi 'valid_uart_owner_probe' 'Pi agent must refuse a second 
 Require-Text $privatePi 'is_disarmed_autopilot_heartbeat' 'Local stream negotiation requires an identified disarmed autopilot.'
 Require-Text $privatePi 'request_parameter_snapshot_once' 'Read-only parameter inventory must require an explicit disarmed local request.'
 Require-Text $privateRelay 'def parameter_values(self)' 'Complete-only typed readback must exist in private relay.'
-Require-Text $privateRelay 'PARAM_VALUE' 'Cloud parameter snapshot must originate from real MAVLink ID22 frames.'
+Require-Text $privateRelay 'if msg_id == 22:' 'Cloud parameter snapshot must originate from real MAVLink ID22 frames.'
 Require-Text $relaySession 'internal static string ReadParameters' 'Separate relay JWT must expose a GET-only snapshot API.'
 Require-Text $privatePi 'fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)' 'Pi UART owner must hold an exclusive process lock.'
 Require-Text $privateRelay '@app.post("/api/v1/sim/mission/preview")' 'Cloud planner must expose bounded simulation preview.'
