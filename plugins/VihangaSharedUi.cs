@@ -6,6 +6,7 @@ using Drawing = FrameworkDrawing::System.Drawing;
 using Drawing2D = FrameworkDrawing::System.Drawing.Drawing2D;
 using MissionPlanner;
 using System;
+using System.Collections.Generic;
 using System.Windows.Forms;
 
 namespace AeroHelm.GcsCloud
@@ -164,6 +165,63 @@ namespace AeroHelm.GcsCloud
         }
     }
 
+    // Adjusts legacy top-down WinForms panels to actual available width.
+    // Does not change mission controls, network requests or vehicle authority.
+    internal static class VihangaAdaptivePanel
+    {
+        internal static void Attach(Form window, params FlowLayoutPanel[] panels)
+        {
+            var originalWidths=new Dictionary<Control,int>();
+            foreach(var panel in panels)
+                foreach(Control child in panel.Controls)
+                    originalWidths[child]=child.Width;
+            bool updating=false;
+            Action reflow=()=>{
+                if(updating || window.IsDisposed || window.Disposing) return;
+                updating=true;
+                try
+                {
+                    foreach(var panel in panels)
+                    {
+                        if(panel.IsDisposed || panel.ClientSize.Width<260) continue;
+                        int available=Math.Max(240,panel.ClientSize.Width -
+                            panel.Padding.Horizontal - SystemInformation.VerticalScrollBarWidth - 16);
+                        foreach(Control child in panel.Controls)
+                        {
+                            if(!originalWidths.ContainsKey(child)) continue;
+                            int original=originalWidths[child];
+                            if(child is TextBox)
+                                child.Width=available;
+                            else if(child is CheckBox)
+                            {
+                                child.Width=available;
+                                var measured=TextRenderer.MeasureText(child.Text,child.Font,
+                                    new Drawing.Size(available,1000),TextFormatFlags.WordBreak);
+                                child.Height=Math.Max(32,Math.Min(110,measured.Height+14));
+                            }
+                            else if(child is Label && !child.AutoSize)
+                            {
+                                child.Width=available;
+                                var measured=TextRenderer.MeasureText(child.Text,child.Font,
+                                    new Drawing.Size(available,1000),TextFormatFlags.WordBreak);
+                                child.Height=Math.Max(24,Math.Min(180,measured.Height+14));
+                            }
+                            else if(child is Button && !child.AutoSize)
+                                child.Width=Math.Min(original,available);
+                            else if(child is ComboBox)
+                                child.Width=Math.Min(original,available);
+                        }
+                    }
+                }
+                finally { updating=false; }
+            };
+            foreach(var panel in panels)
+                panel.SizeChanged+=(s,e)=>reflow();
+            window.Shown+=(s,e)=>reflow();
+            window.SizeChanged+=(s,e)=>reflow();
+        }
+    }
+
     // Local settings window. Does not expose bearer tokens or alter
     // aircraft configuration through the cloud.
     internal sealed class VihangaSettingsWindow : Form
@@ -176,7 +234,7 @@ namespace AeroHelm.GcsCloud
         {
             Text = "VIHANGA — Ground Station Settings";
             Width = 740; Height = 560;
-            MinimumSize = new Drawing.Size(600,500);
+            MinimumSize = new Drawing.Size(540,430);
             StartPosition = FormStartPosition.CenterParent;
             AutoScaleMode = AutoScaleMode.Dpi;
             BackColor = Drawing.Color.FromArgb(8,8,8);
@@ -263,6 +321,7 @@ namespace AeroHelm.GcsCloud
                 Dock=DockStyle.Fill,TextAlign=Drawing.ContentAlignment.MiddleLeft,
                 ForeColor=Drawing.Color.FromArgb(180,180,180)
             },0,3);
+            VihangaAdaptivePanel.Attach(this,actions);
             Shown+=(s,e)=>RefreshSummary();
             KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape){Close();e.Handled=true;}};
         }

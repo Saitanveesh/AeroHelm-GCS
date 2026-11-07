@@ -34,8 +34,8 @@ namespace AeroHelm.GcsCloud
         {
             Text="VIHANGA — Fleet Intelligence";
             StartPosition=FormStartPosition.CenterParent;
-            Width=920;Height=740;MinimumSize=new Drawing.Size(750,550);
-            var header=new FlowLayoutPanel{Dock=DockStyle.Top,Height=42,Padding=new Padding(8)};
+            Width=920;Height=740;MinimumSize=new Drawing.Size(560,440);
+            var header=new FlowLayoutPanel{Dock=DockStyle.Top,Height=76,Padding=new Padding(8),WrapContents=true,AutoScroll=true};
             header.Controls.Add(new Label{Text="Aircraft:",Width=65,
                 TextAlign=Drawing.ContentAlignment.MiddleRight,Height=26});
             vehicle.Text="";vehicle.Width=160;vehicle.AccessibleName="Aircraft identifier";header.Controls.Add(vehicle);
@@ -61,7 +61,7 @@ namespace AeroHelm.GcsCloud
             }
 
             report.Dock=DockStyle.Bottom;
-            report.Height=270;
+            report.Height=240;
             report.ReadOnly=true;
             report.Multiline=true;
             report.ScrollBars=ScrollBars.Both;
@@ -180,6 +180,11 @@ namespace AeroHelm.GcsCloud
                 Text="Kerberos is an optional enterprise sign-in integration, NOT part of the drone data plane.\r\n" +
                      "A verified in-memory HMAC audit chain is NOT a tamper-proof durable record.\r\n" +
                      "Full MAVLink signing and multi-device authority are not yet configured."});
+            VihangaAdaptivePanel.Attach(this,fleetPanel,missionPanel,paramPanel,hPanel,secPanel);
+            SizeChanged+=(s,e)=>{
+                if(!IsDisposed && !Disposing)
+                    report.Height=Math.Max(105,Math.Min(240,ClientSize.Height/3));
+            };
         }
 
         private static FlowLayoutPanel Panel()

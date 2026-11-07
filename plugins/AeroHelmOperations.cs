@@ -70,7 +70,7 @@ namespace AeroHelm.GcsCloud
             Text="VIHANGA — Operations | Simulator and Bench Maintenance";
             StartPosition=FormStartPosition.CenterParent;
             Width=860;Height=730;
-            MinimumSize=new Drawing.Size(740,620);
+            MinimumSize=new Drawing.Size(560,460);
             var tabs=new TabControl{Dock=DockStyle.Fill};
             var simulation=new TabPage("AUTONOMY — SIMULATION ONLY");
             var maintenance=new TabPage("MAINTENANCE — PHYSICAL APPROVAL");
@@ -240,6 +240,7 @@ namespace AeroHelm.GcsCloud
             KeyPreview=true;
             KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape){Close();e.Handled=true;}};
             ApplyDarkTheme(this);
+            VihangaAdaptivePanel.Attach(this,sim,maint,policyPage);
         }
 
         private static void ApplyDarkTheme(Control parent)
