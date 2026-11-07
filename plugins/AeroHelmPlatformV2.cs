@@ -88,7 +88,7 @@ namespace AeroHelm.GcsCloud
             fleetPanel.Controls.Add(ActionButton("Cloud fleet metrics (v1)",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v1/fleet/metrics"),"Cloud fleet metrics")));
-            fleetPanel.Controls.Add(new Label{Text="Fleet lists real telemetry only. Unavailable telemetry stays UNKNOWN.",
+            fleetPanel.Controls.Add(new Label{Text="Fleet telemetry may be stale or simulated. Check source and age; missing data remains UNKNOWN.",
                 AutoSize=true,ForeColor=Drawing.Color.DarkRed});
 
             var missionPanel=Panel();mission.Controls.Add(missionPanel);

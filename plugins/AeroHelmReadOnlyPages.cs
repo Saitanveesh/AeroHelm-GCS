@@ -457,7 +457,7 @@ namespace AeroHelm.GcsCloud
             if (operation == "kerberos")
             {
                 // This is an explicit integration gate, NOT a simulated login,
-                // fake Kerberos ticket or claim of installed KDC protection.
+                // credentials or an unsupported claim of provisioned KDC protection.
                 SetColumns("Security layer", "Deployment state");
                 table.Rows.Add("Tailscale private HTTPS", "Current transport boundary; verify tailnet ACLs");
                 table.Rows.Add("Operator JWT", "Current application identity; short-lived session");
