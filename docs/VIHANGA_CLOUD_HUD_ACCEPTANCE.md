@@ -50,6 +50,58 @@ also consumes this WSS stream. It no longer relies on the optional
    current cloud evidence. Cloud reconnect must not switch to pilot radio
    automatically and must not issue flight commands.
 
+## Restore cable-like telemetry on the *Pi* MAVLink port
+
+The present monitor has observed real WSS HEARTBEAT but **zero**
+ATTITUDE messages. This is neither a WinForms horizon-drawing error
+nor evidence that the Pixhawk is unresponsive. It is evidence that
+message ID 30 was not delivered by the telemetry stream.
+
+Do the following with propellers removed and the vehicle disarmed:
+
+1. Connect the **real Pixhawk via USB** to native Mission Planner,
+   keep the existing Pi agent running and note exactly which
+   physical FC TELEM/SERIAL port is wired to the Pi. Do not open the
+   Pi serial device from a second program.
+2. In **Config/Tuning → Full Parameter List** record
+   `SERIALx_PROTOCOL`, `SERIALx_BAUD`, and the MAVLink telemetry
+   channel corresponding to that Pi-wired physical port.
+   The MAVLink rate prefix is **not necessarily the same number**
+   as `SERIALx`; recent ArduPilot uses `MAVn_` and some firmware
+   uses `SRn_`. Do not assume `SERIAL1` means `MAV1`.
+3. Inspect the confirmed Pi channel's `MAVn_EXTRA1`
+   (or `SRn_EXTRA1`) **ATTITUDE stream**. If zero, the
+   FC will not proactively send roll/pitch on that link.
+   For a properly provisioned bench link a *provisional* 5 Hz
+   ATTITUDE-group rate is a useful visible-motion baseline.
+   Confirm baud/bandwidth and restore the previous value if the
+   link is degraded. No code here modifies FC parameters.
+4. To approach the cable's broader flight-display coverage,
+   inspect `MAVn_EXT_STAT` (system/battery/GPS), `MAVn_POSITION`,
+   `MAVn_EXTRA2` (VFR_HUD), `MAVn_EXTRA3` (other state),
+   `MAVn_RAW_SENS` and `MAVn_RC_CHAN` for **that same
+   MAVLink channel**. Do not blindly bulk-write rates across links.
+   The overall bandwidth and CPU budget must be respected.
+5. Save the approved settings via the **physically connected USB**
+   GCS, reboot the FC if required by the firmware, and check that
+   ID 30 now arrives on the Pi UART. If it does, but the cloud
+   monitor remains at ID 30 = 0, the Pi forwarding/Oracle relay
+   is filtering or losing attitude packets.
+6. Only once the cloud monitor sees moving, CRC-verified ID 30
+   should the native PATHS → Cloud telemetry HUD be accepted.
+
+References: [ArduPilot MAVLink advanced configuration](https://ardupilot.org/copter/docs/common-mavlink-configuration.html),
+[ArduPilot telemetry port setup](https://ardupilot.org/copter/docs/common-telemetry-port-setup.html).
+These are firmware-dependent parameters; inspect the live flight
+controller, not a generic board template.
+
+**Operational limitation:** The Vihanga cloud path is intentionally
+receive-only. This can mirror live HUD/map/system telemetry after the
+correct upstream rates exist; it cannot replace USB for parameter
+writes, mission uploads, calibrations or commands until a separate
+reviewed, authenticated and safety-accepted bidirectional control
+architecture is actually implemented.
+
 ## Decision table
 
 | Pi UART ID 30 | WSS attitude monitor ID 30 | Native bridge ID 30 | Diagnosis |
