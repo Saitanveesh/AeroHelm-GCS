@@ -153,6 +153,7 @@ class Publisher:
         self.stop = threading.Event()
         self.counts: Counter[int] = Counter()
         self.sent_counts: Counter[int] = Counter()
+        self.foreign_system_dropped = 0
         self.dropped = 0
         self.port = None
         self._uart_thread = None
@@ -180,9 +181,10 @@ class Publisher:
                     sent = observation_delta(self.sent_counts, previous_uplink)
                     LOG.info(
                         "10s physical UART IDs HB=%d ATT=%d POS=%d HUD=%d GPS=%d; "
-                        "cloud WSS sent HB=%d ATT=%d; queue drops=%d",
+                        "cloud WSS sent HB=%d ATT=%d; queue drops=%d; foreign SYSID drops=%d",
                         observed[0], observed[30], observed[33], observed[74],
-                        observed[24], sent[0], sent[30], self.dropped)
+                        observed[24], sent[0], sent[30], self.dropped,
+                        self.foreign_system_dropped)
                     if observed[0] > 0 and observed[30] == 0:
                         LOG.warning(
                             "Real FC HEARTBEAT present but no ATTITUDE ID30 on Pi UART; "
@@ -195,6 +197,11 @@ class Publisher:
                     continue
                 mid = int(msg.get_msgId())
                 if mid < 0:
+                    continue
+                # A single-aircraft credential may never relay another SYSID.
+                # Keep the rejected count separate from observed FC telemetry.
+                if msg.get_srcSystem() != self.cfg.system_id:
+                    self.foreign_system_dropped += 1
                     continue
                 self.counts[mid] += 1
                 if msg.get_type() == "HEARTBEAT" and \
@@ -292,8 +299,10 @@ class Publisher:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
                 os.close(self._lock_fd)
                 self._lock_fd = None
-            LOG.info("UART publisher stopped; observed %s; sent %s; queue drops %d",
-                dict(self.counts), dict(self.sent_counts), self.dropped)
+            LOG.info(
+                "UART publisher stopped; observed %s; sent %s; queue drops %d; foreign SYSID drops %d",
+                dict(self.counts), dict(self.sent_counts), self.dropped,
+                self.foreign_system_dropped)
 
 
 async def main() -> None:
