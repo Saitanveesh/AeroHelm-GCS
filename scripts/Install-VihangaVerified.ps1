@@ -55,6 +55,7 @@ if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
 } elseif (-not (Test-Path -LiteralPath (Join-Path $root 'build-logs\aerohelm-consolidated-release.json') -PathType Leaf)) {
     Write-Warning 'Existing native EXE has no release manifest. Build will back up the entire unverified runtime before rebuilding.'
 }
+Invoke-CheckedScript 'Profile storage preflight' 'Test-VihangaSettingsStorage.ps1' @()
 Invoke-CheckedScript 'Windows source contracts' 'Test-AeroHelmWindowsPages.ps1' @()
 Invoke-CheckedScript "Native release $stage" 'Consolidate-AeroHelmWindows.ps1' @('-Stage',$stage,'-Apply','-WithBranding')
 Invoke-CheckedScript 'Release manifest, executable and plugin verification' 'Consolidate-AeroHelmWindows.ps1' @('-Stage','Verify')
