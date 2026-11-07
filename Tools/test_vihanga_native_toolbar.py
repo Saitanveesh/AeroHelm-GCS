@@ -104,6 +104,14 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("Start-VihangaGCS.ps1", source("scripts/Start-AeroHelm-Touch.ps1"))
 
 
+    def test_ci_archives_native_hash_evidence_after_roundtrip(self):
+        ci = source(".github/workflows/aerohelm-cloud-plugin.yml")
+        self.assertIn("Record exact compiled native evidence", ci)
+        self.assertIn("vihanga-ci-native-evidence.json", ci)
+        self.assertIn("actions/upload-artifact@v4", ci)
+        self.assertIn("windows_ui_smoke_verified=$false", ci)
+        self.assertIn("physical_flight_authorized=$false", ci)
+
     def test_certification_gate_never_self_certifies_flight(self):
         script = source("scripts/Test-VihangaCertification.ps1")
         windows = source("scripts/Test-AeroHelmWindowsPages.ps1")

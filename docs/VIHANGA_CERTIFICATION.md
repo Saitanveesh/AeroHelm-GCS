@@ -17,6 +17,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Consolidate-AeroHe
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Consolidate-AeroHelmWindows.ps1 -Stage Verify
 ```
 
+The GitHub Windows job also archives `vihanga-ci-native-evidence.json` with
+compiled EXE/DLL hashes. The artifact is compilation evidence only;
+rollback tests restore the simulated previous installation afterward.
+
 The assessment tool reads the currently installed EXE/DLL hashes and
 matches them to the exact Git commit. It does not execute vehicle
 commands or modify flight parameters:

@@ -163,6 +163,68 @@ jobs:
         run: |
           & .\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Record exact compiled native evidence (not a flight clearance)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = 'bin/Release/net461/MissionPlanner.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw 'Full native executable missing after solution build.'
+          }
+          $candidates = @(Get-ChildItem 'Plugins/AeroHelmCloud/bin' -Recurse -File -Filter 'AeroHelm.Cloud.Plugin.Validation.dll' |
+            Where-Object { $_.FullName -match '[\\/]Release[\\/]' })
+          if ($candidates.Count -ne 1) {
+            throw "Expected one Release plugin output, found $($candidates.Count)."
+          }
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -notmatch '^[a-f0-9]{40}
+        env:
+          AEROHELM_DISPOSABLE_CI: "1"
+        run: |
+          & .\scripts\Test-AeroHelmPluginRoundtrip.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Archive native build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: vihanga-native-evidence-${{ github.sha }}
+          path: build-logs/vihanga-ci-native-evidence.json
+          if-no-files-found: error
+
+  mavlink-native-bridge-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Native receive-only bridge CRC, freshness and outage regression
+        run: dotnet run --project Tools/AeroHelmMavlinkBridgeTests/AeroHelmMavlinkBridgeTests.csproj --configuration Release
+
+  survey-draft-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Offline mission generator regression tests
+        run: dotnet run --project Tools/AeroHelmSurveyTests/AeroHelmSurveyTests.csproj --configuration Release
+) {
+            throw 'Cannot fingerprint exact CI source commit.'
+          }
+          New-Item -ItemType Directory -Path 'build-logs' -Force | Out-Null
+          [ordered]@{
+            schema='vihanga.ci.native-build.v1'
+            source_commit=$head
+            workflow='AeroHelm Cloud Plugin Validation'
+            native_executable_sha256=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            compiled_plugin_sha256=(Get-FileHash -LiteralPath $candidates[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            windows_ui_smoke_verified=$false
+            physical_flight_authorized=$false
+          } | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath 'build-logs/vihanga-ci-native-evidence.json' -Encoding UTF8
       - name: Disposable compiled-plugin installation and rollback roundtrip
         shell: powershell
         env:
