@@ -104,6 +104,14 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("Start-VihangaGCS.ps1", source("scripts/Start-AeroHelm-Touch.ps1"))
 
 
+    def test_ops_closed_modal_does_not_update_disposed_controls(self):
+        ops = source("plugins/AeroHelmOperations.cs")
+        self.assertIn("if(IsDisposed || Disposing) return;", ops)
+        self.assertIn("if(!IsDisposed && !Disposing) Busy(false,status.Text)", ops)
+        self.assertIn("if(!IsDisposed && !Disposing) status.Text=Error(ex)", ops)
+        self.assertIn("missionId.Text!=subject", ops)
+        self.assertIn("calibrationRequestId!=requestId", ops)
+
     def test_ci_archives_native_hash_evidence_after_roundtrip(self):
         ci = source(".github/workflows/aerohelm-cloud-plugin.yml")
         self.assertIn("Record exact compiled native evidence", ci)

@@ -277,6 +277,7 @@ namespace AeroHelm.GcsCloud
         private void Busy(bool value,string message)
         {
             busy=value;
+            if(IsDisposed || Disposing) return;
             start.Enabled=abort.Enabled=cal.Enabled=!value;
             status.Text=message;
         }
@@ -365,11 +366,12 @@ namespace AeroHelm.GcsCloud
                 var result=json.Deserialize<Dictionary<string,object>>(
                     await Api("POST","api/v1/operations/missions",
                         new{vehicle_id="AH-SIM-001",waypoints=points,speed_mps=3.0}));
+                if(IsDisposed || Disposing) return;
                 missionId.Text=Convert.ToString(result["mission_id"]);
                 status.Text="SIMULATION DRAFT created: "+missionId.Text+
                     ". This is not uploaded to any real aircraft.";
-            }catch(Exception ex){status.Text=Error(ex);}
-            finally{Busy(false,status.Text);}
+            }catch(Exception ex){if(!IsDisposed && !Disposing) status.Text=Error(ex);}
+            finally{if(!IsDisposed && !Disposing) Busy(false,status.Text); else busy=false;}
         }
 
         private async Task AcquireLease()
@@ -379,13 +381,14 @@ namespace AeroHelm.GcsCloud
             try
             {
                 var reply=await Api("POST","api/v1/leases",new{vehicle_id="AH-SIM-001"});
+                if(IsDisposed || Disposing) return;
                 var doc=json.Deserialize<Dictionary<string,object>>(reply);
                 leaseId.Text=Convert.ToString(doc["lease_id"]);
                 leaseRenewal.Start();
                 status.Text="Simulation-only lease acquired and scheduled for 10-second renewal. " +
                             "Closing OPS stops renewal; the server expires the lease automatically.";
-            }catch(Exception ex){status.Text=Error(ex);}
-            finally{Busy(false,status.Text);}
+            }catch(Exception ex){if(!IsDisposed && !Disposing) status.Text=Error(ex);}
+            finally{if(!IsDisposed && !Disposing) Busy(false,status.Text); else busy=false;}
         }
 
         private async Task MissionAction(string action)
@@ -415,7 +418,7 @@ namespace AeroHelm.GcsCloud
                     ". This does NOT command Pixhawk hardware.";
             }
             catch(Exception ex){status.Text=Error(ex);}
-            finally{Busy(false,status.Text);}
+            finally{if(!IsDisposed && !Disposing) Busy(false,status.Text); else busy=false;}
         }
 
         private string RequestWithLease(string action,string id,string lease)
@@ -466,16 +469,18 @@ namespace AeroHelm.GcsCloud
         private async Task RefreshMission()
         {
             if(string.IsNullOrWhiteSpace(missionId.Text))return;
+            string subject=missionId.Text;
             try
             {
                 var body=await Api("GET","api/v1/operations/missions/"+
-                    Uri.EscapeDataString(missionId.Text));
+                    Uri.EscapeDataString(subject));
+                if(IsDisposed || Disposing || missionId.Text!=subject) return;
                 var info=json.Deserialize<Dictionary<string,object>>(body);
-                status.Text="Mission "+missionId.Text+" | "+
+                status.Text="Mission "+subject+" | "+
                     Convert.ToString(info["status"])+" | waypoint "+
                     Convert.ToString(info["waypoint_index"])+" | metres "+
                     Convert.ToString(info["completed_distance_m"]);
-            }catch(Exception ex){status.Text=Error(ex);}
+            }catch(Exception ex){if(!IsDisposed && !Disposing) status.Text=Error(ex);}
         }
 
         private async Task RefreshCalibration()
@@ -484,14 +489,16 @@ namespace AeroHelm.GcsCloud
             {
                 status.Text="Request a supervised calibration first.";return;
             }
+            string requestId=calibrationRequestId;
             try
             {
                 var body=await Api("GET","api/v1/operations/calibrations/"+
-                    Uri.EscapeDataString(calibrationRequestId));
+                    Uri.EscapeDataString(requestId));
+                if(IsDisposed || Disposing || calibrationRequestId!=requestId) return;
                 var info=json.Deserialize<Dictionary<string,object>>(body);
-                status.Text="Calibration "+calibrationRequestId+" | "+
+                status.Text="Calibration "+requestId+" | "+
                     Convert.ToString(info["status"])+" | "+Convert.ToString(info["detail"]);
-            }catch(Exception ex){status.Text=Error(ex);}
+            }catch(Exception ex){if(!IsDisposed && !Disposing) status.Text=Error(ex);}
         }
 
         private async Task Calibrate()
@@ -506,18 +513,20 @@ namespace AeroHelm.GcsCloud
             try
             {
                 string id=Guid.NewGuid().ToString();
+                string selectedKind=Convert.ToString(kind.SelectedItem);
                 var result=json.Deserialize<Dictionary<string,object>>(
                     await Api("POST","api/v1/operations/calibrations",
-                        new{request_id=id,kind=kind.SelectedItem.ToString(),
+                        new{request_id=id,kind=selectedKind,
                             human_at_aircraft=true,props_removed=true}));
+                if(IsDisposed || Disposing) return;
                 calibrationRequestId=id;
-                status.Text="REQUESTED "+kind.SelectedItem+" | ID: "+id+Environment.NewLine+
+                status.Text="REQUESTED "+selectedKind+" | ID: "+id+Environment.NewLine+
                     "At the powered-on Pi terminal, operator must run:"+Environment.NewLine+
                     "cd ~/AeroHelm && agent/.venv/bin/python -m agent.supervised_calibration "+id+
                     Environment.NewLine+"Requires AEROHELM_SUPERVISED_CALIBRATION_ENABLED=true " +
                     "on the Pi agent. Expires after 45 seconds; actual result requires COMMAND_ACK.";
-            }catch(Exception ex){status.Text=Error(ex);}
-            finally{Busy(false,status.Text);}
+            }catch(Exception ex){if(!IsDisposed && !Disposing) status.Text=Error(ex);}
+            finally{if(!IsDisposed && !Disposing) Busy(false,status.Text); else busy=false;}
         }
 
         protected override void Dispose(bool disposing)
