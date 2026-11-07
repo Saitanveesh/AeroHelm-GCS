@@ -305,6 +305,8 @@ namespace AeroHelm.GcsCloud
                 return false;
             if (selected == AeroHelmLinkPath.CloudAttitudePreview)
             {
+                if (!VihangaLinkLoginWindow.EnsureSignedIn(main))
+                    return false;
                 using(var window=new AeroHelmCloudAttitudeWindow())
                     window.ShowDialog(main);
                 return true;
@@ -320,6 +322,8 @@ namespace AeroHelm.GcsCloud
                 return true;
             }
 
+            if (!VihangaLinkLoginWindow.EnsureSignedIn(main))
+                return false;
             if (!string.Equals(Environment.GetEnvironmentVariable(
                 "AEROHELM_CLOUD_READONLY"),"1",StringComparison.Ordinal))
             {
