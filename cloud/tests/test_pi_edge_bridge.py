@@ -142,6 +142,26 @@ def test_drops_bad_and_stale_samples_without_network_io():
                       }
 
 
+def test_attitude_requires_real_axes_and_fresh_pi_packet():
+    now = 1770000000000
+    base = {"captured_at_ms": now, "mode": "STANDBY", "armed": False}
+    assert normalize({**base, "roll_deg": 1.5}, now_ms=now) is None
+    assert normalize({**base, "roll_deg": 1.5, "pitch_deg": 2.1},
+                     now_ms=now) is None
+    assert normalize({**base, "roll_deg": float("nan"), "pitch_deg": 2.1,
+                      "attitude_age_ms": 10}, now_ms=now) is None
+    assert normalize({**base, "roll_deg": 1.5, "pitch_deg": 2.1,
+                      "attitude_age_ms": True}, now_ms=now) is None
+    assert normalize({**base, "roll_deg": 1.5, "pitch_deg": 2.1,
+                      "attitude_age_ms": 2501}, now_ms=now) is None
+    assert normalize({**base, "roll_deg": 1.5, "pitch_deg": 2.1,
+                      "attitude_age_ms": 150}, now_ms=now) == {
+                          "mode": "STANDBY", "armed": False,
+                          "roll_deg": 1.5, "pitch_deg": 2.1,
+                          "attitude_age_ms": 150,
+                      }
+
+
 class StubCloud:
     def __init__(self, *, fail=False):
         self.fail = fail

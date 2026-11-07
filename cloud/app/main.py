@@ -23,7 +23,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -92,6 +92,19 @@ class TelemetryObservation(BaseModel):
     mode: str = Field(min_length=1, max_length=32)
     link_rtt_ms: float | None = Field(default=None, ge=0, le=60000)
     gps_fix_type: int | None = Field(default=None, ge=0, le=6)
+    # Only the existing Pi UART owner may report physical attitude samples.
+    # Each observation is device-reported; the cloud cannot prove FC CRC.
+    roll_deg: float | None = Field(default=None, ge=-180, le=180)
+    pitch_deg: float | None = Field(default=None, ge=-90, le=90)
+    attitude_age_ms: int | None = Field(default=None, ge=0, le=2500)
+
+    @model_validator(mode="after")
+    def complete_attitude(self):
+        axes = (self.roll_deg, self.pitch_deg, self.attitude_age_ms)
+        if any(value is not None for value in axes) and any(
+                value is None for value in axes):
+            raise ValueError("Attitude requires both real axes and packet age")
+        return self
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -408,6 +421,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         state = db.get(TelemetryLatest, vehicle.id)
         if state is None or state.received_at is None:
             return {"vehicle_id": vehicle.name, "fresh": False,
+                    "attitude": {"fresh": False, "roll_deg": None, "pitch_deg": None,
+                                 "source": "DEVICE_REPORTED_UNVERIFIED"},
                     "age_s": None, "session_epoch": state.epoch if state else None,
                     "observation": None, "advisory_risks": ["TELEMETRY_UNAVAILABLE"],
                     "observation_source": ("VIRTUAL_SIMULATED" if vehicle.kind == "virtual"
@@ -417,6 +432,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         fresh = age <= 5.0
         risks = []
         observation = state.observation or {}
+        attitude_age = observation.get("attitude_age_ms")
+        attitude_fresh = (
+            fresh and type(attitude_age) is int and 0 <= attitude_age <= 2500
+            and observation.get("roll_deg") is not None
+            and observation.get("pitch_deg") is not None
+            and age * 1000 + attitude_age <= 2500
+        )
         if not fresh:
             risks.append("TELEMETRY_STALE")
         if (observation.get("battery_pct") is not None and
@@ -426,6 +448,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 observation["gps_fix_type"] < 3):
             risks.append("REPORTED_GNSS_DEGRADED")
         return {"vehicle_id": vehicle.name, "fresh": fresh,
+                "attitude": {
+                    "fresh": attitude_fresh,
+                    "roll_deg": observation.get("roll_deg") if attitude_fresh else None,
+                    "pitch_deg": observation.get("pitch_deg") if attitude_fresh else None,
+                    "source": ("VIRTUAL_SIMULATED" if vehicle.kind == "virtual"
+                               else "DEVICE_REPORTED_UNVERIFIED"),
+                },
                 "age_s": round(age, 3), "session_epoch": state.epoch,
                 "last_sequence": state.sequence, "observation": state.observation,
                 "advisory_risks": sorted(risks),

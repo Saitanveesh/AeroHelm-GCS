@@ -113,6 +113,39 @@ def test_telemetry_rejects_mavlink_or_command_payloads():
                            json=sample(opened, 1)).status_code == 403
 
 
+def test_attitude_is_device_reported_only_when_sample_and_receipt_are_fresh():
+    with TestClient(create_app(config())) as client:
+        assert register(client, "PIX-01", kind="hardware").status_code == 201
+        epoch = client.post("/api/v1/device/telemetry/session",
+                            headers=dev("PIX-01")).json()["session_epoch"]
+        invalid = {**sample(epoch, 1), "roll_deg": 10.0}
+        assert client.post("/api/v1/device/telemetry", headers=dev("PIX-01"),
+                           json=invalid).status_code == 422
+        invalid = {**sample(epoch, 1), "roll_deg": 10.0,
+                   "pitch_deg": 4.0, "attitude_age_ms": 2501}
+        assert client.post("/api/v1/device/telemetry", headers=dev("PIX-01"),
+                           json=invalid).status_code == 422
+        observed = {**sample(epoch, 1), "roll_deg": 10.0,
+                    "pitch_deg": -4.0, "attitude_age_ms": 120}
+        assert client.post("/api/v1/device/telemetry", headers=dev("PIX-01"),
+                           json=observed).status_code == 202
+        current = client.get("/api/v1/vehicles/PIX-01/telemetry",
+                             headers=jwt_header()).json()
+        assert current["attitude"]["fresh"] is True
+        assert current["attitude"]["roll_deg"] == 10.0
+        assert current["attitude"]["pitch_deg"] == -4.0
+        assert current["attitude"]["source"] == "DEVICE_REPORTED_UNVERIFIED"
+        assert current["flight_ready"] is False
+        with Session(client.app.state.engine) as db:
+            with db.begin():
+                latest = db.scalar(select(TelemetryLatest))
+                latest.received_at = time.time() - 6
+        stale = client.get("/api/v1/vehicles/PIX-01/telemetry",
+                           headers=jwt_header()).json()
+        assert stale["attitude"]["fresh"] is False
+        assert stale["attitude"]["roll_deg"] is None
+
+
 def test_cross_tenant_observation_never_leaks():
     with TestClient(create_app(config())) as client:
         register(client, "SIM-A")

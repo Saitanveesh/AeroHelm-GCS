@@ -25,11 +25,13 @@ MAX_AGE_MS = 2500
 ALLOWED = frozenset((
     "captured_at_ms", "latitude", "longitude", "altitude_m",
     "battery_pct", "armed", "mode", "gps_fix_type", "link_rtt_ms",
+    "roll_deg", "pitch_deg", "attitude_age_ms",
 ))
 MEASUREMENTS = {
     "latitude": (-90, 90), "longitude": (-180, 180),
     "altitude_m": (-1000, 30000), "battery_pct": (0, 100),
     "link_rtt_ms": (0, 60000),
+    "roll_deg": (-180, 180), "pitch_deg": (-90, 90),
 }
 
 
@@ -54,6 +56,17 @@ def normalize(raw: object, *, now_ms: int) -> dict | None:
                     not math.isfinite(value) or not lo <= value <= hi):
                 return None
             values[key] = float(value)
+    # A Pi UART owner may report a checked MAVLink ATTITUDE (message 30)
+    # measurement; the normalized sidecar never claims to validate the CRC.
+    # Require BOTH axes and a bounded packet age, or send neither axis.
+    angles = ("roll_deg", "pitch_deg", "attitude_age_ms")
+    if any(field in raw for field in angles):
+        if any(field not in raw or raw[field] is None for field in angles):
+            return None
+        age = raw["attitude_age_ms"]
+        if type(age) is not int or not 0 <= age <= MAX_AGE_MS:
+            return None
+        values["attitude_age_ms"] = age
     if "gps_fix_type" in raw and raw["gps_fix_type"] is not None:
         value = raw["gps_fix_type"]
         if type(value) is not int or not 0 <= value <= 6:
