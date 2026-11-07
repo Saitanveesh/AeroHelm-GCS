@@ -84,12 +84,6 @@ namespace AeroHelm.GcsCloud
             };
             _workspaces.DropDownItems.Add("Link diagnostics", null,
                 (sender,e) => ShowWorkspace(new AeroHelmLinkWindow()));
-            _workspaces.DropDownItems.Add("Attitude monitor", null,
-                (sender,e) =>
-                {
-                    if (VihangaLinkLoginWindow.EnsureSignedIn(MainV2.instance))
-                        ShowWorkspace(new AeroHelmCloudAttitudeWindow());
-                });
             _workspaces.DropDownItems.Add("Survey planner", null,
                 (sender,e) => ShowWorkspace(new AeroHelmSurveyWindow()));
             var planPreview = new ToolStripMenuItem("Autonomy preview");
@@ -110,6 +104,15 @@ namespace AeroHelm.GcsCloud
                     "VIHANGA_ADVANCED_TOOLS"), "1", StringComparison.Ordinal))
             {
                 _workspaces.DropDownItems.Add(new ToolStripSeparator());
+                // The separate attitude canvas is an engineering diagnostic,
+                // not the pilot's primary HUD. The real native DATA/Quick
+                // workspace is driven only by verified FC MAVLink telemetry.
+                _workspaces.DropDownItems.Add("Attitude monitor", null,
+                    (sender,e) =>
+                    {
+                        if (VihangaLinkLoginWindow.EnsureSignedIn(MainV2.instance))
+                            ShowWorkspace(new AeroHelmCloudAttitudeWindow());
+                    });
                 _workspaces.DropDownItems.Add("Simulated operations (development)", null,
                     (sender,e) => ShowWorkspace(new AeroHelmOpsWindow()));
                 _workspaces.DropDownItems.Add("Fleet intelligence (development)", null,
