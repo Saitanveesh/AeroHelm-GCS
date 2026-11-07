@@ -160,6 +160,37 @@ namespace AeroHelm.GcsCloud
                 Assert(!reset.HeartbeatFresh && !reset.AttitudeFresh &&
                        reset.AttitudeGapEvents==0 && reset.RejectedEvidence==0,
                        "new session cannot inherit previous live state");
+                // A dedicated relay token must never replace the M1 JWT.
+                Program.AeroHelmOperatorToken = "m1-original-token";
+                Program.AeroHelmCloudOrigin = "https://m1-backend.ts.net";
+                Program.AeroHelmTokenExpiresUtc = DateTime.UtcNow.AddMinutes(5);
+                Environment.SetEnvironmentVariable("VIHANGA_LINK_ORIGIN",
+                    "https://relay-backend.ts.net");
+                try
+                {
+                    Assert(!VihangaLinkSession.Authenticated,
+                        "dedicated relay may not inherit Oracle M1 JWT");
+                    VihangaLinkSession.Accept(
+                        "https://relay-backend.ts.net", "separate-relay-token", 600);
+                    Assert(VihangaLinkSession.Authenticated &&
+                           VihangaLinkSession.AccessToken == "separate-relay-token",
+                        "dedicated JWT authenticates only the configured private relay");
+                    Assert(Program.AeroHelmOperatorToken == "m1-original-token",
+                        "relay sign-in must never overwrite Oracle M1 operator token");
+                    var uri = AeroHelmReceiveOnlyBridge.PrivateWebSocketUri();
+                    Assert(uri.Scheme == "wss" &&
+                           uri.Host == "relay-backend.ts.net" &&
+                           uri.AbsolutePath == "/ws/mavlink/view/AH-HW-001",
+                        "native bridge uses exact dedicated private MAVLink viewer");
+                    VihangaLinkSession.Clear();
+                    Assert(!VihangaLinkSession.Authenticated,
+                        "cleared relay JWT cannot remain authenticated");
+                }
+                finally
+                {
+                    VihangaLinkSession.Clear();
+                    Environment.SetEnvironmentVariable("VIHANGA_LINK_ORIGIN", null);
+                }
                 Console.WriteLine("AeroHelm native bridge: PASS ("+count+" assertions)");
                 return 0;
             }
