@@ -111,7 +111,7 @@ if (-not $env:AEROHELM_CAMERA1_URL) {
         'https://saitanveesh.tailf3ab6a.ts.net/cam', 'Process')
 }
 if (-not $env:AEROHELM_VISION_AUTO_OPEN) {
-    [Environment]::SetEnvironmentVariable('AEROHELM_VISION_AUTO_OPEN','1','Process')
+    [Environment]::SetEnvironmentVariable('AEROHELM_VISION_AUTO_OPEN','0','Process')
 }
 # READ-ONLY cloud HUD is mandatory in this release track. Keep the switch
 # for compatibility with older operator runbooks, but never permit a
@@ -122,9 +122,9 @@ Write-Host 'Use PATHS to select cloud view or an independent local pilot radio.'
 if ($requestedLinkOrigin) {
     Write-Host 'Dedicated telemetry relay selected; PATHS will request separate operator sign-in.'
 }
-Write-Host 'OPS is simulation/bench-only. INTEL and MORE are authenticated inspection tools.'
+Write-Host 'Toolbar: native DATA, PLAN, SETUP, CONFIG; Vihanga PATHS, CAMERA, TOOLS.'
 if (-not $LocalDirectBackup) {
-    Write-Host 'Cloud operator authentication is required at startup.'
+    Write-Host $(if ($requestedLinkOrigin) { 'Private relay sign-in is requested when PATHS opens.' } else { 'Legacy M1 cloud authentication is required at startup.' })
 }
 Write-Host 'Native receive-only TCP bridge: 127.0.0.1:5760 (outbound commands discarded).'
 if ($LocalDirectBackup) {
