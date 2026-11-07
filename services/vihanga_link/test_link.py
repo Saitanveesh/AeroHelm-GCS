@@ -28,10 +28,10 @@ def frame(message_id: int, payload: bytes, mav2: bool = False) -> bytes:
                         message_id & 255, message_id >> 8 & 255,
                         message_id >> 16 & 255)) if mav2 else bytearray(
                             (0xFE, len(payload), 1, 1, 1, message_id))
-    assert message_id in (0, 30)
+    assert message_id in (0, 22, 30)
     crc = 0xFFFF
     for value in bytes(header[1:]) + payload + bytes((
-            50 if message_id == 0 else 39,)):
+            {0: 50, 22: 220, 30: 39}[message_id],)):
         b = value ^ (crc & 255)
         b ^= b << 4 & 255
         crc = ((crc >> 8) ^ (b << 8) ^ (b << 3) ^ (b >> 4)) & 65535
@@ -106,6 +106,39 @@ def test_full_raw_stream_viewer_and_live_evidence(credentials):
                 assert health["real_attitude_frames"] == 1
                 assert health["flight_control_enabled"] is False
                 assert health["message_ids"]["30"] == 1
+
+
+def test_authenticated_read_only_parameter_snapshot_and_epoch(credentials):
+    cfg, device_token = credentials
+    app = create_app(cfg)
+    with TestClient(app) as client:
+        raw = client.post("/api/v1/auth/login", json={
+            "username": "operator", "password": "correct-bench-password"
+        }).json()["access_token"]
+        headers = {"Authorization": "Bearer " + raw}
+        route = "/api/v1/vehicles/AH-HW-001/parameters"
+        assert client.get(route).status_code == 401
+        assert client.get(route, headers=headers).json()["status"] == "UNAVAILABLE"
+        with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+              headers={"Authorization": "Bearer " + device_token}) as device:
+            for index in range(3):
+                name = ("TEST_%d" % index).encode().ljust(16, b"\0")
+                payload = struct.pack("<fHH", float(index), 3, index) + name + b"\x09"
+                device.send_bytes(frame(22, payload))
+            for _ in range(100):
+                status = client.get(route, headers=headers).json()
+                if status["verified_complete"]:
+                    break
+                time.sleep(0.01)
+            assert status["verified_complete"]
+            assert status["count"] == status["expected"] == 3
+            assert status["epoch"] == 1
+            assert status["read_only"]
+            assert client.get("/api/v1/vehicles/OTHER/parameters",
+                              headers=headers).status_code == 404
+            assert client.get("/api/v1/mavlink/health").json()[
+                "parameter_snapshot"]["status"] == "COMPLETE"
+        assert client.get(route, headers=headers).json()["status"] == "UNAVAILABLE"
 
 
 def test_non_attitude_mavlink_is_forwarded_unchanged(credentials):
