@@ -184,6 +184,12 @@ def test_full_raw_stream_viewer_and_live_evidence(credentials):
                 assert health["native_hud_heartbeat_ready"]
                 assert health["attitude_stream_active"]
                 assert health["real_attitude_frames"] == 1
+                assert isinstance(health["frame_age_ms"], int)
+                assert isinstance(health["heartbeat_age_ms"], int)
+                assert isinstance(health["attitude_age_ms"], int)
+                assert health["frame_rate_5s_hz"] > 0
+                assert health["heartbeat_rate_5s_hz"] > 0
+                assert health["attitude_rate_5s_hz"] > 0
                 assert health["flight_control_enabled"] is False
                 assert health["message_ids"]["30"] == 1
 
@@ -337,6 +343,12 @@ def test_reconnect_expires_old_session_and_drops_stale_evidence(credentials):
         h = client.get("/api/v1/mavlink/health").json()
         assert not h["device_online"]
         assert not h["native_hud_heartbeat_ready"]
+        assert h["frame_age_ms"] is None
+        assert h["heartbeat_age_ms"] is None
+        assert h["attitude_age_ms"] is None
+        assert h["frame_rate_5s_hz"] == 0
+        assert h["heartbeat_rate_5s_hz"] == 0
+        assert h["attitude_rate_5s_hz"] == 0
         with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
               headers={"Authorization": "Bearer " + token}):
             assert app.state.link.health(cfg.vehicle_id)["real_heartbeat_frames"] == 0
