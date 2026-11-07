@@ -118,17 +118,22 @@ $moduleAudit = Read-Source 'scripts/Audit-AeroHelmModules.ps1'
 $generatedCleanup = Read-Source 'scripts/Cleanup-AeroHelmGenerated.ps1'
 $legacyNativeLauncher = Read-Source 'scripts/Start-AeroHelm-NativeCloud.ps1'
 
-foreach ($item in @('CLOUD','PATHS','SURVEY','VISION','LINK','OPS','INTEL','MORE')) {
-    $needle = if ($item -eq 'CLOUD') {'new ToolStripButton("CLOUD")'}
-        elseif ($item -eq 'MORE') {'new ToolStripDropDownButton("MORE")'}
-        else {'NewToolbarButton("'+$item+'"'}
-    Require-Text $cloud $needle "Native toolbar entry missing: $item"
+foreach ($item in @('PATHS','CAMERA')) {
+    Require-Text $cloud ('NewToolbarButton("'+$item+'"') "Required operator toolbar entry missing: $item"
 }
-foreach ($item in @('FLEET','SECURITY','ANALYTICS')) {
-    Require-Text $cloud ('new AeroHelmReadOnlyPage("'+$item+'")') "MORE workspace missing: $item"
+Require-Text $cloud 'new ToolStripDropDownButton("TOOLS")' 'Consolidated utility menu missing.'
+foreach ($item in @('Link diagnostics','Attitude monitor','Survey planner','Operations / simulation','Fleet and intelligence','Vihanga settings')) {
+    Require-Text $cloud ('DropDownItems.Add("'+$item+'"') "Consolidated tool missing: $item"
 }
-Require-Text $cloud 'new AeroHelmIntelWindow("PARAMETERS")' 'Parameter inspection must have direct navigation.'
-Require-Text $cloud 'new VihangaSettingsWindow()' 'Settings must have direct navigation.'
+foreach ($obsolete in @('new ToolStripButton("CLOUD")',
+    'NewToolbarButton("SURVEY"','NewToolbarButton("VISION"',
+    'NewToolbarButton("LINK"','NewToolbarButton("OPS"',
+    'NewToolbarButton("INTEL"','new ToolStripDropDownButton("MORE")',
+    'menu.Items.Insert(menu.Items.IndexOf(_paths)+1,_hudEvidence)')) {
+    if ($cloud.Contains($obsolete)) { throw "Obsolete operator toolbar item remains: $obsolete" }
+}
+Require-Text $cloud 'new VihangaSettingsWindow()' 'Settings must remain accessible through tools.'
+Require-Text $cloud 'main.MenuConfigTune' 'Custom controls must follow native Configuration entry.'
 if (Test-Path -LiteralPath (Join-Path $root 'plugins/AeroHelmTouchPanel.cs')) {
     throw 'Obsolete TOUCH panel must not ship.'
 }
@@ -169,10 +174,9 @@ Require-Text $pages 'No physical flight-control authority.' 'Research pages must
 Require-Text $cloud 'MainV2.instance' 'Native Mission Planner must remain the root.'
 Require-Text $cloud 'CheckCloudLinkAsync()' 'PATHS status monitor missing.'
 Require-Text $cloud '"GET","api/v1/mavlink/health"' 'Live heartbeat and attitude check missing.'
-Require-Text $cloud 'CLOUD HEARTBEAT/ATTITUDE MISSING' 'Stale HUD evidence must fail closed.'
-Require-Text $cloud 'bool hb=streamOpen && bridge.NativeHeartbeatFresh;' 'Cloud HUD heartbeat must require an open stream.'
-Require-Text $cloud 'bool att=streamOpen && bridge.NativeAttitudeFresh;' 'Cloud HUD attitude must require an open stream.'
-Require-Text $cloud '_hudEvidence.Visible=cloudMode;' 'Cloud telemetry warning must remain visible when the stream drops.'
+Require-Text $cloud 'active.NativeHeartbeatFresh' 'PATHS must expose native heartbeat freshness in private relay mode.'
+Require-Text $cloud 'active.NativeAttitudeFresh' 'PATHS must expose native attitude freshness in private relay mode.'
+Require-Text $cloud '_paths.ToolTipText' 'Stale telemetry must remain diagnosable without a duplicate toolbar banner.'
 if ($cloud.Contains('AEROHELM_TOUCH_STARTUP') -or $cloud.Contains('AeroHelmTouchPanel')) {
     throw 'Obsolete TOUCH startup is still present.'
 }
@@ -304,7 +308,10 @@ if($observedAttitude.Contains('api/v1/mavlink/attitude') -or
     throw 'Cloud attitude preview must neither rely on M1 REST endpoints nor send aircraft commands.'
 }
 Require-Text $observedAttitude 'canvas.Stale()' 'Cloud attitude must fail closed when stale or unreachable.'
-Require-Text $paths 'AeroHelmLinkPath.CloudAttitudePreview' 'PATHS must expose real-only cloud attitude view.'
+Require-Text $cloud 'ShowWorkspace(new AeroHelmCloudAttitudeWindow())' 'Attitude monitor must remain accessible under TOOLS.'
+if ($paths.Contains('new VihangaLinkChoice("Attitude monitor"')) {
+    throw 'Attitude monitor is diagnostics, not a third connection path.'
+}
 Require-Text $directBackup 'AcknowledgePilotAuthority' 'Offline native radio backup requires explicit pilot opt-in.'
 Require-Text $directBackup '-NoInternalBridge' 'Pilot backup must disable cloud native bridge.'
 Require-Text $directBackup '-NoAutoTcp' 'Pilot backup must not auto-bind the cloud transport.'
