@@ -559,7 +559,9 @@ namespace AeroHelm.GcsCloud
         private void ShowSelectedReport()
         {
             if(IsDisposed || Disposing) return;
-            output.Text = showDetails.Checked ? lastTechnical : lastSummary;
+            output.Text = showDetails.Checked ?
+                lastTechnical + Environment.NewLine +
+                "PI DIAGNOSTICS  " + lastDuplexResult : lastSummary;
         }
 
         // Do not send the operator JWT to an origin typed into LINK. Only the
@@ -839,8 +841,7 @@ namespace AeroHelm.GcsCloud
                     (nativeEvidence == null ? "Unavailable" : nativeEvidence.Summary) +
                     Environment.NewLine +
                     (nativeEvidence == null ? "No local evidence" :
-                        nativeEvidence.AttitudeTroubleshooting) + Environment.NewLine +
-                    "PI DIAGNOSTICS  " + lastDuplexResult;
+                        nativeEvidence.AttitudeTroubleshooting);
                 ShowSelectedReport();
             }
             catch (Exception ex)
