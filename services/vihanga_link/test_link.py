@@ -20,7 +20,8 @@ from services.vihanga_link.relay import (Config, create_app, envelope, valid_evi
 from services.vihanga_link.pi_agent import (
     Config as PiConfig, MESSAGE_RATES_HZ,
     is_disarmed_autopilot_heartbeat, request_streams_once,
-    request_parameter_snapshot_once, observation_delta, stream_probe_due
+    request_parameter_snapshot_once, observation_delta, stream_probe_due,
+    Publisher as PiPublisher
 )
 from pymavlink import mavutil
 
@@ -373,6 +374,53 @@ class FakePort:
         def param_request_list_send(self, *args): self.commands.append(("parameters",) + args)
     def __init__(self): self.mav = self.MAV()
 
+
+
+
+def test_pi_uart_reader_never_queues_foreign_aircraft_frames(tmp_path):
+    cfg = PiConfig("/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+                   "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
+                   tmp_path / "device-secret", False, "pi-link.ts.net")
+    local = frame(0, bytes(9), source_system=1)
+    other = frame(0, bytes(9), source_system=2)
+    other_att = frame(30, struct.pack("<Iff", 1, 0.4, 0.2) + bytes(16),
+                      mav2=True, source_system=2)
+
+    class FakeMessage:
+        def __init__(self, raw, system_id):
+            self.raw = raw
+            self.system_id = system_id
+            self.base_mode = 0
+            self.autopilot = mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA
+        def get_type(self): return "HEARTBEAT" if self.raw[0] == 0xFE else "ATTITUDE"
+        def get_msgId(self): return 0 if self.raw[0] == 0xFE else 30
+        def get_srcSystem(self): return self.system_id
+        def get_srcComponent(self): return 1
+        def get_msgbuf(self): return self.raw
+
+    class FakeSerial:
+        def __init__(self, messages, stop):
+            self.messages = list(messages)
+            self.stop = stop
+        def recv_match(self, **kwargs):
+            if self.messages:
+                return self.messages.pop(0)
+            self.stop.set()
+            return None
+
+    class InlineLoop:
+        def call_soon_threadsafe(self, fn, *args): fn(*args)
+
+    pi = PiPublisher(cfg)
+    pi.port = FakeSerial((FakeMessage(other, 2), FakeMessage(other_att, 2),
+                          FakeMessage(local, 1)), pi.stop)
+    pi._loop = InlineLoop()
+    pi._read_uart()
+    assert pi.foreign_system_dropped == 2
+    assert pi.counts[0] == 1
+    assert pi.counts[30] == 0
+    assert pi.queue.qsize() == 1
+    assert pi.queue.get_nowait()[1] == local
 
 
 def test_pi_window_counts_do_not_infer_missing_attitude():
