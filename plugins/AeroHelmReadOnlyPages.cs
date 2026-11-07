@@ -509,8 +509,8 @@ namespace AeroHelm.GcsCloud
             return decoder.Serialize(new Dictionary<string,object> {
                 {"api_profile","M1 telemetry / legacy operator JWT"},
                 {"m1_mavlink_health_route","AVAILABLE (authenticated GET)"},
-                {"pi_device_connected_reported",Display(Value(health,"pi_connected"))},
-                {"fresh_mavlink_reported",Display(Value(health,"fresh_mavlink"))},
+                {"pi_device_connected_reported",Display(Value(health,"device_online"))},
+                {"fresh_mavlink_reported",Display(Value(health,"fresh"))},
                 {"v2_fleet_security_history","NOT SUPPORTED BY M1"},
                 {"v3_research_and_digital_shadow","NOT DEPLOYED"},
                 {"kerberos_kdc_and_spnego","NOT PROVISIONED"},
