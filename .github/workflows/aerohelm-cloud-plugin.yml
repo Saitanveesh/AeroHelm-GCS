@@ -12,7 +12,7 @@ on:
       - feat/gcs-research-cybershield-twin-ui
       - feat/aerohelm-cloud-link-quality-v1
       - feat/aerohelm-duplex-link-console
-      - feat/gcs-touch-ux-readonly-fleet-r1
+      - feat/vihanga-phase3-native-toolbar
       - feat/aerohelm-windows-integration
       - feat/aerohelm-windows-pages-v1
       - feat/aerohelm-windows-readiness-v2
@@ -29,7 +29,8 @@ on:
       - "AeroHelmStartupGate.cs"
       - "plugins/AeroHelmTwinLabWindow.cs"
       - "plugins/AeroHelmFleetLabWindow.cs"
-      - "plugins/AeroHelmTouchPanel.cs"
+      - "plugins/VihangaSharedUi.cs"
+      - "scripts/Start-VihangaGCS.ps1"
       - "plugins/AeroHelmReadOnlyPages.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
       - "scripts/Start-AeroHelm-Touch.ps1"
@@ -76,7 +77,8 @@ on:
       - "plugins/AeroHelmTwinLabWindow.cs"
       - "plugins/AeroHelmFleetLabWindow.cs"
       - "plugins/AeroHelmReadOnlyPages.cs"
-      - "plugins/AeroHelmTouchPanel.cs"
+      - "plugins/VihangaSharedUi.cs"
+      - "scripts/Start-VihangaGCS.ps1"
       - "plugins/AeroHelmOperations.cs"
       - "plugins/AeroHelmWorkspace.cs"
       - "scripts/Build-Integrated-AeroHelm.ps1"
@@ -110,7 +112,7 @@ jobs:
       - name: Verify native Windows page source contracts (no aircraft)
         shell: pwsh
         run: ./scripts/Test-AeroHelmWindowsPages.ps1
-      - name: Audit all nine GCS modules without aircraft
+      - name: Audit native GCS workspaces without aircraft
         shell: pwsh
         run: ./scripts/Audit-AeroHelmModules.ps1
       - uses: actions/setup-python@v5

@@ -1,4 +1,4 @@
-# AeroHelm unified Windows update/build/start. Default: read-only inspection.
+# Vihanga Windows update/build/start. Default: read-only inspection.
 # -Apply: fast-forward reviewed branch, backup old runtime, rebuild and verify.
 # -Launch: start only after successful verified compile.
 # -StopVerifiedLegacyBridge: explicit opt-in to stop ONLY a checked old Python
@@ -10,7 +10,7 @@ param(
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$branch='feat/gcs-touch-ux-readonly-fleet-r1'
+$branch='feat/vihanga-phase3-native-toolbar'
 $inspect=Join-Path $PSScriptRoot 'Consolidate-AeroHelmWindows.ps1'
 $repair=Join-Path $PSScriptRoot 'Repair-AeroHelmWindows.ps1'
 $session=Join-Path $PSScriptRoot 'Start-AeroHelm-Session.ps1'
@@ -37,7 +37,7 @@ if (-not $Apply) {
 if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close every Mission Planner window before updating the live GCS EXE/DLL.'
 }
-Write-Host 'Checking exact reviewed AeroHelm GCS integration branch...'
+Write-Host 'Checking exact reviewed Vihanga GCS branch...'
 & git -C $root fetch --prune origin $branch
 if ($LASTEXITCODE -ne 0) { throw 'Remote Git fetch failed. No build performed.' }
 & git -C $root merge --ff-only ('origin/' + $branch)

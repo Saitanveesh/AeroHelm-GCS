@@ -14,7 +14,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $gcsRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $backendRoot = Join-Path (Split-Path -Parent $gcsRoot) 'AeroHelm'
-$touch = Join-Path $PSScriptRoot 'Start-AeroHelm-Touch.ps1'
+$launcher = Join-Path $PSScriptRoot 'Start-VihangaGCS.ps1'
 $legacyFile = Join-Path $backendRoot 'scripts\aerohelm_tcp_bridge.py'
 
 if ($UseLegacyPythonBridge -and $SkipBridge) {
@@ -44,8 +44,8 @@ if ($VehicleId -notmatch '^[A-Za-z0-9_-]{3,64}$') {
 if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close the existing Mission Planner window before starting a new session.'
 }
-if (-not (Test-Path -LiteralPath $touch -PathType Leaf)) {
-    throw 'AeroHelm touch launcher missing; update the reviewed GCS checkout.'
+if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
+    throw 'Vihanga ground station launcher missing; update the reviewed GCS checkout.'
 }
 
 # A wildcard-bound listener also occupies TCP 5760. No firewall changes,
@@ -122,12 +122,12 @@ if ($UseLegacyPythonBridge -and $listeners.Count -eq 0) {
     Start-Process -FilePath $python.Source -ArgumentList $bridgeArgs -WorkingDirectory $backendRoot | Out-Null
 }
 
-$touchArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $touch)
-if ($SkipBridge -or $UseLegacyPythonBridge) { $touchArgs += '-NoInternalBridge' }
-if ($ShowNativeToolbar) { $touchArgs += '-ShowNativeToolbar' }
-Write-Host 'Starting AeroHelm: one cloud login, then the nine-panel touch workspace.'
+$launchArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launcher)
+if ($SkipBridge -or $UseLegacyPythonBridge) { $launchArgs += '-NoInternalBridge' }
+if ($ShowNativeToolbar) { $launchArgs += '-ShowNativeToolbar' }
+Write-Host 'Starting VIHANGA: native Mission Planner controls with cloud inspection and manual radio backup.'
 Write-Host 'Native TCP is loopback-only (127.0.0.1:5760); GCS outbound MAVLink is discarded.'
 & powershell @touchArgs
 if ($LASTEXITCODE -ne 0) {
-    throw 'AeroHelm touch launcher failed.'
+    throw 'Vihanga ground station launcher failed.'
 }
