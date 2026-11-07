@@ -124,7 +124,7 @@ def request_streams_once(port, heartbeat, cfg: Config) -> bool:
 class Publisher:
     def __init__(self, cfg: Config):
         self.cfg = cfg
-        self.queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=MAX_QUEUE)
+        self.queue: asyncio.Queue[tuple[float, bytes]] = asyncio.Queue(maxsize=MAX_QUEUE)
         self.stop = threading.Event()
         self.counts: Counter[int] = Counter()
         self.dropped = 0
@@ -136,7 +136,7 @@ class Publisher:
         if self.queue.full():
             self.queue.get_nowait()
             self.dropped += 1
-        self.queue.put_nowait(raw)
+        self.queue.put_nowait((time.monotonic(), raw))
 
     def _read_uart(self) -> None:
         probed = False
@@ -198,13 +198,16 @@ class Publisher:
                         LOG.info("Private device WSS connected; UART remains sole owned")
                         while not self.stop.is_set():
                             try:
-                                frame = await asyncio.wait_for(
+                                collected_at, frame = await asyncio.wait_for(
                                     self.queue.get(), timeout=2.0)
                             except asyncio.TimeoutError:
                                 if self._uart_thread and not self._uart_thread.is_alive():
                                     raise RuntimeError("UART reader terminated")
                                 continue
-                            await ws.send(frame)
+                            if time.monotonic() - collected_at <= 1.5:
+                                await ws.send(frame)
+                            else:
+                                self.dropped += 1
                 except (OSError, websockets.WebSocketException, TimeoutError) as ex:
                     LOG.warning("Private WSS disconnected (%s); retrying", type(ex).__name__)
                 if not self.stop.is_set():
