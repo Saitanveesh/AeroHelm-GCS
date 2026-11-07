@@ -6,12 +6,15 @@ on:
       - 'services/vihanga_link/**'
       - '.github/workflows/vihanga-cloud-link.yml'
   pull_request:
+    branches: [master]
     paths:
       - 'services/vihanga_link/**'
       - '.github/workflows/vihanga-cloud-link.yml'
+  workflow_dispatch:
 jobs:
   unit-and-contract:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
