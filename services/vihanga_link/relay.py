@@ -17,7 +17,8 @@ from typing import Any
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from .mission_preview import PreviewRequest, preview
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
 import jwt
@@ -236,6 +237,21 @@ def create_app(config: Config | None = None) -> FastAPI:
             "receiving attitude" if state.fresh(state.last_attitude)
             else "heartbeat only" if state.fresh(state.last_heartbeat)
             else "offline"}]}
+
+    @app.post("/api/v1/sim/mission/preview")
+    async def preview_mission(
+            request: PreviewRequest,
+            authorization: str = Header(default="")) -> dict:
+        """Pure bounded planning, not mission dispatch or FC control."""
+        token = (authorization[7:] if authorization.startswith("Bearer ") else "")
+        if not viewer_expiration(token):
+            raise HTTPException(status_code=401, detail="Private operator session required")
+        if request.vehicle_id != cfg.vehicle_id:
+            raise HTTPException(status_code=404, detail="Unknown aircraft")
+        try:
+            return preview(request)
+        except ValueError as ex:
+            raise HTTPException(status_code=422, detail=str(ex)) from ex
 
     @app.websocket("/ws/mavlink/device/{vehicle_id}")
     async def device(ws: WebSocket, vehicle_id: str) -> None:
