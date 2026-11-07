@@ -94,6 +94,14 @@ namespace AeroHelm.GcsCloud
                 (sender,e) => ShowWorkspace(new AeroHelmSurveyWindow()));
             _workspaces.DropDownItems.Add("Operations / simulation", null,
                 (sender,e) => ShowWorkspace(new AeroHelmOpsWindow()));
+            var planPreview = new ToolStripMenuItem("Autonomy preview");
+            planPreview.Visible = VihangaLinkSession.UsesDedicatedRelay;
+            planPreview.Click += (sender,e) =>
+            {
+                if (VihangaLinkLoginWindow.EnsureSignedIn(MainV2.instance))
+                    ShowWorkspace(new VihangaMissionPreviewWindow());
+            };
+            _workspaces.DropDownItems.Add(planPreview);
             _workspaces.DropDownItems.Add("Fleet and intelligence", null,
                 (sender,e) => ShowWorkspace(new AeroHelmIntelWindow()));
             _workspaces.DropDownItems.Add(new ToolStripSeparator());
