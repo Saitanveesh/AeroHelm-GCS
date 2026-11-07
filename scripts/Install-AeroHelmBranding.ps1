@@ -47,20 +47,40 @@ function Set-BrandFile {
 
 # The product label selects the native Mission Planner settings XML name.
 # Preserve an existing operator configuration before changing that label.
-$settingsDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Mission Planner'
+$settingsDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Vihanga GCS'
+$legacySettingsDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Mission Planner'
 $newProfile = Join-Path $settingsDir 'Vihanga GCS.xml'
 if (-not $SkipLegacySettings -and -not (Test-Path -LiteralPath $newProfile -PathType Leaf)) {
-    foreach ($name in @('AeroHelm GCS.xml','config.xml')) {
-        foreach ($directory in @($settingsDir,$runtime)) {
-            $sourceProfile = Join-Path $directory $name
-            if (Test-Path -LiteralPath $sourceProfile -PathType Leaf) {
-                New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null
-                Copy-Item -LiteralPath $sourceProfile -Destination $newProfile -ErrorAction Stop
-                Write-Host "Existing settings copied to Vihanga profile: $name (source preserved)."
-                break
+    $sources=@(
+        (Join-Path $legacySettingsDir 'Vihanga GCS.xml'),
+        (Join-Path $legacySettingsDir 'AeroHelm GCS.xml'),
+        (Join-Path $legacySettingsDir 'config.xml'),
+        (Join-Path $runtime 'AeroHelm GCS.xml'),
+        (Join-Path $runtime 'config.xml')
+    )
+    foreach ($sourceProfile in $sources) {
+        if (-not (Test-Path -LiteralPath $sourceProfile -PathType Leaf)) { continue }
+        $staging=$null
+        try {
+            New-Item -ItemType Directory -Path $settingsDir -Force -ErrorAction Stop | Out-Null
+            $staging=Join-Path $settingsDir ('.import-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+            Copy-Item -LiteralPath $sourceProfile -Destination $staging -ErrorAction Stop
+            $attribute=[IO.File]::GetAttributes($staging)
+            [IO.File]::SetAttributes($staging,($attribute -band (-bnot [IO.FileAttributes]::ReadOnly)))
+            if (-not (Test-Path -LiteralPath $newProfile -PathType Leaf)) {
+                Move-Item -LiteralPath $staging -Destination $newProfile -ErrorAction Stop
+                Write-Host "Existing settings copied to Vihanga profile: $(Split-Path $sourceProfile -Leaf) (source preserved)."
+            }
+            break
+        }
+        catch {
+            Write-Warning "Legacy settings could not be imported from $sourceProfile. Source remains unchanged: $($_.Exception.Message)"
+        }
+        finally {
+            if ($staging -and (Test-Path -LiteralPath $staging -PathType Leaf)) {
+                Remove-Item -LiteralPath $staging -Force -ErrorAction SilentlyContinue
             }
         }
-        if (Test-Path -LiteralPath $newProfile -PathType Leaf) { break }
     }
 }
 # Existing Mission Planner logo.txt changes the operator-facing title.
