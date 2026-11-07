@@ -13,7 +13,7 @@ $commit=(& git -C $root rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[a-f0-9]{40}$') {
     throw 'Unknown Git source commit; cannot document this preflight.'
 }
-if ($branch -notin @('feat/aerohelm-touch-console','feat/aerohelm-combined-preflight')) {
+if ($branch -ne 'feat/vihanga-phase3-native-toolbar') {
     throw 'Use the reviewed Windows development branch.'
 }
 $uri=$null

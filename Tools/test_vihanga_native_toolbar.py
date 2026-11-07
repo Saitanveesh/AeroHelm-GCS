@@ -104,6 +104,14 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("Start-VihangaGCS.ps1", source("scripts/Start-AeroHelm-Touch.ps1"))
 
 
+    def test_local_acceptance_scripts_target_current_branch(self):
+        for path in ("scripts/Test-AeroHelmPrivatePreflight.ps1",
+                     "scripts/Inspect-AeroHelmWindowsStage.ps1"):
+            content = source(path)
+            self.assertIn("feat/vihanga-phase3-native-toolbar", content)
+            self.assertNotIn("if ($branch -notin @(",content)
+            self.assertNotIn("if ($actualBranch -notin @(",content)
+
     def test_thread_safe_operator_requests(self):
         intel = source("plugins/AeroHelmPlatformV2.cs")
         ops = source("plugins/AeroHelmOperations.cs")

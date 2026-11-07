@@ -23,7 +23,6 @@ on:
       - "plugins/AeroHelmLinkQuality.cs"
       - "plugins/AeroHelmPilotDirectWindow.cs"
       - "plugins/AeroHelmLinkSelector.cs"
-      - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmCloudAttitudeWindow.cs"
       - "scripts/Start-AeroHelm-DirectBackup.ps1"
       - "AeroHelmStartupGate.cs"
@@ -57,6 +56,9 @@ on:
       - "scripts/Cleanup-AeroHelmGenerated.ps1"
       - "scripts/Audit-AeroHelmModules.ps1"
       - "scripts/Start-AeroHelm-NativeCloud.ps1"
+      - "scripts/Inspect-AeroHelmWindowsStage.ps1"
+      - "scripts/Test-AeroHelmPrivatePreflight.ps1"
+      - "scripts/Test-VihangaCertification.ps1"
       - "MainV2.cs"
       - "Plugins/AeroHelmCloud/**"
       - ".github/workflows/aerohelm-cloud-plugin.yml"
@@ -69,7 +71,6 @@ on:
       - "plugins/AeroHelmReceiveOnlyBridge.cs"
       - "plugins/AeroHelmLinkQuality.cs"
       - "plugins/AeroHelmPilotDirectWindow.cs"
-      - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmLinkSelector.cs"
       - "plugins/AeroHelmCloudAttitudeWindow.cs"
       - "scripts/Start-AeroHelm-DirectBackup.ps1"
@@ -119,7 +120,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Portable offline GCS safety, icons and TCP policy tests
-        run: python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_vihanga_native_toolbar
+        run: python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_aerohelm_build_globs Tools.test_vihanga_native_toolbar
 
   plugin-build:
     runs-on: windows-latest
@@ -137,9 +138,8 @@ jobs:
         run: dotnet build Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj --configuration Release --no-restore --verbosity minimal
 
   windows-solution-validation:
-    # A plugin-only compile cannot establish Mission Planner/.NET Framework
-    # integration. Run a full native build on review, never a release deploy.
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    # Run exact-head full native builds on every reviewed feature push as well
+    # as PRs. Plugin-only CI cannot establish the native Windows integration.
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
