@@ -100,7 +100,7 @@ if($Stage -eq 'Inspect'){
 }
 if($Stage -in @('Verify','Diagnose')){
     if(-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)){
-        throw 'Release manifest missing. Existing runtime is not verified; rebuild with -Stage Build -Apply after backing it up.'
+        throw 'Release manifest missing; nothing is verified. For a fresh empty installation use -Stage Bootstrap -Apply -WithBranding; for an existing runtime use -Stage Build -Apply after backing it up.'
     }
     $manifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     # Diagnose is read-only and reports mismatches; Verify additionally enforces
@@ -206,7 +206,7 @@ try{
     & powershell.exe @buildArgs
     $buildCode=$LASTEXITCODE
     if($buildCode -ne 0){
-        throw "Integrated Windows build failed (exit $buildCode). Previous runtime must be restored."
+        throw $(if($freshBootstrap){ "Fresh native build failed (exit $buildCode). No previous runtime exists in this checkout; launch remains blocked." } else { "Integrated Windows build failed (exit $buildCode); restoring the backed-up previous runtime." })
     }
     # Archive only exact known obsolete DLL names; never delete arbitrary
     # Mission Planner or third-party plugins. The installer already archives
