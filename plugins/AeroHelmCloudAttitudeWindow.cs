@@ -1,15 +1,16 @@
-// Independent observational cloud attitude indicator. NOT a flight instrument.
-// Uses only genuine ATTITUDE (30) packets decoded by the private M1 backend.
-// Does not synthesize MAVLink or send any FC/vehicle commands.
+// Passive cloud attitude monitor. Uses the same authenticated MAVLink WSS
+// feed as the native GCS bridge, not an optional HTTP attitude-preview route.
+// Only validated physical MAVLink ATTITUDE (message 30) updates the canvas.
 extern alias FrameworkDrawing;
 using Drawing = FrameworkDrawing::System.Drawing;
 using Drawing2D = FrameworkDrawing::System.Drawing.Drawing2D;
 using System;
-using System.Collections.Generic;
-using System.Globalization;
+using System.IO;
+using System.Net.WebSockets;
+using System.Threading;
 using System.Threading.Tasks;
-using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using MissionPlanner;
 
 namespace AeroHelm.GcsCloud
 {
@@ -17,98 +18,212 @@ namespace AeroHelm.GcsCloud
     {
         private readonly AttitudeSurface canvas = new AttitudeSurface();
         private readonly Label info = new Label();
-        private readonly Timer poll = new Timer();
-        private bool busy;
-        private DateTime lastRefreshUtc = DateTime.MinValue;
-        private readonly JavaScriptSerializer json = new JavaScriptSerializer();
+        private readonly Label header = new Label();
+        private readonly System.Windows.Forms.Timer poll = new System.Windows.Forms.Timer();
+        private readonly CancellationTokenSource shutdown = new CancellationTokenSource();
+        private readonly AeroHelmLinkQuality quality = new AeroHelmLinkQuality();
+        private bool streamConnected;
+        private string connectionIssue = "Waiting for authenticated cloud telemetry.";
+        private long framesReceived;
+        private long heartbeatsReceived;
+        private long attitudesReceived;
+        private long framesRejected;
+        private float lastRoll;
+        private float lastPitch;
 
         internal AeroHelmCloudAttitudeWindow()
         {
-            Text="AeroHelm — Cloud attitude OBSERVATION ONLY";
-            Width=820; Height=650;
-            MinimumSize=new Drawing.Size(570,470);
-            StartPosition=FormStartPosition.CenterParent;
-            AutoScaleMode=AutoScaleMode.Dpi;
-            BackColor=Drawing.Color.FromArgb(9,9,9);
-            ForeColor=Drawing.Color.White;
-            Font=new Drawing.Font("Segoe UI",11f);
-            var header=new Label {
-                Dock=DockStyle.Top,Height=70,
-                Text="CLOUD ATTITUDE / REAL MAVLink ID 30 ONLY"+
-                    Environment.NewLine+
-                    "Not a certified flight instrument. Offline/stale values are hidden.",
-                Font=new Drawing.Font("Segoe UI Semibold",11f),
-                TextAlign=Drawing.ContentAlignment.MiddleCenter,
-                ForeColor=Drawing.Color.FromArgb(220,220,220)
-            };
-            info.Dock=DockStyle.Bottom;info.Height=66;
-            info.TextAlign=Drawing.ContentAlignment.MiddleCenter;
-            info.Text="Awaiting authenticated real ATTITUDE; no synthetic horizon.";
-            info.ForeColor=Drawing.Color.FromArgb(236,187,121);
-            canvas.Dock=DockStyle.Fill;
+            Text = "Vihanga GCS — Live cloud attitude";
+            Width = 820; Height = 650;
+            MinimumSize = new Drawing.Size(570, 470);
+            StartPosition = FormStartPosition.CenterParent;
+            AutoScaleMode = AutoScaleMode.Dpi;
+            BackColor = Drawing.Color.FromArgb(9, 9, 9);
+            ForeColor = Drawing.Color.White;
+            Font = new Drawing.Font("Segoe UI", 11f);
+            header.Dock = DockStyle.Top;
+            header.Height = 54;
+            header.Text = "MAVLink attitude / authenticated cloud telemetry";
+            header.Font = new Drawing.Font("Segoe UI Semibold", 11f);
+            header.TextAlign = Drawing.ContentAlignment.MiddleCenter;
+            header.ForeColor = Drawing.Color.FromArgb(220, 220, 220);
+            info.Dock = DockStyle.Bottom;
+            info.Height = 88;
+            info.TextAlign = Drawing.ContentAlignment.MiddleCenter;
+            info.Text = connectionIssue;
+            info.ForeColor = Drawing.Color.FromArgb(236, 187, 121);
+            canvas.Dock = DockStyle.Fill;
             Controls.Add(canvas);
             Controls.Add(header);
             Controls.Add(info);
-            poll.Interval=800;
-            poll.Tick+=async(s,e)=>{
-                if((DateTime.UtcNow-lastRefreshUtc).TotalSeconds>3)
-                    canvas.Stale();
-                await RefreshAttitudeAsync();
+            poll.Interval = 400;
+            poll.Tick += (s, e) => RefreshDisplay();
+            Shown += async (s, e) => await WatchAsync();
+            FormClosed += (s, e) =>
+            {
+                poll.Stop();
+                shutdown.Cancel();
             };
-            Shown+=async(s,e)=>{
-                poll.Start();
-                await RefreshAttitudeAsync();
-            };
-            FormClosed+=(s,e)=>poll.Stop();
         }
 
-        private async Task RefreshAttitudeAsync()
+        private void RefreshDisplay()
         {
-            if(busy||IsDisposed||Disposing)return;
-            busy=true;
-            try
+            if (IsDisposed || Disposing) return;
+            var metrics = quality.Snapshot();
+            bool live = streamConnected && metrics.AttitudeFresh;
+            if (live)
+                canvas.UpdateAngles(lastRoll, lastPitch);
+            else
+                canvas.Stale();
+
+            string counts = "MAVLink frames " + framesReceived +
+                "   HB " + heartbeatsReceived +
+                "   ATT " + attitudesReceived +
+                "   rejected " + framesRejected;
+            if (live)
             {
-                string payload=await Task.Run(()=>OperationsApi.Request(
-                    "GET","api/v1/mavlink/attitude"));
-                if(IsDisposed||Disposing)return;
-                var data=json.Deserialize<Dictionary<string,object>>(payload);
-                object f,r,p,age;
-                if(!data.TryGetValue("fresh",out f) || !(f is bool && (bool)f) ||
-                   !data.TryGetValue("roll_deg",out r) ||
-                   !data.TryGetValue("pitch_deg",out p) ||
-                   r==null || p==null)
-                {
-                    canvas.Stale();
-                    info.Text="NO FRESH ATTITUDE — native HUD must not use old roll/pitch.";
-                    return;
-                }
-                float roll=Convert.ToSingle(r,CultureInfo.InvariantCulture);
-                float pitch=Convert.ToSingle(p,CultureInfo.InvariantCulture);
-                if(float.IsNaN(roll)||float.IsNaN(pitch)||
-                   float.IsInfinity(roll)||float.IsInfinity(pitch)||
-                   Math.Abs(roll)>180||Math.Abs(pitch)>90)
-                {
-                    canvas.Stale();info.Text="REJECTED NONFINITE/INVALID ATTITUDE";return;
-                }
-                lastRefreshUtc=DateTime.UtcNow;
-                canvas.UpdateAngles(roll,pitch);
-                data.TryGetValue("sample_age_ms",out age);
-                info.Text="OBSERVED / roll "+roll.ToString("F1",CultureInfo.InvariantCulture)+
-                    "°  pitch "+pitch.ToString("F1",CultureInfo.InvariantCulture)+
-                    "°  age "+Convert.ToString(age,CultureInfo.InvariantCulture)+" ms"+
-                    Environment.NewLine+
-                    "Cloud-derived angles; physical aircraft and FC state not certified.";
+                info.Text = "LIVE / roll " + lastRoll.ToString("F1",
+                    System.Globalization.CultureInfo.InvariantCulture) +
+                    "°   pitch " + lastPitch.ToString("F1",
+                    System.Globalization.CultureInfo.InvariantCulture) +
+                    "°   age " + metrics.AttitudeAgeMs + " ms" +
+                    Environment.NewLine + counts;
             }
-            catch(Exception)
+            else if (streamConnected)
             {
-                if(!IsDisposed&&!Disposing)
-                {
-                    canvas.Stale();
-                    info.Text="Cloud preview unavailable or SSO expired. "+
-                        "Upgrade Oracle M1 or use the independent pilot radio.";
-                }
+                info.Text = (heartbeatsReceived > 0 ?
+                    "HEARTBEAT RECEIVED; ATTITUDE (ID 30) NOT FRESH." :
+                    "Connected; waiting for genuine MAVLink HEARTBEAT and ATTITUDE.") +
+                    Environment.NewLine + counts +
+                    Environment.NewLine + "Check Pixhawk-to-Pi UART stream output and cloud relay.";
             }
-            finally { busy=false; }
+            else
+            {
+                info.Text = connectionIssue + Environment.NewLine + counts;
+            }
+        }
+
+        private async Task WatchAsync()
+        {
+            poll.Start();
+            while (!shutdown.IsCancellationRequested)
+            {
+                if (string.IsNullOrWhiteSpace(Program.AeroHelmOperatorToken) ||
+                    DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc)
+                {
+                    connectionIssue = "Cloud session expired or not authenticated. Sign in again.";
+                    streamConnected = false;
+                    quality.Reset();
+                    RefreshDisplay();
+                    break;
+                }
+                streamConnected = false;
+                quality.Reset();
+                canvas.Stale();
+                try
+                {
+                    var url = AeroHelmReceiveOnlyBridge.PrivateWebSocketUri();
+                    using (var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                        shutdown.Token))
+                    using (var ws = new ClientWebSocket())
+                    {
+                        var lifetime = Program.AeroHelmTokenExpiresUtc - DateTime.UtcNow;
+                        if (lifetime <= TimeSpan.Zero) break;
+                        linked.CancelAfter(lifetime);
+                        ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+                        ws.Options.SetRequestHeader("Authorization",
+                            "Bearer " + Program.AeroHelmOperatorToken);
+                        connectionIssue = "Connecting to authenticated MAVLink WSS viewer.";
+                        RefreshDisplay();
+                        await ws.ConnectAsync(url, linked.Token);
+                        streamConnected = true;
+                        framesReceived = heartbeatsReceived = attitudesReceived =
+                            framesRejected = 0;
+                        RefreshDisplay();
+
+                        var packet = new byte[512];
+                        while (!linked.IsCancellationRequested &&
+                               ws.State == WebSocketState.Open)
+                        {
+                            int length = 0;
+                            WebSocketReceiveResult part;
+                            do
+                            {
+                                if (length == packet.Length)
+                                    throw new InvalidDataException(
+                                        "Cloud WSS packet exceeds MAVLink frame limit.");
+                                part = await ws.ReceiveAsync(new ArraySegment<byte>(
+                                    packet, length, packet.Length - length), linked.Token);
+                                if (part.MessageType == WebSocketMessageType.Close)
+                                    throw new IOException("Cloud WSS viewer closed.");
+                                if (part.MessageType != WebSocketMessageType.Binary)
+                                    throw new InvalidDataException(
+                                        "Cloud WSS returned a nonbinary MAVLink packet.");
+                                length += part.Count;
+                            } while (!part.EndOfMessage);
+
+                            int id;
+                            framesReceived++;
+                            if (!AeroHelmReceiveOnlyBridge.ValidFrame(packet, length,
+                                out id))
+                            {
+                                framesRejected++;
+                                continue;
+                            }
+                            if (id == 0)
+                            {
+                                if (AeroHelmReceiveOnlyBridge.HasValidTelemetryChecksum(
+                                    packet, length, 0))
+                                {
+                                    heartbeatsReceived++;
+                                    quality.Observe(0);
+                                }
+                                else framesRejected++;
+                            }
+                            else if (id == 30)
+                            {
+                                float roll, pitch;
+                                if (AeroHelmReceiveOnlyBridge.TryReadAttitude(
+                                    packet, length, out roll, out pitch))
+                                {
+                                    attitudesReceived++;
+                                    quality.Observe(30);
+                                    lastRoll = roll;
+                                    lastPitch = pitch;
+                                }
+                                else framesRejected++;
+                            }
+                        }
+                    }
+                    connectionIssue = "Cloud viewer disconnected; reconnecting.";
+                }
+                catch (OperationCanceledException)
+                {
+                    connectionIssue = DateTime.UtcNow >=
+                        Program.AeroHelmTokenExpiresUtc ?
+                        "Cloud session expired. Sign in again." :
+                        "Cloud viewer disconnected.";
+                }
+                catch (Exception ex)
+                {
+                    // Do not report a missing attitude endpoint: this viewer
+                    // does not use the optional REST preview endpoint.
+                    connectionIssue = "Cloud WSS unavailable (" +
+                        ex.GetType().Name + "). Check sign-in, viewer route and LINK.";
+                }
+                finally
+                {
+                    streamConnected = false;
+                    quality.Reset();
+                    RefreshDisplay();
+                }
+                if (shutdown.IsCancellationRequested ||
+                    DateTime.UtcNow >= Program.AeroHelmTokenExpiresUtc)
+                    break;
+                try { await Task.Delay(1800, shutdown.Token); }
+                catch (OperationCanceledException) { break; }
+            }
+            poll.Stop();
         }
 
         private sealed class AttitudeSurface : Panel
