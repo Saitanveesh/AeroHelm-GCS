@@ -1,0 +1,195 @@
+name: AeroHelm Cloud Plugin Validation
+
+on:
+  push:
+    branches:
+      - feat/aerohelm-cloud-plugin
+      - feat/aerohelm-workspace-vision-mission
+      - feat/aerohelm-platform-v2
+      - feat/aerohelm-m2-readonly-transport
+      - feat/aerohelm-touch-console
+      - feat/gcs-unified-login-readonly-bridge
+      - feat/gcs-research-cybershield-twin-ui
+      - feat/aerohelm-cloud-link-quality-v1
+      - feat/aerohelm-duplex-link-console
+      - feat/vihanga-phase3-native-toolbar
+      - feat/aerohelm-windows-integration
+      - feat/aerohelm-windows-pages-v1
+      - feat/aerohelm-windows-readiness-v2
+      - feat/aerohelm-windows-release-candidate
+    paths:
+      - "plugins/AeroHelmCloud.cs"
+      - "plugins/AeroHelmReceiveOnlyBridge.cs"
+      - "plugins/AeroHelmLinkQuality.cs"
+      - "plugins/AeroHelmPilotDirectWindow.cs"
+      - "plugins/AeroHelmLinkSelector.cs"
+      - "plugins/AeroHelmCloudAttitudeWindow.cs"
+      - "scripts/Start-AeroHelm-DirectBackup.ps1"
+      - "AeroHelmStartupGate.cs"
+      - "plugins/AeroHelmTwinLabWindow.cs"
+      - "plugins/AeroHelmFleetLabWindow.cs"
+      - "plugins/VihangaSharedUi.cs"
+      - "scripts/Start-VihangaGCS.ps1"
+      - "plugins/AeroHelmReadOnlyPages.cs"
+      - "scripts/Build-Integrated-AeroHelm.ps1"
+      - "scripts/Start-AeroHelm-Touch.ps1"
+      - "scripts/Start-AeroHelm-Session.ps1"
+      - "scripts/Repair-AeroHelmWindows.ps1"
+      - "scripts/Install-AeroHelmCloud.ps1"
+      - "scripts/Restore-AeroHelmPlugin.ps1"
+      - "scripts/Test-AeroHelmPluginRoundtrip.ps1"
+      - "scripts/Test-AeroHelmWindowsPages.ps1"
+      - "scripts/Test-AeroHelmPrivatePreflight.ps1"
+      - "plugins/AeroHelmWorkspace.cs"
+      - "plugins/AeroHelmOperations.cs"
+      - "plugins/AeroHelmPlatformV2.cs"
+      - "scripts/Start-AeroHelm-NativeCloud.ps1"
+      - "plugins/AeroHelmSurveyPlanner.cs"
+      - "Tools/AeroHelmSurveyTests/**"
+      - "Tools/AeroHelmMavlinkBridgeTests/**"
+      - "Tools/test_aerohelm_offline_gcs.py"
+      - "Tools/test_vihanga_native_toolbar.py"
+      - "scripts/Run-AeroHelmOfflineChecks.ps1"
+      - "scripts/Test-VihangaCertification.ps1"
+      - "scripts/Update-AeroHelmLatest.ps1"
+      - "Tools/fixtures/physics_lab_hover.json"
+      - "scripts/Consolidate-AeroHelmWindows.ps1"
+      - "scripts/Cleanup-AeroHelmGenerated.ps1"
+      - "scripts/Audit-AeroHelmModules.ps1"
+      - "scripts/Start-AeroHelm-NativeCloud.ps1"
+      - "scripts/Inspect-AeroHelmWindowsStage.ps1"
+      - "scripts/Test-AeroHelmPrivatePreflight.ps1"
+      - "scripts/Test-VihangaCertification.ps1"
+      - "docs/VIHANGA_CERTIFICATION.md"
+      - "MainV2.cs"
+      - "Plugins/AeroHelmCloud/**"
+      - ".github/workflows/aerohelm-cloud-plugin.yml"
+  pull_request:
+    branches:
+      - feat/gcs-touch-ux-readonly-fleet-r1
+    paths:
+      - "scripts/Install-AeroHelmCloud.ps1"
+      - "scripts/Restore-AeroHelmPlugin.ps1"
+      - "scripts/Test-AeroHelmPluginRoundtrip.ps1"
+      - "plugins/AeroHelmCloud.cs"
+      - "plugins/AeroHelmReceiveOnlyBridge.cs"
+      - "plugins/AeroHelmLinkQuality.cs"
+      - "plugins/AeroHelmPilotDirectWindow.cs"
+      - "plugins/AeroHelmLinkSelector.cs"
+      - "plugins/AeroHelmCloudAttitudeWindow.cs"
+      - "scripts/Start-AeroHelm-DirectBackup.ps1"
+      - "AeroHelmStartupGate.cs"
+      - "plugins/AeroHelmTwinLabWindow.cs"
+      - "plugins/AeroHelmFleetLabWindow.cs"
+      - "plugins/AeroHelmReadOnlyPages.cs"
+      - "plugins/VihangaSharedUi.cs"
+      - "scripts/Start-VihangaGCS.ps1"
+      - "plugins/AeroHelmOperations.cs"
+      - "plugins/AeroHelmWorkspace.cs"
+      - "scripts/Build-Integrated-AeroHelm.ps1"
+      - "scripts/Start-AeroHelm-Touch.ps1"
+      - "scripts/Start-AeroHelm-Session.ps1"
+      - "scripts/Repair-AeroHelmWindows.ps1"
+      - "scripts/Test-AeroHelmWindowsPages.ps1"
+      - "scripts/Test-AeroHelmPrivatePreflight.ps1"
+      - "plugins/AeroHelmPlatformV2.cs"
+      - "Plugins/AeroHelmCloud/**"
+      - "Tools/AeroHelmMavlinkBridgeTests/**"
+      - "Tools/test_aerohelm_offline_gcs.py"
+      - "Tools/test_vihanga_native_toolbar.py"
+      - "scripts/Run-AeroHelmOfflineChecks.ps1"
+      - "scripts/Update-AeroHelmLatest.ps1"
+      - "Tools/fixtures/physics_lab_hover.json"
+      - "scripts/Consolidate-AeroHelmWindows.ps1"
+      - "scripts/Cleanup-AeroHelmGenerated.ps1"
+      - "scripts/Audit-AeroHelmModules.ps1"
+      - "scripts/Start-AeroHelm-NativeCloud.ps1"
+      - "MainV2.cs"
+      - ".github/workflows/aerohelm-cloud-plugin.yml"
+  workflow_dispatch:
+
+jobs:
+  windows-page-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify native Windows page source contracts (no aircraft)
+        shell: pwsh
+        run: ./scripts/Test-AeroHelmWindowsPages.ps1
+      - name: Audit native GCS workspaces without aircraft
+        shell: pwsh
+        run: ./scripts/Audit-AeroHelmModules.ps1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Portable offline GCS safety, icons and TCP policy tests
+        run: python -m unittest -v Tools.test_aerohelm_offline_gcs Tools.test_aerohelm_build_globs Tools.test_vihanga_native_toolbar
+
+  plugin-build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        run: dotnet restore Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj --verbosity quiet
+      - name: Compile plugin against Mission Planner
+        run: dotnet build Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj --configuration Release --no-restore --verbosity minimal
+
+  windows-solution-validation:
+    # Run exact-head full native builds on every reviewed feature push as well
+    # as PRs. Plugin-only CI cannot establish the native Windows integration.
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Verify offline AeroHelm Windows source contracts
+        shell: powershell
+        run: |
+          & .\scripts\Test-AeroHelmWindowsPages.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Build full Mission Planner solution with Visual Studio MSBuild
+        shell: powershell
+        run: |
+          & .\scripts\Build-AeroHelmGCS.ps1 -Target Solution
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Compile the integrated AeroHelm plugin against native GCS
+        shell: powershell
+        run: |
+          & .\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Disposable compiled-plugin installation and rollback roundtrip
+        shell: powershell
+        env:
+          AEROHELM_DISPOSABLE_CI: "1"
+        run: |
+          & .\scripts\Test-AeroHelmPluginRoundtrip.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+  mavlink-native-bridge-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Native receive-only bridge CRC, freshness and outage regression
+        run: dotnet run --project Tools/AeroHelmMavlinkBridgeTests/AeroHelmMavlinkBridgeTests.csproj --configuration Release
+
+  survey-draft-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Offline mission generator regression tests
+        run: dotnet run --project Tools/AeroHelmSurveyTests/AeroHelmSurveyTests.csproj --configuration Release
