@@ -75,7 +75,7 @@ class Config:
             url.path != "/ws/mavlink/device/" + self.vehicle_id or
             not url.hostname.endswith(".ts.net") or
             not self.pinned_relay_host or
-            url.hostname != self.pinned_relay_host):
+            url.hostname != self.pinned_relay_host.lower()):
             raise ValueError("Device uplink requires a pinned private relay hostname and WSS URL")
 
 
