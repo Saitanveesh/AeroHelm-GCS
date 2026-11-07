@@ -119,7 +119,7 @@ class LinkState:
     last_frame: float = -1.0
     last_heartbeat: float = -1.0
     last_attitude: float = -1.0
-    parameter_frames: dict[int, bytes] = field(default_factory=dict)
+    parameter_frames: dict[int, tuple[float, bytes]] = field(default_factory=dict)
     parameter_expected: int = 0
     parameter_source: int = -1
     parameter_seen_at: float = -1.0
@@ -156,13 +156,14 @@ class LinkState:
         if msg_id == 22:
             header = 6 if packet[0] == 0xFE else 10
             source = packet[3] if packet[0] == 0xFE else packet[5]
+            component = packet[4] if packet[0] == 0xFE else packet[6]
             count, index = struct.unpack_from("<HH", packet, header + 4)
-            if 0 < count <= 5000 and index < count:
+            if component == 1 and 0 < count <= 5000 and index < count:
                 if count != self.parameter_expected or source != self.parameter_source:
                     self.parameter_frames.clear()
                     self.parameter_expected = count
                     self.parameter_source = source
-                self.parameter_frames[index] = bytes(packet)
+                self.parameter_frames[index] = (now, bytes(packet))
                 self.parameter_seen_at = now
         for queue in tuple(self.viewers):
             if queue.full():
@@ -174,8 +175,11 @@ class LinkState:
             time.monotonic() - timestamp) <= FRESH_SECONDS
 
     def parameter_status(self) -> dict[str, Any]:
-        age_seconds = (time.monotonic() - self.parameter_seen_at
-                       if self.parameter_seen_at >= 0 else None)
+        # The oldest parameter determines snapshot freshness. A single recent
+        # parameter update must not revive hundreds of stale cache entries.
+        oldest = min((stamp for stamp, _ in self.parameter_frames.values()),
+                     default=-1.0)
+        age_seconds = time.monotonic() - oldest if oldest >= 0 else None
         complete = (self.connected and self.parameter_expected > 0 and
                     len(self.parameter_frames) == self.parameter_expected and
                     age_seconds is not None and 0 <= age_seconds <= 300)
