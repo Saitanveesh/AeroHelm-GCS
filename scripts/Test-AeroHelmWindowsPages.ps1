@@ -70,6 +70,20 @@ $workspace = Read-Source 'plugins/AeroHelmWorkspace.cs'
 $operations = Read-Source 'plugins/AeroHelmOperations.cs'
 $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
 $mainProject = Read-Source 'MissionPlanner.csproj'
+$settingsCore = Read-Source 'ExtLibs/Utilities/Settings.cs'
+# Vihanga operator preferences must save to writable per-user storage and
+# complete XML serialization before replacing the previous profile.
+Require-Text $settingsCore 'Environment.SpecialFolder.LocalApplicationData' 'Vihanga settings must use per-user application storage.'
+Require-Text $settingsCore 'string.Equals(FileName, "Vihanga GCS.xml"' 'Only the Vihanga profile may change storage location.'
+Require-Text $settingsCore 'File.Copy(legacy, staging, false);' 'Previous Vihanga profile must be copied, never moved.'
+Require-Text $settingsCore 'File.Replace(temp, filename, filename + ".bak");' 'Settings save must atomically replace the old XML with a backup.'
+Require-Text $settingsCore 'File.Move(temp, filename);' 'New settings file must only be moved into place after serialization.'
+if ($settingsCore.Contains('new XmlTextWriter(filename, Encoding.UTF8)')) {
+    throw 'Settings writer still truncates the active profile before serialization succeeds.'
+}
+$brandingStorage = Read-Source 'scripts/Install-AeroHelmBranding.ps1'
+Require-Text $brandingStorage "GetFolderPath('LocalApplicationData')" 'Branding profile migration must not write into protected Documents.'
+Require-Text $brandingStorage '$legacySettingsDir' 'Branding must preserve the legacy profile location for copy-only migration.'
 # Prevent the SDK's recursive Compile glob from including archived runtime
 # plugin .cs files, the source of the CS0101/CS0111 Windows build failures.
 Require-Text $mainProject 'Compile Remove="build-logs\**"' 'Historical runtime backups would be compiled as duplicate source classes.'
