@@ -34,6 +34,8 @@ MESSAGE_RATES_HZ = {30: 5, 33: 2, 74: 2, 1: 1, 24: 1, 147: 1}
 MAX_FRAME = 300
 MAX_QUEUE = 256
 OBSERVATION_IDS = (0, 30, 33, 74, 24, 1, 147)
+STREAM_PROBE_MAX_ATTEMPTS = 2
+STREAM_PROBE_RETRY_SECONDS = 15.0
 
 
 def observation_delta(current: Counter[int], previous: Counter[int]) -> dict[int, int]:
@@ -136,6 +138,14 @@ def request_streams_once(port, heartbeat, cfg: Config) -> bool:
     return True
 
 
+
+def stream_probe_due(cfg: Config, *, seen_armed: bool, attitude_seen: bool,
+                     attempts: int, seconds_since_last_probe: float) -> bool:
+    """Permit at most one disarmed/local retry when ID30 never arrives."""
+    return (cfg.stream_probe and not seen_armed and not attitude_seen and
+            attempts < STREAM_PROBE_MAX_ATTEMPTS and
+            (attempts == 0 or seconds_since_last_probe >= STREAM_PROBE_RETRY_SECONDS))
+
 def request_parameter_snapshot_once(port, heartbeat, cfg: Config) -> bool:
     """One local read-only FC parameter-list request on the disarmed bench."""
     if not cfg.parameter_snapshot or not is_disarmed_autopilot_heartbeat(
@@ -167,7 +177,9 @@ class Publisher:
         self.queue.put_nowait((time.monotonic(), raw))
 
     def _read_uart(self) -> None:
-        probed = False
+        stream_probe_attempts = 0
+        last_probe_at = 0.0
+        attitude_seen = False
         parameters_requested = False
         seen_armed = False
         last_report = time.monotonic()
@@ -204,6 +216,8 @@ class Publisher:
                     self.foreign_system_dropped += 1
                     continue
                 self.counts[mid] += 1
+                if mid == 30:
+                    attitude_seen = True
                 if msg.get_type() == "HEARTBEAT" and \
                         msg.get_srcSystem() == self.cfg.system_id and \
                         msg.get_srcComponent() == 1:
@@ -214,8 +228,16 @@ class Publisher:
                     # EVER observed an armed FC. An onboard operator must
                     # explicitly restart a disarmed maintenance session.
                     if not seen_armed:
-                        if self.cfg.stream_probe and not probed:
-                            probed = request_streams_once(self.port, msg, self.cfg)
+                        if stream_probe_due(
+                                self.cfg, seen_armed=seen_armed,
+                                attitude_seen=attitude_seen,
+                                attempts=stream_probe_attempts,
+                                seconds_since_last_probe=time.monotonic() - last_probe_at):
+                            if request_streams_once(self.port, msg, self.cfg):
+                                stream_probe_attempts += 1
+                                last_probe_at = time.monotonic()
+                                LOG.info("Disarmed local stream probe attempt %d/%d",
+                                         stream_probe_attempts, STREAM_PROBE_MAX_ATTEMPTS)
                         if self.cfg.parameter_snapshot and not parameters_requested:
                             parameters_requested = request_parameter_snapshot_once(
                                 self.port, msg, self.cfg)
