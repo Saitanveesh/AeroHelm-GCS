@@ -158,6 +158,7 @@ class LinkState:
     epoch: int = 0
     viewers: set[asyncio.Queue[tuple[float, bytes]]] = field(default_factory=set)
     counters: Counter[int] = field(default_factory=Counter)
+    last_message_by_id: dict[int, float] = field(default_factory=dict)
     recent_frames: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
     recent_heartbeats: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
     recent_attitudes: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
@@ -173,6 +174,7 @@ class LinkState:
 
     def clear_session(self) -> None:
         self.counters.clear()
+        self.last_message_by_id.clear()
         self.recent_frames.clear()
         self.recent_heartbeats.clear()
         self.recent_attitudes.clear()
@@ -210,6 +212,7 @@ class LinkState:
         now = time.monotonic()
         self.frames += 1
         self.counters[msg_id] += 1
+        self.last_message_by_id[msg_id] = now
         self.last_frame = now
         self.recent_frames.append(now)
         if msg_id == 0:
@@ -350,6 +353,16 @@ class LinkState:
             "frames": self.frames,
             "real_heartbeat_frames": self.counters[0],
             "real_attitude_frames": self.counters[30],
+            "native_quick_data_ready": (self.fresh(self.last_message_by_id.get(0, -1)) and
+                                        self.fresh(self.last_message_by_id.get(30, -1)) and
+                                        (self.fresh(self.last_message_by_id.get(33, -1)) or
+                                         self.fresh(self.last_message_by_id.get(74, -1)))),
+            "flight_data_streams": {
+                str(mid): {"frames": self.counters[mid],
+                           "fresh": self.fresh(self.last_message_by_id.get(mid, -1)),
+                           "age_ms": age_ms(self.last_message_by_id.get(mid, -1))}
+                for mid in (0, 1, 24, 30, 33, 74, 147)
+            },
             "frame_age_ms": age_ms(self.last_frame),
             "heartbeat_age_ms": age_ms(self.last_heartbeat),
             "attitude_age_ms": age_ms(self.last_attitude),
