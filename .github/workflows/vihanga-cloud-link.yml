@@ -1,0 +1,27 @@
+name: Vihanga cloud transport tests
+on:
+  push:
+    branches: [feat/vihanga-phase3-native-toolbar]
+    paths:
+      - 'services/vihanga_link/**'
+      - '.github/workflows/vihanga-cloud-link.yml'
+  pull_request:
+    paths:
+      - 'services/vihanga_link/**'
+      - '.github/workflows/vihanga-cloud-link.yml'
+jobs:
+  unit-and-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated test requirements
+        run: python -m pip install -r services/vihanga_link/requirements-test.txt
+      - name: Compile importable Python
+        run: python -m compileall -q services/vihanga_link
+      - name: Protocol, authentication and disarmed-port tests
+        run: python -m pytest -q services/vihanga_link/test_link.py
