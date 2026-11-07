@@ -912,7 +912,8 @@ namespace AeroHelm.GcsCloud
                         " ms" + Environment.NewLine +
                     "UPDATED   " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'",
                         CultureInfo.InvariantCulture) + Environment.NewLine +
-                    "MODE      Read-only";
+                    "MODE      Legacy M1 telemetry view only" + Environment.NewLine +
+                    "NEXT      Missing ID30: inspect Pi UART, FC stream rates and deploy private relay";
                 lastTechnical = lastSummary + Environment.NewLine + Environment.NewLine +
                     "SERVER COUNTERS" + Environment.NewLine +
                     "Frames: " + Convert.ToString(m.ContainsKey("frames_received") ?
@@ -983,6 +984,9 @@ namespace AeroHelm.GcsCloud
                               hb is bool && (bool)hb;
                 bool attLive = data.TryGetValue("attitude_stream_active", out att) &&
                                att is bool && (bool)att;
+                object quickFlag;
+                bool quickFeedReady = data.TryGetValue("native_quick_data_ready",
+                    out quickFlag) && quickFlag is bool && (bool)quickFlag;
                 var native = AeroHelmCloudPlugin.ActiveNativeBridge;
                 bool localHb = native != null && native.NativeHeartbeatFresh;
                 bool localAtt = native != null && native.NativeAttitudeFresh;
@@ -1015,9 +1019,16 @@ namespace AeroHelm.GcsCloud
                                Environment.NewLine +
                     "FRAMES    Total " + total + " | HB " + heartbeatFrames +
                                " | ATT " + attitudeFrames + Environment.NewLine +
-                    "LINK      FC stream requests: disarmed bench only; flight commands disabled";
+                    "QUICK     " + (quickFeedReady ? "Real FC attitude/position feed observed" :
+                        "INCOMPLETE: real ID30 and ID33 or ID74 required") +
+                        Environment.NewLine +
+                    "LINK      Disarmed telemetry requests only; flight commands disabled";
                 lastTechnical = lastSummary + Environment.NewLine +
                     "REJECTED  " + errors + " | VIEWERS " + audience +
+                    Environment.NewLine +
+                    "FC STREAMS " + (data.ContainsKey("flight_data_streams") ?
+                        new JavaScriptSerializer().Serialize(data["flight_data_streams"]) :
+                        "not deployed") +
                     Environment.NewLine +
                     "STREAM PROBE " + (data.ContainsKey("telemetry_probe") ?
                         new JavaScriptSerializer().Serialize(data["telemetry_probe"]) :
