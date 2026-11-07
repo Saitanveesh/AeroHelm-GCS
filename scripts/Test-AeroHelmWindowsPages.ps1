@@ -74,7 +74,7 @@ $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
 # was removed or renamed while a constructor call still references it.
 # Check precisely the sources that the separate plugin project compiles.
 $pluginProjectDir = Join-Path $root 'Plugins/AeroHelmCloud'
-$pluginUnits = @([regex]::Matches($project, '<Compile\s+Include="([^"]+\.cs)"'))
+$pluginUnits = [regex]::Matches($project, '<Compile\s+Include="([^"]+\.cs)"')
 if ($pluginUnits.Count -lt 1) { throw 'Plugin compile source list is empty.' }
 $pluginDeclarations = New-Object 'System.Collections.Generic.HashSet[string]'
 $pluginSources = @()
