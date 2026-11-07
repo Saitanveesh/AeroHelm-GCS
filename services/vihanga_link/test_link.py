@@ -119,6 +119,7 @@ def test_authenticated_read_only_parameter_snapshot_and_epoch(credentials):
         route = "/api/v1/vehicles/AH-HW-001/parameters"
         assert client.get(route).status_code == 401
         assert client.get(route, headers=headers).json()["status"] == "UNAVAILABLE"
+        assert client.get(route + "/values", headers=headers).status_code == 409
         with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
               headers={"Authorization": "Bearer " + device_token}) as device:
             for index in range(3):
@@ -134,6 +135,13 @@ def test_authenticated_read_only_parameter_snapshot_and_epoch(credentials):
             assert status["count"] == status["expected"] == 3
             assert status["epoch"] == 1
             assert status["read_only"]
+            values = client.get(route + "/values", headers=headers)
+            assert values.status_code == 200
+            rows = values.json()
+            assert rows["writable"] is False
+            assert rows["aircraft_commands_enabled"] is False
+            assert rows["values"]["TEST_1"]["float32"] == 1.0
+            assert rows["values"]["TEST_1"]["type"] == 9
             assert client.get("/api/v1/vehicles/OTHER/parameters",
                               headers=headers).status_code == 404
             assert client.get("/api/v1/mavlink/health").json()[
