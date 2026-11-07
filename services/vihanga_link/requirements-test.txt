@@ -1,0 +1,4 @@
+-r requirements-cloud.txt
+-r requirements-pi.txt
+pytest>=8,<10
+httpx>=0.27,<1
