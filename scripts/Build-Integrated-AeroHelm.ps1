@@ -4,6 +4,7 @@ param(
     [switch]$SkipBranding,
     [string]$LogoPath = "",
     [string]$IconPath = "",
+    [switch]$SkipLegacySettings,
     [switch]$Launch
 )
 $ErrorActionPreference = "Stop"
@@ -49,6 +50,9 @@ try {
         }
         if (-not [string]::IsNullOrWhiteSpace($IconPath)) {
             $brandingParams['IconPath']=$IconPath
+        }
+        if ($SkipLegacySettings) {
+            $brandingParams['SkipLegacySettings']=$true
         }
         # Invoke the PowerShell script directly so a path containing spaces
         # remains a single argument and terminating errors propagate.

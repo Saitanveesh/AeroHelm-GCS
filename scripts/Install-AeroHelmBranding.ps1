@@ -4,7 +4,8 @@
 param(
     [string]$LogoPath = "",
     [string]$IconPath = "",
-    [string]$SplashPath = ""
+    [string]$SplashPath = "",
+    [switch]$SkipLegacySettings
 )
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -48,7 +49,7 @@ function Set-BrandFile {
 # Preserve an existing operator configuration before changing that label.
 $settingsDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Mission Planner'
 $newProfile = Join-Path $settingsDir 'Vihanga GCS.xml'
-if (-not (Test-Path -LiteralPath $newProfile -PathType Leaf)) {
+if (-not $SkipLegacySettings -and -not (Test-Path -LiteralPath $newProfile -PathType Leaf)) {
     foreach ($name in @('AeroHelm GCS.xml','config.xml')) {
         foreach ($directory in @($settingsDir,$runtime)) {
             $sourceProfile = Join-Path $directory $name
@@ -85,5 +86,9 @@ foreach ($asset in @(
     }
 }
 Write-Host "Vihanga GCS title installed. Original runtime assets backed up under: $backup"
-Write-Host "Existing operator settings are retained. If available, the first Vihanga profile is copied from AeroHelm or native Mission Planner without overwriting an existing Vihanga profile."
+if($SkipLegacySettings){
+    Write-Host 'Clean profile: skipped importing legacy AeroHelm/Mission Planner settings.'
+} else {
+    Write-Host 'Existing settings preserved; missing Vihanga profile may be copied from legacy settings.'
+}
 Write-Host "Upstream copyright and GPL notices are intentionally retained."

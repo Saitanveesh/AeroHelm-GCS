@@ -202,6 +202,7 @@ try{
     $buildArgs=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
                  '-File',$build)
     if(-not $WithBranding){$buildArgs+='-SkipBranding'}
+    if($freshBootstrap){$buildArgs+='-SkipLegacySettings'}
     & powershell.exe @buildArgs
     $buildCode=$LASTEXITCODE
     if($buildCode -ne 0){
