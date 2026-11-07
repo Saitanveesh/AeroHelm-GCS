@@ -226,7 +226,7 @@ Require-Text (Read-Source 'scripts/Install-AeroHelmBranding.ps1') 'build-logs\br
 Require-Text $integratedBuild 'feat/gcs-research-cybershield-twin-ui' 'Build launcher must accept the reviewed research branch.'
 Require-Text $integratedBuild 'feat/vihanga-phase3-native-toolbar' 'Build launcher must retain the Vihanga development branch.'
 Require-Text $integratedBuild 'master' 'Build launcher must accept merged master.'
-Require-Text $latestLauncher "$branch='master'" 'Updater must target merged master.'
+Require-Text $latestLauncher 'master' 'Updater must target merged master.'
 Require-Text $consolidation "feat/vihanga-phase3-native-toolbar" 'Consolidation must retain development branch compatibility.'
 Require-Text $consolidation "master" 'Consolidation must allow merged master.'
 Require-Text $generatedCleanup 'Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop' 'Generated-output scan must keep -ErrorAction on the same PowerShell command.'
