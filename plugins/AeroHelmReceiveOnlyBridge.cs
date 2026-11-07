@@ -171,7 +171,7 @@ namespace AeroHelm.GcsCloud
             }
         }
 
-        private static Uri PrivateWebSocketUri()
+        internal static Uri PrivateWebSocketUri()
         {
             Uri origin;
             if (!Uri.TryCreate(Program.AeroHelmCloudOrigin, UriKind.Absolute, out origin) ||
