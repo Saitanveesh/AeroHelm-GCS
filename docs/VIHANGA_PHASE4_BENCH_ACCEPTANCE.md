@@ -25,6 +25,10 @@ display native values for other telemetry types without proving ATTITUDE.
   scrolling rather than squeezing values into unreadable columns.
 - OPS, INTEL and SETTINGS use a shared WinForms width reflow; LINK wraps
   buttons and exposes a specific **real HB but no ATTITUDE** status.
+- Upstream native Mission Planner FLIGHT action tabs switch to multiple
+  rows when their pane is narrower than 560 pixels; QuickView retains
+  readable column widths with viewport scrolling instead of compressing
+  the readouts. No aircraft commands or HUD angles are altered.
 - FLEET and INTEL request V2 first, then the same-origin R2 fleet view, then
   the existing M1 registry; only 404 triggers fallback. Authentication errors
   are not bypassed. Profile labels identify M1 registry vs R2 observations.
@@ -103,7 +107,14 @@ convert Mission Planner into a phone-first web application. A separate
 accessible responsive mobile client is a distinct deliverable, not a
 property of these desktop UI changes.
 
-## R2 separate engineering track
+## R2 separate deployment track (source bundled)
+
+The reviewed Vihanga branch now **includes the `cloud/` source tree and
+an independent cloud-control-plane CI workflow**, synchronized with
+`feat/cloud-oci-private-edge-r2`. This consolidates versioned source,
+not deployment, authentication, database state or operational authority.
+The R2 OIDC service and M1 JWT system remain independently deployed and
+must never be treated as interchangeable.
 
 `feat/cloud-oci-private-edge-r2` contains a lightweight Pi observation
 bridge, durable PostgreSQL fleet state and isolated fleet analytics worker.
