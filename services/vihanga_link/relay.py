@@ -6,7 +6,7 @@ the running Oracle M1. It accepts exactly one authenticated Pi UART publisher.
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field
 import hashlib
 import hmac
@@ -148,6 +148,9 @@ class LinkState:
     epoch: int = 0
     viewers: set[asyncio.Queue[tuple[float, bytes]]] = field(default_factory=set)
     counters: Counter[int] = field(default_factory=Counter)
+    recent_frames: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
+    recent_heartbeats: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
+    recent_attitudes: deque[float] = field(default_factory=lambda: deque(maxlen=8192))
     frames: int = 0
     rejected: int = 0
     last_frame: float = -1.0
@@ -160,6 +163,9 @@ class LinkState:
 
     def clear_session(self) -> None:
         self.counters.clear()
+        self.recent_frames.clear()
+        self.recent_heartbeats.clear()
+        self.recent_attitudes.clear()
         self.frames = self.rejected = self.foreign_system_frames = 0
         self.last_frame = self.last_heartbeat = self.last_attitude = -1.0
         self.parameter_frames.clear()
@@ -191,10 +197,13 @@ class LinkState:
         self.frames += 1
         self.counters[msg_id] += 1
         self.last_frame = now
+        self.recent_frames.append(now)
         if msg_id == 0:
             self.last_heartbeat = now
+            self.recent_heartbeats.append(now)
         if msg_id == 30:
             self.last_attitude = now
+            self.recent_attitudes.append(now)
         if msg_id == 22:
             header = 6 if packet[0] == 0xFE else 10
             source = packet[3] if packet[0] == 0xFE else packet[5]
@@ -266,6 +275,15 @@ class LinkState:
                 "writable": False, "aircraft_commands_enabled": False}
 
     def health(self, vehicle_id: str) -> dict[str, Any]:
+        now = time.monotonic()
+        def age_ms(stamp: float) -> int | None:
+            return max(0, int((now - stamp) * 1000)) if self.connected and stamp >= 0 else None
+
+        def five_second_rate(observations: deque[float]) -> float:
+            if not self.connected:
+                return 0.0
+            return round(sum(1 for stamp in observations if 0 <= now - stamp <= 5.0) / 5.0, 2)
+
         return {
             "mode": APP_MODE,
             "vehicle_id": vehicle_id,
@@ -276,6 +294,12 @@ class LinkState:
             "frames": self.frames,
             "real_heartbeat_frames": self.counters[0],
             "real_attitude_frames": self.counters[30],
+            "frame_age_ms": age_ms(self.last_frame),
+            "heartbeat_age_ms": age_ms(self.last_heartbeat),
+            "attitude_age_ms": age_ms(self.last_attitude),
+            "frame_rate_5s_hz": five_second_rate(self.recent_frames),
+            "heartbeat_rate_5s_hz": five_second_rate(self.recent_heartbeats),
+            "attitude_rate_5s_hz": five_second_rate(self.recent_attitudes),
             "rejected_frames": self.rejected,
             "foreign_system_frames_rejected": self.foreign_system_frames,
             "flight_controller_system_id": self.fc_system_id,
