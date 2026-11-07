@@ -65,8 +65,7 @@ if (-not $SkipLegacySettings -and -not (Test-Path -LiteralPath $newProfile -Path
             New-Item -ItemType Directory -Path $settingsDir -Force -ErrorAction Stop | Out-Null
             $staging=Join-Path $settingsDir ('.import-' + [Guid]::NewGuid().ToString('N') + '.tmp')
             Copy-Item -LiteralPath $sourceProfile -Destination $staging -ErrorAction Stop
-            $attribute=[IO.File]::GetAttributes($staging)
-            [IO.File]::SetAttributes($staging,[IO.FileAttributes](([int]$attribute) -band (-bnot [int][IO.FileAttributes]::ReadOnly)))
+            (Get-Item -LiteralPath $staging -ErrorAction Stop).IsReadOnly = $false
             if (-not (Test-Path -LiteralPath $newProfile -PathType Leaf)) {
                 Move-Item -LiteralPath $staging -Destination $newProfile -ErrorAction Stop
                 Write-Host "Existing settings copied to Vihanga profile: $(Split-Path $sourceProfile -Leaf) (source preserved)."
