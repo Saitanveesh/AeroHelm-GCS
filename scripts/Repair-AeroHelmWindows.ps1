@@ -1,4 +1,4 @@
-# AeroHelm single-entry native Windows repair, inspection-only by default.
+# Vihanga single-entry native Windows repair, inspection-only by default.
 # No aircraft, Pi or Oracle operations. -Apply backs up the entire old GCS.
 param([switch]$Apply)
 $ErrorActionPreference = 'Stop'
@@ -17,7 +17,7 @@ if (Get-Process -Name MissionPlanner -ErrorAction SilentlyContinue) {
 }
 try {
     & $fix -Stage Inspect
-    & $fix -Stage Build -Apply
+    & $fix -Stage Build -Apply -WithBranding
     & $fix -Stage Verify
     Write-Host 'SUCCESS: full Windows GCS compilation, plugin install and hash verification passed.' -ForegroundColor Green
     Write-Host 'Next launch: powershell -File .\scripts\Start-AeroHelm-Session.ps1'

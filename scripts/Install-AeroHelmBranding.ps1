@@ -29,8 +29,25 @@ function Set-BrandFile {
     Copy-Item -LiteralPath $Path -Destination $dest -Force
 }
 
-# Existing Mission Planner explicitly supports logo.txt for operator-facing
-# app title and its per-product settings XML. This is NOT an attribution rewrite.
+# The product label selects the native Mission Planner settings XML name.
+# Preserve an existing operator configuration before changing that label.
+$settingsDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Mission Planner'
+$newProfile = Join-Path $settingsDir 'Vihanga GCS.xml'
+if (-not (Test-Path -LiteralPath $newProfile -PathType Leaf)) {
+    foreach ($name in @('AeroHelm GCS.xml','config.xml')) {
+        foreach ($directory in @($settingsDir,$runtime)) {
+            $sourceProfile = Join-Path $directory $name
+            if (Test-Path -LiteralPath $sourceProfile -PathType Leaf) {
+                New-Item -ItemType Directory -Path $settingsDir -Force | Out-Null
+                Copy-Item -LiteralPath $sourceProfile -Destination $newProfile -ErrorAction Stop
+                Write-Host "Existing settings copied to Vihanga profile: $name (source preserved)."
+                break
+            }
+        }
+        if (Test-Path -LiteralPath $newProfile -PathType Leaf) { break }
+    }
+}
+# Existing Mission Planner logo.txt changes the operator-facing title.
 $title = Join-Path $runtime 'logo.txt'
 if (Test-Path -LiteralPath $title) {
     Copy-Item -LiteralPath $title -Destination (Join-Path $backup 'logo.txt') -Force
@@ -53,5 +70,5 @@ foreach ($asset in @(
     }
 }
 Write-Host "Vihanga GCS title installed. Original runtime assets backed up under: $backup"
-Write-Host "Original Mission Planner configuration stays on disk; the logo.txt product label may select a different settings XML."
+Write-Host "Existing operator settings are retained. If available, the first Vihanga profile is copied from AeroHelm or native Mission Planner without overwriting an existing Vihanga profile."
 Write-Host "Upstream copyright and GPL notices are intentionally retained."

@@ -103,6 +103,17 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertNotIn("AEROHELM_TOUCH_STARTUP", launcher)
         self.assertIn("Start-VihangaGCS.ps1", source("scripts/Start-AeroHelm-Touch.ps1"))
 
+
+    def test_branding_preserves_operator_settings(self):
+        branding = source("scripts/Install-AeroHelmBranding.ps1")
+        repair = source("scripts/Repair-AeroHelmWindows.ps1")
+        self.assertIn("'Vihanga GCS.xml'", branding)
+        self.assertIn("'AeroHelm GCS.xml'", branding)
+        self.assertIn("'config.xml'", branding)
+        self.assertIn("if (-not (Test-Path -LiteralPath $newProfile -PathType Leaf))", branding)
+        self.assertIn("Copy-Item -LiteralPath $sourceProfile -Destination $newProfile", branding)
+        self.assertIn("-Stage Build -Apply -WithBranding", repair)
+
     def test_cloud_fleet_unknowns_are_not_flight_authority(self):
         pages = source("plugins/AeroHelmReadOnlyPages.cs")
         for marker in ("TELEMETRY STALE/UNAVAILABLE", "SIMULATED / FRESH",

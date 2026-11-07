@@ -12,7 +12,11 @@ Vihanga (విహంగ) replaces AeroHelm as the operator-facing product name.
 AeroHelm source namespaces, PowerShell script paths, compiled plugin DLL,
 JWT settings and cloud variable names remain for existing installations.
 The logo gate accepts both old and new labels so a renamed build never
-silently skips the cloud login gate. `--local-maintenance` continues to
+silently skips the cloud login gate. Mission Planner also uses the label
+as the settings XML filename; the branding installer copies an existing
+`AeroHelm GCS.xml` or `config.xml` into `Vihanga GCS.xml` when the new
+profile is absent. Existing files are never overwritten, and a normal
+repair/build applies Vihanga branding automatically. `--local-maintenance` continues to
 require deliberate use and does not authorize cloud services.
 
 The redundant nine-tile TOUCH WinForms shell was removed from the plugin
