@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 from collections import Counter
 import struct
 import time
 
 from argon2 import PasswordHasher
+from dataclasses import replace
 from fastapi.testclient import TestClient
 import pytest
 from starlette.websockets import WebSocketDisconnect
@@ -194,6 +196,103 @@ def test_full_raw_stream_viewer_and_live_evidence(credentials):
                 assert health["attitude_rate_5s_hz"] > 0
                 assert health["flight_control_enabled"] is False
                 assert health["message_ids"]["30"] == 1
+
+
+def test_authenticated_telemetry_request_is_bounded_and_pi_acks_without_flight_control(credentials):
+    cfg, device_token = credentials
+    route = "/api/v1/vehicles/AH-HW-001/telemetry/probe"
+    allowed_cfg = replace(cfg, allow_disarmed_telemetry_requests=True)
+    app = create_app(allowed_cfg)
+    with TestClient(app) as client:
+        logged = client.post("/api/v1/auth/login", json={
+            "username": "operator", "password": "correct-bench-password"
+        }).json()["access_token"]
+        bearer = {"Authorization": "Bearer " + logged}
+        assert client.post(route).status_code == 401
+        assert client.post(route, headers=bearer).status_code == 409
+        assert client.post("/api/v1/vehicles/OTHER/telemetry/probe",
+                           headers=bearer).status_code == 404
+        with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+              headers={"Authorization": "Bearer " + device_token}) as pi:
+            assert client.post(route, headers=bearer).status_code == 409
+            pi.send_bytes(frame(0, bytes(9)))
+            for _ in range(100):
+                if app.state.link.health(cfg.vehicle_id)["native_hud_heartbeat_ready"]:
+                    break
+                time.sleep(0.01)
+            assert app.state.link.health(cfg.vehicle_id)["native_hud_heartbeat_ready"]
+            response = client.post(route, headers=bearer)
+            assert response.status_code == 200
+            details = response.json()
+            assert details["status"] == "QUEUED_ON_PRIVATE_LINK"
+            assert details["fc_stream_confirmed"] is False
+            assert details["flight_control_enabled"] is False
+            request = pi.receive_json()
+            assert request == {
+                "type": "disarmed_stream_probe",
+                "vehicle_id": "AH-HW-001",
+                "request_id": details["request_id"],
+            }
+            assert client.post(route, headers=bearer).status_code == 429
+            pi.send_text(json.dumps({
+                "type": "disarmed_stream_probe_ack",
+                "request_id": details["request_id"],
+                "status": "QUEUED",
+                "fc_stream_confirmed": False,
+            }))
+            for _ in range(100):
+                health = client.get("/api/v1/mavlink/health").json()
+                if health["telemetry_probe"]["status"] == "QUEUED":
+                    break
+                time.sleep(0.01)
+            assert health["telemetry_probe"]["status"] == "QUEUED"
+            assert health["real_attitude_frames"] == 0
+            assert not health["attitude_stream_active"]
+            assert health["flight_control_enabled"] is False
+        assert client.get("/api/v1/mavlink/health").json()[
+            "telemetry_probe"]["status"] == "NOT_REQUESTED"
+
+    disabled = create_app(cfg)
+    with TestClient(disabled) as client:
+        token = client.post("/api/v1/auth/login", json={
+            "username": "operator", "password": "correct-bench-password"
+        }).json()["access_token"]
+        assert client.post(route, headers={"Authorization": "Bearer " + token}
+                           ).status_code == 403
+
+
+def test_pi_disarmed_stream_request_rejects_armed_stale_disabled_and_arbitrary_commands(tmp_path):
+    cfg = PiConfig("/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+                   "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
+                   tmp_path / "token", True, "pi-link.ts.net")
+    payload = {"type": "disarmed_stream_probe", "vehicle_id": cfg.vehicle_id,
+               "request_id": "f" * 32}
+    publisher = PiPublisher(cfg)
+    assert publisher.queue_disarmed_telemetry_request(
+        {"type": "arm", "vehicle_id": cfg.vehicle_id,
+         "request_id": "f" * 32}) is None
+    assert publisher.queue_disarmed_telemetry_request(
+        {**payload, "vehicle_id": "OTHER"}) is None
+    assert publisher.queue_disarmed_telemetry_request(payload)[
+        "status"] == "REFUSED_DISARM_REQUIRED"
+    publisher._last_disarmed_heartbeat = time.monotonic()
+    assert publisher.queue_disarmed_telemetry_request(payload)[
+        "status"] == "QUEUED"
+    assert publisher._remote_probe_pending.is_set()
+    assert publisher.queue_disarmed_telemetry_request(payload)[
+        "status"] == "REFUSED_RATE_LIMIT"
+    publisher._remote_probe_pending.clear()
+    publisher._seen_armed = True
+    assert publisher.queue_disarmed_telemetry_request(payload)[
+        "status"] == "REFUSED_DISARM_REQUIRED"
+    publisher._seen_armed = False
+    publisher._last_disarmed_heartbeat = time.monotonic() - 5
+    assert publisher.queue_disarmed_telemetry_request(payload)[
+        "status"] == "REFUSED_DISARM_REQUIRED"
+    blocked = PiPublisher(replace(cfg, stream_probe=False))
+    blocked._last_disarmed_heartbeat = time.monotonic()
+    assert blocked.queue_disarmed_telemetry_request(payload)[
+        "status"] == "REFUSED_DISABLED"
 
 
 def test_authenticated_read_only_parameter_snapshot_and_epoch(credentials):
