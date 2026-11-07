@@ -293,8 +293,18 @@ namespace AeroHelm.GcsCloud
                 WrapContents=false,AutoScroll=true,Padding=new Padding(0,15,0,0)
             };
             root.Controls.Add(actions,0,2);
-            Add(actions,"CLOUD — login and vehicle registry",()=>{
-                using(var window=new CloudWindow()) window.ShowDialog(this);
+            Add(actions,"CLOUD — relay sign-in / M1 fleet registry",()=>{
+                if(VihangaLinkSession.UsesDedicatedRelay)
+                {
+                    VihangaLinkLoginWindow.EnsureSignedIn(this);
+                }
+                else
+                {
+                    // The existing M1 operator login is handled at startup.
+                    // Fleet inspection uses the compiled read-only INTEL form.
+                    using(var window=new AeroHelmIntelWindow("FLEET"))
+                        window.ShowDialog(this);
+                }
                 RefreshSummary();
             });
             Add(actions,"LINK — connectivity diagnostics",()=>{
@@ -328,12 +338,18 @@ namespace AeroHelm.GcsCloud
 
         private void RefreshSummary()
         {
-            bool valid=!string.IsNullOrEmpty(Program.AeroHelmOperatorToken) &&
+            bool dedicated=VihangaLinkSession.UsesDedicatedRelay;
+            bool valid=dedicated ? VihangaLinkSession.Authenticated :
+                !string.IsNullOrEmpty(Program.AeroHelmOperatorToken) &&
                 DateTime.UtcNow<Program.AeroHelmTokenExpiresUtc;
+            DateTime expiry=dedicated ? VihangaLinkSession.ExpiresUtc :
+                Program.AeroHelmTokenExpiresUtc;
+            string kind=dedicated ? "Private telemetry viewer JWT" : "M1 operator cloud JWT";
             session.Text=valid ?
-                "Operator cloud JWT: ACTIVE (expires "+Program.AeroHelmTokenExpiresUtc.ToString("u")+")" :
-                "Operator cloud JWT: NOT AUTHENTICATED / EXPIRED";
-            string configured=Program.AeroHelmCloudOrigin;
+                kind+": ACTIVE (expires "+expiry.ToString("u")+")" :
+                kind+": NOT AUTHENTICATED / EXPIRED";
+            string configured=dedicated ? VihangaLinkSession.CloudOrigin :
+                Program.AeroHelmCloudOrigin;
             if(string.IsNullOrWhiteSpace(configured))
                 configured=AeroHelmWorkspaceSettings.CloudOrigin();
             origin.Text="Cloud origin: "+configured+
