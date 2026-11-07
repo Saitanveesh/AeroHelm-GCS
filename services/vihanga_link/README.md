@@ -145,8 +145,9 @@ This does not replace Oracle M1 authentication. The PATHS connection
 prompts for a separate new relay login when LinkOrigin is configured.
 The simplified operator toolbar retains native DATA / PLAN / SETUP /
 CONFIG plus PATHS / CAMERA / TOOLS. PATHS has just two connection choices:
-Cloud telemetry and Direct USB/radio. Independent cloud ATTITUDE, LINK,
-SURVEY and Settings live under TOOLS. Simulation mission previews appear
+Cloud telemetry and Direct USB/radio. LINK diagnostics, SURVEY and Settings live under TOOLS. The separate
+ATTITUDE canvas is confined to the explicit engineering tools profile;
+native Mission Planner DATA/Quick is the primary flight display. Simulation mission previews appear
 under TOOLS only when a dedicated relay origin is configured.
 Experimental Operations and Fleet/INTEL pages are hidden by default;
 they can be inspected in a development profile by setting
