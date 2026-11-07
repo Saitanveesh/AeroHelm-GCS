@@ -75,6 +75,7 @@ Set the following private variables (the sample values are illustrative):
     VIHANGA_VEHICLE_ID=AH-HW-001
     VIHANGA_FC_SYSID=1
     VIHANGA_DEVICE_WS_URL=wss://YOUR-PRIVATE-RELAY.ts.net/ws/mavlink/device/AH-HW-001
+    VIHANGA_PINNED_RELAY_HOST=YOUR-PRIVATE-RELAY.ts.net
     VIHANGA_DEVICE_TOKEN_FILE=/etc/vihanga/device-token
     VIHANGA_DISARMED_STREAM_PROBE=1
 
