@@ -76,7 +76,7 @@ $project = Read-Source 'Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj'
 $pluginProjectDir = Join-Path $root 'Plugins/AeroHelmCloud'
 $pluginUnits = [regex]::Matches($project, '<Compile\s+Include="([^"]+\.cs)"')
 if ($pluginUnits.Count -lt 1) { throw 'Plugin compile source list is empty.' }
-$pluginDeclarations = New-Object 'System.Collections.Generic.HashSet[string]'
+$pluginDeclarations = [System.Collections.Generic.HashSet[string]]::new()
 $pluginSources = @()
 foreach ($unit in $pluginUnits) {
     $relative = $unit.Groups[1].Value.Replace('\','/')
