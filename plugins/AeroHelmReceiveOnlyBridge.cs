@@ -89,6 +89,7 @@ namespace AeroHelm.GcsCloud
         }
 
         // Current receive-only WSS evidence, not cached flight state.
+        internal bool CloudStreamOpen { get { return cloudStreamOpen; } }
         internal bool NativeHeartbeatFresh
         {
             get { return cloudStreamOpen && quality.Snapshot().HeartbeatFresh; }

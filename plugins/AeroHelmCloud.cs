@@ -28,6 +28,7 @@ namespace AeroHelm.GcsCloud
         private ToolStripButton _vision;
         private ToolStripButton _link;
         private ToolStripButton _paths;
+        private ToolStripLabel _hudEvidence;
         private ToolStripButton _ops;
         private ToolStripButton _intel;
         private ToolStripDropDownButton _workspaces;
@@ -183,6 +184,15 @@ namespace AeroHelm.GcsCloud
                 }
             };
             menu.Items.Insert(menu.Items.IndexOf(_button) + 1, _paths);
+            // Visible only while the receive-only cloud bridge has a client.
+            // This is an evidence indicator, never a source of HUD values.
+            _hudEvidence=new ToolStripLabel("ATTITUDE MISSING"){
+                Name="VihangaAttitudeEvidence",Visible=false,
+                ForeColor=FrameworkDrawing::System.Drawing.Color.FromArgb(255,185,151),
+                ToolTipText="No fresh MAVLink ATTITUDE (ID 30) on cloud GCS link",
+                Margin=new Padding(4,0,4,0)
+            };
+            menu.Items.Insert(menu.Items.IndexOf(_paths)+1,_hudEvidence);
             // This monitor stays active while the native Flight Data workspace is in use and the
             // pilot opens native Flight Data. It NEVER connects to a radio,
             // sends MAVLink or initiates failover. Its only output is a
@@ -221,8 +231,28 @@ namespace AeroHelm.GcsCloud
             return true;
         }
 
+        private void UpdateHudEvidence()
+        {
+            if(_hudEvidence==null || _hudEvidence.IsDisposed) return;
+            var bridge=ActiveNativeBridge;
+            bool attached=bridge!=null && bridge.CloudStreamOpen;
+            _hudEvidence.Visible=attached;
+            if(!attached)return;
+            bool hb=bridge.NativeHeartbeatFresh;
+            bool att=bridge.NativeAttitudeFresh;
+            _hudEvidence.Text=!hb ? "HEARTBEAT MISSING" :
+                !att ? "ATTITUDE MISSING" : "ATTITUDE LIVE";
+            _hudEvidence.ForeColor=hb&&att ?
+                FrameworkDrawing::System.Drawing.Color.FromArgb(177,222,190) :
+                FrameworkDrawing::System.Drawing.Color.FromArgb(255,185,151);
+            _hudEvidence.ToolTipText=hb&&att ?
+                "Fresh real HEARTBEAT and ATTITUDE received (not flight clearance)" :
+                "Cloud HUD has no fresh heartbeat/attitude packet. Native display may show cached or zero values.";
+        }
+
         private async Task CheckCloudLinkAsync()
         {
+            UpdateHudEvidence();
             if (_cloudProbeBusy || _paths == null || _paths.IsDisposed) return;
             _cloudProbeBusy = true;
             try
@@ -340,6 +370,7 @@ namespace AeroHelm.GcsCloud
                     main.MainMenu.Items.Remove(_vision);
                     main.MainMenu.Items.Remove(_link);
                     main.MainMenu.Items.Remove(_paths);
+                    main.MainMenu.Items.Remove(_hudEvidence);
                     main.MainMenu.Items.Remove(_ops);
                     main.MainMenu.Items.Remove(_intel);
                     main.MainMenu.Items.Remove(_workspaces);
