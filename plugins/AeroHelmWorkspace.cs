@@ -477,7 +477,9 @@ namespace AeroHelm.GcsCloud
             linkHome.Click += (s,e) => Close();
             linkHeading.Controls.Add(linkHome,1,0);
             layout.Controls.Add(linkHeading,0,0);
-            url.Text = AeroHelmWorkspaceSettings.CloudOrigin();
+            url.Text = VihangaLinkSession.UsesDedicatedRelay ?
+                VihangaLinkSession.TargetOrigin : AeroHelmWorkspaceSettings.CloudOrigin();
+            url.ReadOnly = VihangaLinkSession.UsesDedicatedRelay;
             url.Dock = DockStyle.Fill;
             url.BackColor = Drawing.Color.FromArgb(34,34,34);
             url.ForeColor = Drawing.Color.White;
@@ -508,6 +510,8 @@ namespace AeroHelm.GcsCloud
                 Dock = DockStyle.Fill, WrapContents = true, AutoScroll = true
             };
             duplexPing.Text = "Ping Pi";
+            if (VihangaLinkSession.UsesDedicatedRelay)
+                duplexPing.Enabled = duplexStatusQuery.Enabled = false;
             duplexPing.Width = 190; duplexPing.Height = 40;
             duplexStatusQuery.Text = "Pi counters";
             duplexStatusQuery.Width = 190; duplexStatusQuery.Height = 40;
@@ -683,6 +687,11 @@ namespace AeroHelm.GcsCloud
 
         private async Task CheckAsync()
         {
+            if (VihangaLinkSession.UsesDedicatedRelay)
+            {
+                await CheckDedicatedRelayAsync();
+                return;
+            }
             if (checking || IsDisposed || Disposing) return;
             checking = true;
             check.Enabled = false;
@@ -850,6 +859,94 @@ namespace AeroHelm.GcsCloud
                 freshness.Text = "Link | Unavailable";
                 freshness.ForeColor = Drawing.Color.FromArgb(255,184,150);
                 lastSummary = "Cloud link unavailable. Check private HTTPS, sign-in and Pi service.";
+                lastTechnical = lastSummary + Environment.NewLine +
+                    "Error category: " + ex.GetType().Name;
+                ShowSelectedReport();
+            }
+            finally
+            {
+                checking = false;
+                if (!IsDisposed && !Disposing) check.Enabled = true;
+            }
+        }
+
+        private async Task CheckDedicatedRelayAsync()
+        {
+            if (checking || IsDisposed || Disposing) return;
+            checking = true;
+            check.Enabled = false;
+            try
+            {
+                if (!VihangaLinkSession.Authenticated)
+                {
+                    freshness.Text = "Link | Relay sign-in required";
+                    lastSummary = "Private telemetry relay requires a PATHS operator login.";
+                    lastTechnical = lastSummary;
+                    ShowSelectedReport();
+                    return;
+                }
+                // Only the exact configured relay is queried. No token is
+                // attached to any arbitrary URL edited by the operator.
+                var origin = new Uri(VihangaLinkSession.TargetOrigin + "/");
+                var raw = await Task.Run(() => Read(origin, "api/v1/mavlink/health"));
+                if (IsDisposed || Disposing) return;
+                var data = new JavaScriptSerializer()
+                    .Deserialize<Dictionary<string,object>>(raw);
+                object online, hb, att, frames, idMap, rejected, viewers;
+                bool connected = data.TryGetValue("device_online", out online) &&
+                                 online is bool && (bool)online;
+                bool hbLive = data.TryGetValue("native_hud_heartbeat_ready", out hb) &&
+                              hb is bool && (bool)hb;
+                bool attLive = data.TryGetValue("attitude_stream_active", out att) &&
+                               att is bool && (bool)att;
+                var native = AeroHelmCloudPlugin.ActiveNativeBridge;
+                bool localHb = native != null && native.NativeHeartbeatFresh;
+                bool localAtt = native != null && native.NativeAttitudeFresh;
+                freshness.Text = connected && hbLive && attLive ?
+                    "Link | Private relay attitude live" :
+                    hbLive ? "Link | Private relay attitude missing" :
+                    "Link | Private relay telemetry unavailable";
+                freshness.ForeColor = connected && hbLive && attLive ?
+                    Drawing.Color.FromArgb(196,236,196) :
+                    Drawing.Color.FromArgb(255,184,150);
+                string total = data.TryGetValue("frames", out frames) ?
+                    Convert.ToString(frames, CultureInfo.InvariantCulture) : "unavailable";
+                object hbCount, attCount;
+                string heartbeatFrames = data.TryGetValue("real_heartbeat_frames", out hbCount) ?
+                    Convert.ToString(hbCount, CultureInfo.InvariantCulture) : "unavailable";
+                string attitudeFrames = data.TryGetValue("real_attitude_frames", out attCount) ?
+                    Convert.ToString(attCount, CultureInfo.InvariantCulture) : "unavailable";
+                string errors = data.TryGetValue("rejected_frames", out rejected) ?
+                    Convert.ToString(rejected, CultureInfo.InvariantCulture) : "unavailable";
+                string audience = data.TryGetValue("gcs_viewers", out viewers) ?
+                    Convert.ToString(viewers, CultureInfo.InvariantCulture) : "unavailable";
+                lastSummary =
+                    "SERVICE   Private Vihanga telemetry relay" + Environment.NewLine +
+                    "AIRCRAFT  " + Convert.ToString(data["vehicle_id"]) + Environment.NewLine +
+                    "PI        " + (connected ? "Connected" : "Disconnected") + Environment.NewLine +
+                    "HEARTBEAT " + (hbLive ? "LIVE" : "STALE/MISSING") + Environment.NewLine +
+                    "ATTITUDE  " + (attLive ? "LIVE" : "STALE/MISSING") + Environment.NewLine +
+                    "NATIVE    HB " + (localHb ? "LIVE" : "MISSING") +
+                               " / ATT " + (localAtt ? "LIVE" : "MISSING") +
+                               Environment.NewLine +
+                    "FRAMES    Total " + total + " | HB " + heartbeatFrames +
+                               " | ATT " + attitudeFrames + Environment.NewLine +
+                    "LINK      Receive-only; flight commands disabled";
+                lastTechnical = lastSummary + Environment.NewLine +
+                    "REJECTED  " + errors + " | VIEWERS " + audience +
+                    Environment.NewLine +
+                    "IDS       " + (data.TryGetValue("message_ids", out idMap) ?
+                        new JavaScriptSerializer().Serialize(idMap) : "not reported") +
+                    Environment.NewLine +
+                    "NATIVE BRIDGE  " + (native == null ? "Not initialized" : native.Summary);
+                ShowSelectedReport();
+            }
+            catch (Exception ex)
+            {
+                if (IsDisposed || Disposing) return;
+                freshness.Text = "Link | Dedicated relay unavailable";
+                freshness.ForeColor = Drawing.Color.FromArgb(255,184,150);
+                lastSummary = "Private relay unreachable. Check PATHS authentication and relay status.";
                 lastTechnical = lastSummary + Environment.NewLine +
                     "Error category: " + ex.GetType().Name;
                 ShowSelectedReport();
