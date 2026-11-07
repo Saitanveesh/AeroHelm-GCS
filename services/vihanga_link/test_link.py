@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from services.vihanga_link.relay import Config, create_app, envelope, valid_evidence
+from services.vihanga_link.relay import Config, create_app, envelope, valid_evidence, valid_frame_crc
 from services.vihanga_link.pi_agent import (
     Config as PiConfig, MESSAGE_RATES_HZ,
     is_disarmed_autopilot_heartbeat, request_streams_once,
@@ -176,6 +176,47 @@ def test_non_attitude_mavlink_is_forwarded_unchanged(credentials):
                     assert viewer.receive_bytes() == packet
                 counts = client.get("/api/v1/mavlink/health").json()["message_ids"]
                 assert counts["74"] == counts["33"] == counts["24"] == 1
+
+
+
+def test_crc_enforced_for_position_and_vfr_hud_before_relay(credentials):
+    """All flight-data IDs need X25 verification, not only HB/ATTITUDE."""
+    cfg, token = credentials
+    codec = mavutil.mavlink.MAVLink(None, srcSystem=1, srcComponent=1)
+    messages = (
+        mavutil.mavlink.MAVLink_global_position_int_message(
+            123, 125000000, 775000000, 180000, 5000, 1, 2, 3, 18000),
+        mavutil.mavlink.MAVLink_vfr_hud_message(
+            1.0, 2.0, 180, 10, 12.5, 0.2),
+    )
+    originals = [message.pack(codec) for message in messages]
+    damaged = []
+    for packet in originals:
+        assert valid_frame_crc(packet)
+        payload_offset = 6 if packet[0] == 0xFE else 10
+        bad = bytearray(packet)
+        bad[payload_offset] ^= 1
+        assert envelope(bytes(bad)) == envelope(packet)
+        assert not valid_frame_crc(bytes(bad))
+        damaged.append(bytes(bad))
+
+    app = create_app(cfg)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+              headers={"Authorization": "Bearer " + token}) as device:
+            for good, corrupt in zip(originals, damaged):
+                device.send_bytes(good)
+                device.send_bytes(corrupt)
+            for _ in range(100):
+                health = client.get("/api/v1/mavlink/health").json()
+                if health["frames"] + health["rejected_frames"] == 4:
+                    break
+                time.sleep(0.01)
+            assert health["frames"] == 2
+            assert health["rejected_frames"] == 2
+            assert health["message_ids"] == {"33": 1, "74": 1}
+            assert health["real_attitude_frames"] == 0
+            assert not health["attitude_stream_active"]
 
 
 def test_rejects_unauthorized_device_viewer_and_wrong_vehicle(credentials):
