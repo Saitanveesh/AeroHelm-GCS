@@ -20,6 +20,26 @@ namespace MissionPlanner
                 if (string.Equals(a, "--local-maintenance",
                                   StringComparison.OrdinalIgnoreCase))
                     return false;
+            // Dedicated Vihanga telemetry uses a separate short-lived JWT
+            // obtained through PATHS, not the legacy Oracle M1 startup token.
+            // Permit the native shell to load without an M1 credential only
+            // when the launcher explicitly selected read-only private relay mode.
+            // PATHS still denies cloud access until relay sign-in succeeds.
+            string relay = Environment.GetEnvironmentVariable("VIHANGA_LINK_ORIGIN");
+            if (!string.IsNullOrWhiteSpace(relay) &&
+                string.Equals(Environment.GetEnvironmentVariable(
+                    "AEROHELM_CLOUD_READONLY"), "1", StringComparison.Ordinal))
+            {
+                Uri origin;
+                if (!Uri.TryCreate(relay, UriKind.Absolute, out origin) ||
+                    origin.Scheme != Uri.UriSchemeHttps ||
+                    !origin.Host.EndsWith(".ts.net", StringComparison.OrdinalIgnoreCase) ||
+                    origin.UserInfo.Length != 0 || origin.AbsolutePath != "/" ||
+                    origin.Query.Length != 0 || origin.Fragment.Length != 0)
+                    throw new InvalidOperationException(
+                        "Invalid dedicated relay origin; startup refused.");
+                return false; // PATHS requires the separate relay credential.
+            }
             if (string.Equals(Environment.GetEnvironmentVariable("AEROHELM_REQUIRE_LOGIN"),
                               "1",StringComparison.Ordinal))
                 return true;
