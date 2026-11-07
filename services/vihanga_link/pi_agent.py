@@ -41,6 +41,7 @@ class Config:
     url: str
     token_file: Path
     stream_probe: bool
+    pinned_relay_host: str
 
     @staticmethod
     def from_env() -> "Config":
@@ -52,6 +53,7 @@ class Config:
             url=os.getenv("VIHANGA_DEVICE_WS_URL", ""),
             token_file=Path(os.getenv("VIHANGA_DEVICE_TOKEN_FILE", "")),
             stream_probe=os.getenv("VIHANGA_DISARMED_STREAM_PROBE", "0") == "1",
+            pinned_relay_host=os.getenv("VIHANGA_PINNED_RELAY_HOST", ""),
         )
         cfg.validate()
         return cfg
@@ -69,8 +71,10 @@ class Config:
         if (url.scheme != "wss" or not url.hostname or url.username or
             url.password or url.query or url.fragment or
             url.path != "/ws/mavlink/device/" + self.vehicle_id or
-            not url.hostname.endswith(".ts.net")):
-            raise ValueError("Device uplink must use exact private Tailscale WSS URL")
+            not url.hostname.endswith(".ts.net") or
+            not self.pinned_relay_host or
+            url.hostname != self.pinned_relay_host):
+            raise ValueError("Device uplink requires a pinned private relay hostname and WSS URL")
 
 
 def token_from_file(path: Path) -> str:
