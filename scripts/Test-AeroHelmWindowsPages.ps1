@@ -17,7 +17,8 @@ $productionScripts = @(
     'scripts/Repair-AeroHelmWindows.ps1',
     'scripts/Consolidate-AeroHelmWindows.ps1',
     'scripts/Cleanup-AeroHelmGenerated.ps1',
-    'scripts/Build-Integrated-AeroHelm.ps1'
+    'scripts/Build-Integrated-AeroHelm.ps1',
+    'scripts/Install-VihangaVerified.ps1'
 )
 foreach ($relative in $productionScripts) {
     $candidate = Join-Path $root $relative
@@ -259,6 +260,10 @@ if ($nativeBridge.Contains('ws.SendAsync') -or $nativeBridge.Contains('ws.Send('
     throw 'Native GCS must not send packets over the cloud WebSocket.'
 }
 Require-Text $launcher 'AEROHELM_CLOUD_READONLY' 'Windows launcher must set read-only cloud environment.'
+$verifiedInstall = Read-Source 'scripts/Install-VihangaVerified.ps1'
+Require-Text $verifiedInstall "Invoke-CheckedScript 'Windows source contracts'" 'Verified installer must check source before build.'
+Require-Text $verifiedInstall "Invoke-CheckedScript 'Release manifest, executable and plugin verification'" 'Verified installer must check artifact hashes before startup.'
+Require-Text $verifiedInstall 'if ($code -ne 0)' 'Installer must stop on a failed child process.'
 Require-Text $launcher 'aerohelm-consolidated-release.json' 'Latest GCS launch must check the local native build manifest.'
 Require-Text $launcher 'release.executable_sha256' 'Latest GCS launch must reject stale Mission Planner EXE.'
 Require-Text $launcher 'release.plugin_sha256' 'Latest GCS launch must reject stale AeroHelm DLL.'
