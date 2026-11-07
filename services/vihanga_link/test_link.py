@@ -570,6 +570,46 @@ def test_pi_window_counts_do_not_infer_missing_attitude():
     assert observation_delta(Counter(), old)[0] == 0
 
 
+def test_private_probe_issues_only_predefined_disarmed_local_rates(tmp_path):
+    cfg = PiConfig("/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+                   "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
+                   tmp_path / "token", True, "pi-link.ts.net")
+    pi = PiPublisher(cfg)
+    hb = frame(0, bytes(9))
+
+    class FullHeartbeat(Heartbeat):
+        def get_msgId(self): return 0
+        def get_msgbuf(self): return hb
+
+    class SingleHeartbeatPort(FakePort):
+        def __init__(self):
+            super().__init__()
+            self.read_count = 0
+        def recv_match(self, **kwargs):
+            self.read_count += 1
+            if self.read_count == 1:
+                return FullHeartbeat()
+            pi.stop.set()
+            return None
+
+    class InlineLoop:
+        def call_soon_threadsafe(self, fn, *args): fn(*args)
+
+    pi.port = SingleHeartbeatPort()
+    pi._loop = InlineLoop()
+    pi._last_disarmed_heartbeat = time.monotonic()
+    payload = {"type": "disarmed_stream_probe", "vehicle_id": cfg.vehicle_id,
+               "request_id": "a" * 32}
+    assert pi.queue_disarmed_telemetry_request(payload)["status"] == "QUEUED"
+    pi._read_uart()
+    assert not pi._remote_probe_pending.is_set()
+    assert len(pi.port.mav.commands) == len(MESSAGE_RATES_HZ)
+    assert all(cmd[2] == mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL
+               for cmd in pi.port.mav.commands)
+    assert pi.counts[0] == 1 and pi.counts[30] == 0
+    assert pi.queue.qsize() == 1
+
+
 def test_stream_requests_are_local_disarmed_and_nonpersistent(tmp_path):
     cfg = PiConfig("/dev/ttyAMA0", 57600, "AH-HW-001", 1,
                    "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
