@@ -188,6 +188,18 @@ def test_full_raw_stream_viewer_and_live_evidence(credentials):
                 assert health["native_hud_heartbeat_ready"]
                 assert health["attitude_stream_active"]
                 assert health["real_attitude_frames"] == 1
+                assert not health["native_quick_data_ready"]
+                assert health["flight_data_streams"]["0"]["fresh"]
+                assert health["flight_data_streams"]["30"]["fresh"]
+                assert not health["flight_data_streams"]["33"]["fresh"]
+                codec = mavutil.mavlink.MAVLink(None, srcSystem=1, srcComponent=1)
+                position = mavutil.mavlink.MAVLink_global_position_int_message(
+                    123, 125000000, 775000000, 180000, 5000, 1, 2, 3, 18000).pack(codec)
+                device.send_bytes(position)
+                assert viewer.receive_bytes() == position
+                health = client.get("/api/v1/mavlink/health").json()
+                assert health["native_quick_data_ready"]
+                assert health["flight_data_streams"]["33"]["frames"] == 1
                 assert isinstance(health["frame_age_ms"], int)
                 assert isinstance(health["heartbeat_age_ms"], int)
                 assert isinstance(health["attitude_age_ms"], int)
@@ -478,6 +490,8 @@ def test_reconnect_expires_old_session_and_drops_stale_evidence(credentials):
         h = client.get("/api/v1/mavlink/health").json()
         assert not h["device_online"]
         assert not h["native_hud_heartbeat_ready"]
+        assert not h["native_quick_data_ready"]
+        assert not h["flight_data_streams"]["33"]["fresh"]
         assert h["frame_age_ms"] is None
         assert h["heartbeat_age_ms"] is None
         assert h["attitude_age_ms"] is None
