@@ -194,6 +194,35 @@ class LinkState:
             "read_only": True,
         }
 
+    def parameter_values(self) -> dict[str, Any]:
+        status = self.parameter_status()
+        if not status["verified_complete"]:
+            raise ValueError("Parameter snapshot incomplete or stale")
+        values = {}
+        for index, (_collected, packet) in sorted(self.parameter_frames.items()):
+            header = 6 if packet[0] == 0xFE else 10
+            name_bytes = packet[header + 8:header + 24].split(b"\0", 1)[0]
+            try:
+                name = name_bytes.decode("ascii")
+            except UnicodeDecodeError as ex:
+                raise ValueError("Invalid FC parameter identifier") from ex
+            if not name or name in values:
+                raise ValueError("Duplicate or blank FC parameter identifier")
+            ptype = packet[header + 24]
+            value_bytes = packet[header:header + 4]
+            # Avoid false drift conclusions from integer bytewise encoding.
+            # Only REAL32 is safe to display as an ordinary float.
+            displayed = None
+            if ptype == 9:
+                val = struct.unpack("<f", value_bytes)[0]
+                if val == val and abs(val) != float("inf"):
+                    displayed = val
+            values[name] = {"index": index, "type": ptype,
+                            "float32": displayed,
+                            "raw_value_hex": value_bytes.hex()}
+        return {"snapshot": status, "values": values,
+                "writable": False, "aircraft_commands_enabled": False}
+
     def health(self, vehicle_id: str) -> dict[str, Any]:
         return {
             "mode": APP_MODE,
@@ -292,6 +321,20 @@ def create_app(config: Config | None = None) -> FastAPI:
         if vehicle_id != cfg.vehicle_id:
             raise HTTPException(status_code=404, detail="Unknown aircraft")
         return state.parameter_status()
+
+    @app.get("/api/v1/vehicles/{vehicle_id}/parameters/values")
+    async def parameter_values(
+            vehicle_id: str,
+            authorization: str = Header(default="")) -> dict:
+        token = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if not viewer_expiration(token):
+            raise HTTPException(status_code=401, detail="Private operator session required")
+        if vehicle_id != cfg.vehicle_id:
+            raise HTTPException(status_code=404, detail="Unknown aircraft")
+        try:
+            return state.parameter_values()
+        except ValueError as ex:
+            raise HTTPException(status_code=409, detail=str(ex)) from ex
 
     @app.post("/api/v1/sim/mission/preview")
     async def preview_mission(
