@@ -201,7 +201,11 @@ class FakePort:
 def test_stream_requests_are_local_disarmed_and_nonpersistent(tmp_path):
     cfg = PiConfig("/dev/ttyAMA0", 57600, "AH-HW-001", 1,
                    "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
-                   tmp_path / "device-secret", True)
+                   tmp_path / "device-secret", True, "pi-link.ts.net")
+    cfg.validate()
+    with pytest.raises(ValueError):
+        PiConfig(cfg.device, cfg.baud, cfg.vehicle_id, cfg.system_id,
+                 cfg.url, cfg.token_file, True, "unexpected.ts.net").validate()
     port = FakePort()
     assert not is_disarmed_autopilot_heartbeat(Heartbeat(True), 1)
     assert not request_streams_once(port, Heartbeat(True), cfg)
@@ -213,5 +217,5 @@ def test_stream_requests_are_local_disarmed_and_nonpersistent(tmp_path):
         assert command[2] == mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL
         assert command[0:2] == (1, 1)
     cfg_disabled = PiConfig(cfg.device, cfg.baud, cfg.vehicle_id, cfg.system_id,
-                            cfg.url, cfg.token_file, False)
+                            cfg.url, cfg.token_file, False, cfg.pinned_relay_host)
     assert not request_streams_once(FakePort(), Heartbeat(), cfg_disabled)
