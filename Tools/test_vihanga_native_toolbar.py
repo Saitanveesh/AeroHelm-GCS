@@ -196,6 +196,45 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("string selectedLease=leaseId.Text;",ops)
         self.assertNotIn('Task.Run(()=>RequestWithLease("renew",missionId.Text,leaseId.Text))',ops)
 
+    def test_responsive_cloud_pages_and_operator_workspaces(self):
+        pages=source("plugins/AeroHelmReadOnlyPages.cs")
+        shared=source("plugins/VihangaSharedUi.cs")
+        intel=source("plugins/AeroHelmPlatformV2.cs")
+        ops=source("plugins/AeroHelmOperations.cs")
+        link=source("plugins/AeroHelmWorkspace.cs")
+        self.assertIn("ReflowToolbar(layout,bar)",pages)
+        self.assertIn("SizeType.Percent,64",pages)
+        self.assertIn("DataGridViewAutoSizeColumnsMode.AllCells",pages)
+        self.assertIn("table.Columns[0].FillWeight=38",pages)
+        self.assertIn("VihangaAdaptivePanel",shared)
+        self.assertIn("TextRenderer.MeasureText",shared)
+        self.assertIn("VihangaAdaptivePanel.Attach(this,sim,maint,policyPage)",ops)
+        self.assertIn("VihangaAdaptivePanel.Attach(this,fleetPanel,missionPanel,paramPanel,hPanel,secPanel)",intel)
+        self.assertIn("WrapContents = true, AutoScroll = true",link)
+
+    def test_m1_capability_negotiation_preserves_absent_features(self):
+        pages=source("plugins/AeroHelmReadOnlyPages.cs")
+        for required in ("LegacyM1Capabilities", "LegacyM1RegistryMetrics",
+                         "api/v1/capabilities", "api/v1/mavlink/health",
+                         "NOT SUPPORTED BY M1", "NOT DEPLOYED (HTTP 404)",
+                         "No data or successful security posture has been inferred."):
+            self.assertIn(required,pages)
+        self.assertIn("http.StatusCode!=HttpStatusCode.NotFound",pages)
+        self.assertIn('OperationsApi.Request("GET","api/v1/vehicles")',pages)
+        self.assertNotIn("Operator JWT converted to R2 OIDC",pages)
+
+    def test_missing_attitude_is_diagnosed_without_forged_hud_data(self):
+        bridge=source("plugins/AeroHelmReceiveOnlyBridge.cs")
+        link=source("plugins/AeroHelmWorkspace.cs")
+        self.assertIn("internal bool NativeHeartbeatFresh",bridge)
+        self.assertIn("internal bool NativeAttitudeFresh",bridge)
+        self.assertIn("internal string AttitudeTroubleshooting",bridge)
+        self.assertIn("MAVLink ATTITUDE (message 30)",bridge)
+        self.assertIn("localHb && !localAtt",link)
+        self.assertIn("ATTITUDE STREAM DIAGNOSIS:",link)
+        self.assertIn("M1 ATTITUDE API NOT DEPLOYED (HTTP 404)",link)
+        self.assertNotIn("ORACLE M1 UPDATE REQUIRED",link)
+
     def test_branding_handles_no_custom_artwork(self):
         build = source("scripts/Build-Integrated-AeroHelm.ps1")
         branding = source("scripts/Install-AeroHelmBranding.ps1")
