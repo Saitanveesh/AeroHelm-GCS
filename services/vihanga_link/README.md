@@ -12,8 +12,12 @@ does not deploy it or make the current aircraft cloud link functional.
       -> short-lived operator-authenticated viewer WSS
       -> Windows receive-only 127.0.0.1:5760 -> Mission Planner native HUD
 
-Full CRC-parsed MAVLink frames are forwarded unchanged. The cloud relay
-never receives data from the Windows GCS for forwarding to the flight
+The Pi and relay both enforce the configured flight-controller system ID.
+The relay verifies MAVLink X25/CRC-extra for every recognized ArduPilot dialect
+message and rejects unknown or damaged packets before forwarding intact frames.
+NaN, infinite or out-of-range ATTITUDE angles cannot mark the HUD live.
+MAVLink2 frame CRC does not authenticate an optional MAVLink2 signature.
+The cloud relay never receives data from the Windows GCS for forwarding to the flight
 controller. Its viewer tokens are restricted to one aircraft and expire
 after ten minutes. A dropped connection cannot replay old queued telemetry.
 
@@ -29,6 +33,7 @@ Do not expose the application directly to the public Internet.
 The service requires these variables from a protected private environment:
 
 - VIHANGA_VEHICLE_ID: explicit aircraft ID (example AH-HW-001)
+- VIHANGA_FC_SYSID: physically verified flight-controller MAVLink system ID; set the **same** value on relay and Pi
 - VIHANGA_ALLOWED_HOSTS: exact private gateway hostname, not a wildcard
 - VIHANGA_OPERATOR_NAME: dedicated operator username
 - VIHANGA_OPERATOR_PASSWORD_HASH: Argon2id password hash, NOT plaintext
@@ -92,6 +97,16 @@ BATTERY_STATUS 147 (1 Hz). It never modifies persistent parameters
 or enables remote commands. If this process has observed an armed
 heartbeat, no rate probe is attempted in that session.
 
+The UART owner logs measured 10-second HEARTBEAT (ID 0), ATTITUDE (ID 30),
+position, GPS and HUD windows together with the forwarded WSS counts, queue
+drops and foreign-system rejections. If the Pi counts HEARTBEAT but no ID 30,
+inspect the FC stream rate on the disarmed bench; a cloud or GCS UI update
+cannot generate missing physical telemetry. If Pi reports ID 30 but the cloud
+relay does not, inspect relay authentication, CRC rejection counts and WSS
+backpressure. `/api/v1/mavlink/health` additionally reports genuine 5-second
+packet rates, frame/heartbeat/attitude ages, and per-ID counters. Missing
+samples return null ages and zero rates, not synthetic values.
+
 This cannot repair wrong wiring, serial baud/protocol, a broken UART
 owner, an FC that ignores interval requests, or a missing relay deployment.
 
@@ -147,7 +162,8 @@ physical aircraft acceptance.
 
 Acceptance gates:
 1. The sole Pi UART reader counts verified real HB (0) and ATTITUDE (30),
-   plus relevant position/GPS/battery IDs, with correct stream rates.
+   plus relevant position/GPS/battery IDs, with correct stream rates and
+   the configured FC SYSID verified on both Pi and cloud relay.
 2. Authenticated Pi WSS forwards real raw frames to the private hub;
    the operator viewer receives the identical bytes and count.
 3. Native Windows Mission Planner HUD and attitude monitor follow
