@@ -2866,10 +2866,15 @@ namespace MissionPlanner.GCSViews
 
         private void FlightData_Resize(object sender, EventArgs e)
         {
-            //Gspeed;
-            //Galt;
-            //Gheading;
-            //attitudeIndicatorInstrumentControl1;
+            if (IsDisposed || Disposing || tabControlactions == null ||
+                tabControlactions.IsDisposed) return;
+            // Preserve the operator preference; narrow flight tabs wrap.
+            bool requestedMultiline=Settings.Instance.GetBoolean(
+                "tabControlactions_Multiline",false);
+            bool multiline=requestedMultiline ||
+                tabControlactions.ClientSize.Width < 560;
+            if (tabControlactions.Multiline != multiline)
+                tabControlactions.Multiline=multiline;
         }
 
         private void flightPlannerToolStripMenuItem_Click(object sender, EventArgs e)
@@ -5393,8 +5398,19 @@ namespace MissionPlanner.GCSViews
 
         private void tabQuick_Resize(object sender, EventArgs e)
         {
-            tableLayoutPanelQuick.Width = tabQuick.Width;
-            tableLayoutPanelQuick.AutoScroll = false;
+            if (tabQuick == null || tableLayoutPanelQuick == null ||
+                tabQuick.IsDisposed || tableLayoutPanelQuick.IsDisposed) return;
+            // On small screens scroll the view instead of squeezing readouts.
+            int visibleWidth=Math.Max(0,tabQuick.ClientSize.Width -
+                                      tabQuick.Padding.Horizontal);
+            int minimumWidth=tableLayoutPanelQuick.ColumnCount>1 ? 440 : 240;
+            bool needScroll=visibleWidth<minimumWidth;
+            if(tabQuick.AutoScroll != needScroll)
+                tabQuick.AutoScroll=needScroll;
+            int width=Math.Max(minimumWidth,visibleWidth);
+            if(tableLayoutPanelQuick.Width!=width)
+                tableLayoutPanelQuick.Width=width;
+            tableLayoutPanelQuick.AutoScroll=false;
         }
 
         void tabStatus_Resize(object sender, EventArgs e)
