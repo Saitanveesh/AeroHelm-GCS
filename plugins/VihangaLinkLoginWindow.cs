@@ -1,6 +1,8 @@
 // Sign in to a separately deployed private Vihanga MAVLink relay.
 // Operator credentials are sent only to an exact, approved HTTPS origin and
 // neither password nor short-lived viewer JWT is persisted to disk.
+extern alias FrameworkDrawing;
+using Drawing = FrameworkDrawing::System.Drawing;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -44,13 +46,13 @@ namespace AeroHelm.GcsCloud
             password.Dock = DockStyle.Fill;
             password.UseSystemPasswordChar = true;
             layout.Controls.Add(new Label { Text = "Private relay",
-                TextAlign = System.Drawing.ContentAlignment.MiddleLeft }, 0, 0);
+                TextAlign = Drawing.ContentAlignment.MiddleLeft }, 0, 0);
             layout.Controls.Add(target, 1, 0);
             layout.Controls.Add(new Label { Text = "Operator",
-                TextAlign = System.Drawing.ContentAlignment.MiddleLeft }, 0, 1);
+                TextAlign = Drawing.ContentAlignment.MiddleLeft }, 0, 1);
             layout.Controls.Add(username, 1, 1);
             layout.Controls.Add(new Label { Text = "Password",
-                TextAlign = System.Drawing.ContentAlignment.MiddleLeft }, 0, 2);
+                TextAlign = Drawing.ContentAlignment.MiddleLeft }, 0, 2);
             layout.Controls.Add(password, 1, 2);
             login.Text = "Connect telemetry";
             login.AutoSize = true;
