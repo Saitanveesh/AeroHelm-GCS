@@ -264,11 +264,6 @@ namespace AeroHelm.GcsCloud
                 });
                 if(!IsDisposed && !Disposing) cloudEvidence.Text=status;
             }
-            catch(InvalidOperationException)
-            {
-                if(!IsDisposed&&!Disposing)
-                    cloudEvidence.Text="Cloud status: sign in required";
-            }
             catch(WebException ex)
             {
                 var response=ex.Response as HttpWebResponse;
@@ -279,6 +274,11 @@ namespace AeroHelm.GcsCloud
                 if(!IsDisposed&&!Disposing)
                     cloudEvidence.Text=auth?"Cloud status: sign in required":
                         "Cloud status: unavailable";
+            }
+            catch(InvalidOperationException)
+            {
+                if(!IsDisposed&&!Disposing)
+                    cloudEvidence.Text="Cloud status: sign in required";
             }
             catch(Exception)
             {
