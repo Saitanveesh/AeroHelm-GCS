@@ -16,8 +16,8 @@ $plugin=Join-Path $plugins 'AeroHelm.Cloud.Plugin.Validation.dll'
 $logRoot=Join-Path $root 'build-logs'
 $manifestPath=Join-Path $logRoot 'aerohelm-consolidated-release.json'
 $expectedBranch='feat/vihanga-phase3-native-toolbar'
-$modules=@('FLIGHT','PLAN','CLOUD','PATHS','SURVEY','VISION','LINK','OPS','INTEL','FLEET','SECURITY','ANALYTICS','PARAMETERS','SETTINGS')
-$toolbar=@('CLOUD','PATHS','SURVEY','VISION','LINK','OPS','INTEL','MORE')
+$modules=@('FLIGHT','PLAN','PATHS','CAMERA','DIAGNOSTICS','ATTITUDE','SURVEY','OPERATIONS','INTELLIGENCE','SETTINGS')
+$toolbar=@('PATHS','CAMERA','TOOLS')
 
 function Hash([string]$path) {
     if(-not (Test-Path -LiteralPath $path -PathType Leaf)){return $null}
