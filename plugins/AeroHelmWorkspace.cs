@@ -523,7 +523,7 @@ namespace AeroHelm.GcsCloud
             duplexStatusQuery.Click += async (s,e) => await ProbeDuplexAsync("uplink_status");
             duplexStatus.Width = 330; duplexStatus.Height = 40;
             duplexStatus.TextAlign = Drawing.ContentAlignment.MiddleLeft;
-            duplexStatus.Text = "Pi diagnostics: not requested";
+            duplexStatus.Text = "Pi diagnostics: not requested. Flight commands remain blocked.";
             duplexStatus.ForeColor = Drawing.Color.FromArgb(220,210,186);
             duplexBar.Controls.Add(duplexStatus);
             duplexBar.Visible = false;
