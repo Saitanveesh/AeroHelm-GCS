@@ -208,7 +208,7 @@ class Publisher:
                 status = "REFUSED_DISARM_REQUIRED"
             elif self._attitude_seen:
                 status = "REFUSED_ALREADY_STREAMING"
-            elif self._remote_probe_count >= 2 or (
+            elif self._remote_probe_pending.is_set() or self._remote_probe_count >= 2 or (
                     self._remote_probe_requested_at >= 0 and
                     now - self._remote_probe_requested_at < 15.0):
                 status = "REFUSED_RATE_LIMIT"
@@ -293,11 +293,13 @@ class Publisher:
                     # EVER observed an armed FC. An onboard operator must
                     # explicitly restart a disarmed maintenance session.
                     if not seen_armed:
+                        remote_issued = False
                         if self._remote_probe_pending.is_set():
                             self._remote_probe_pending.clear()
                             if not attitude_seen and self.cfg.stream_probe:
-                                request_streams_once(self.port, msg, self.cfg)
-                        if stream_probe_due(
+                                remote_issued = request_streams_once(
+                                    self.port, msg, self.cfg)
+                        if not remote_issued and stream_probe_due(
                                 self.cfg, seen_armed=seen_armed,
                                 attitude_seen=attitude_seen,
                                 attempts=stream_probe_attempts,
