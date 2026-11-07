@@ -18,17 +18,17 @@ function Invoke-FreshReleaseStep([string[]]$StepArgs) {
 }
 if(-not $Apply){
     Write-Host 'INSPECT ONLY. Use -Apply to build/install and verify the current commit.'
-    Invoke-FreshReleaseStep @('Inspect')
+    Invoke-FreshReleaseStep -StepArgs @('Inspect')
     return
 }
 if(Get-Process -Name MissionPlanner -ErrorAction SilentlyContinue){
     throw 'Close Mission Planner before repair. Running EXE/DLL files are never overwritten.'
 }
 try {
-    Invoke-FreshReleaseStep @('Inspect')
+    Invoke-FreshReleaseStep -StepArgs @('Inspect')
     Write-Host 'REBUILD: prior manifest belongs to an older commit until the new native build succeeds.'
-    Invoke-FreshReleaseStep @('Build','-Apply','-WithBranding')
-    Invoke-FreshReleaseStep @('Verify')
+    Invoke-FreshReleaseStep -StepArgs @('Build','-Apply','-WithBranding')
+    Invoke-FreshReleaseStep -StepArgs @('Verify')
     Write-Host 'SUCCESS: exact-source Windows rebuild, plugin install and hash verification passed.' -ForegroundColor Green
     Write-Host 'Launch separately with scripts/Start-VihangaGCS.ps1 -NoAutoTcp.'
     Write-Host 'Physical aircraft use still requires on-site bench acceptance.'

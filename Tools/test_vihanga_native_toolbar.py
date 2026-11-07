@@ -101,8 +101,8 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         repair=source("scripts/Repair-AeroHelmWindows.ps1")
         release=source("scripts/Consolidate-AeroHelmWindows.ps1")
         updater=source("scripts/Update-AeroHelmLatest.ps1")
-        self.assertIn("Invoke-FreshReleaseStep @('Build','-Apply','-WithBranding')",repair)
-        self.assertIn("Invoke-FreshReleaseStep @('Verify')",repair)
+        self.assertIn("Invoke-FreshReleaseStep -StepArgs @('Build','-Apply','-WithBranding')",repair)
+        self.assertIn("Invoke-FreshReleaseStep -StepArgs @('Verify')",repair)
         self.assertIn("& powershell.exe @arguments",repair)
         self.assertIn("if($code -ne 0)",repair)
         self.assertIn("& powershell.exe @buildArgs",release)
@@ -204,7 +204,7 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("'config.xml'", branding)
         self.assertIn("if (-not (Test-Path -LiteralPath $newProfile -PathType Leaf))", branding)
         self.assertIn("Copy-Item -LiteralPath $sourceProfile -Destination $newProfile", branding)
-        self.assertIn("-Stage Build -Apply -WithBranding", repair)
+        self.assertIn("Invoke-FreshReleaseStep -StepArgs @('Build','-Apply','-WithBranding')", repair)
 
     def test_cloud_fleet_unknowns_are_not_flight_authority(self):
         pages = source("plugins/AeroHelmReadOnlyPages.cs")
