@@ -108,7 +108,7 @@ class LinkState:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     connected: bool = False
     epoch: int = 0
-    viewers: set[asyncio.Queue[bytes]] = field(default_factory=set)
+    viewers: set[asyncio.Queue[tuple[float, bytes]]] = field(default_factory=set)
     counters: Counter[int] = field(default_factory=Counter)
     frames: int = 0
     rejected: int = 0
@@ -144,7 +144,7 @@ class LinkState:
         for queue in tuple(self.viewers):
             if queue.full():
                 queue.get_nowait()  # Drop stale frames, never stall Pi uplink.
-            queue.put_nowait(packet)
+            queue.put_nowait((now, packet))
 
     def fresh(self, timestamp: float) -> bool:
         return self.connected and timestamp >= 0 and (
@@ -271,7 +271,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         if vehicle_id != cfg.vehicle_id or not expiry:
             await ws.close(code=4401)
             return
-        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=64)
+        queue: asyncio.Queue[tuple[float, bytes]] = asyncio.Queue(maxsize=32)
         async with state.lock:
             state.viewers.add(queue)
         await ws.accept()
@@ -294,7 +294,9 @@ def create_app(config: Config | None = None) -> FastAPI:
                     if event.get("type") == "websocket.disconnect":
                         break
                 if next_frame in done and time.time() < expiry:
-                    await ws.send_bytes(next_frame.result())
+                    received_at, packet = next_frame.result()
+                    if time.monotonic() - received_at <= 1.5:
+                        await ws.send_bytes(packet)
         except (WebSocketDisconnect, RuntimeError, OSError):
             pass
         finally:
