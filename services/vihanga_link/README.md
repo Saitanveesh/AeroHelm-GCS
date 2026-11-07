@@ -93,9 +93,11 @@ The local-only, opt-in stream probe uses MAV_CMD_SET_MESSAGE_INTERVAL
 when an identified ArduPilot heartbeat proves disarmed. It requests
 non-persistent rates: ATTITUDE 30 (5 Hz), GLOBAL_POSITION_INT 33 (2 Hz),
 VFR_HUD 74 (2 Hz), SYS_STATUS 1 (1 Hz), GPS_RAW_INT 24 (1 Hz),
-BATTERY_STATUS 147 (1 Hz). It never modifies persistent parameters
-or enables remote commands. If this process has observed an armed
-heartbeat, no rate probe is attempted in that session.
+BATTERY_STATUS 147 (1 Hz). If no actual ID30 is observed, at most one
+additional local probe is attempted after a minimum 15-second interval.
+Any observed ID30 or armed heartbeat disables further probes in that
+session. It never changes persistent parameters or accepts cloud-originated
+flight commands. Enable this feature only for an approved, disarmed bench.
 
 The UART owner logs measured 10-second HEARTBEAT (ID 0), ATTITUDE (ID 30),
 position, GPS and HUD windows together with the forwarded WSS counts, queue
