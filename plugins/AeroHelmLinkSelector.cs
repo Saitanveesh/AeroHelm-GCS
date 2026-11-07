@@ -16,6 +16,100 @@ namespace AeroHelm.GcsCloud
 {
     internal enum AeroHelmLinkPath { Cancel, CloudReadOnly, PilotDirect, CloudAttitudePreview }
 
+    // Drawn cards are insulated from Mission Planner's global button theme.
+    // Focus and Enter/Space activate the same explicit path selection.
+    internal sealed class VihangaLinkChoice : Control
+    {
+        private readonly string heading;
+        private readonly string description;
+        private readonly Drawing.Color accent;
+        private readonly Drawing.Font headingFont =
+            new Drawing.Font("Segoe UI Semibold",13f,Drawing.FontStyle.Bold);
+        private readonly Drawing.Font descriptionFont =
+            new Drawing.Font("Segoe UI",10f);
+        private bool hovered;
+
+        internal VihangaLinkChoice(string title,string summary,Drawing.Color stripe)
+        {
+            heading=title;
+            description=summary;
+            accent=stripe;
+            Dock=DockStyle.Fill;
+            Margin=new Padding(0,4,0,4);
+            Cursor=Cursors.Hand;
+            TabStop=true;
+            AccessibleRole=AccessibleRole.PushButton;
+            AccessibleName=title;
+            AccessibleDescription=summary;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
+                ControlStyles.Selectable,true);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            var rect=ClientRectangle;
+            e.Graphics.Clear(hovered ? Drawing.Color.FromArgb(40,47,55) :
+                Drawing.Color.FromArgb(27,32,39));
+            using(var brush=new Drawing.SolidBrush(accent))
+                e.Graphics.FillRectangle(brush,0,0,4,rect.Height);
+            using(var pen=new Drawing.Pen(Focused ? accent :
+                Drawing.Color.FromArgb(64,70,77),Focused?2f:1f))
+                e.Graphics.DrawRectangle(pen,1,1,Math.Max(1,rect.Width-3),
+                    Math.Max(1,rect.Height-3));
+            int width=Math.Max(1,rect.Width-44);
+            TextRenderer.DrawText(e.Graphics,heading,headingFont,
+                new Drawing.Rectangle(22,10,width,28),
+                Drawing.Color.FromArgb(245,247,249),
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(e.Graphics,description,descriptionFont,
+                new Drawing.Rectangle(22,40,width,Math.Max(20,rect.Height-45)),
+                Drawing.Color.FromArgb(184,193,202),
+                TextFormatFlags.Left | TextFormatFlags.WordBreak |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            hovered=true; Invalidate(); base.OnMouseEnter(e);
+        }
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            hovered=false; Invalidate(); base.OnMouseLeave(e);
+        }
+        protected override void OnGotFocus(EventArgs e)
+        {
+            Invalidate(); base.OnGotFocus(e);
+        }
+        protected override void OnLostFocus(EventArgs e)
+        {
+            Invalidate(); base.OnLostFocus(e);
+        }
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if(e.Button==MouseButtons.Left) Focus();
+            base.OnMouseDown(e);
+        }
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if(e.KeyCode==Keys.Enter || e.KeyCode==Keys.Space)
+            {
+                OnClick(EventArgs.Empty);
+                e.Handled=true;
+                e.SuppressKeyPress=true;
+                return;
+            }
+            base.OnKeyDown(e);
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if(disposing){headingFont.Dispose();descriptionFont.Dispose();}
+            base.Dispose(disposing);
+        }
+    }
+
     internal sealed class AeroHelmLinkSelector : Form
     {
         internal AeroHelmLinkPath Selection { get; private set; }
@@ -23,79 +117,84 @@ namespace AeroHelm.GcsCloud
 
         internal AeroHelmLinkSelector()
         {
-            Selection = AeroHelmLinkPath.Cancel;
-            Text = "AeroHelm PATHS — select flight-data link";
-            Width = 850; Height = 660;
-            MinimumSize = new Drawing.Size(680, 570);
-            StartPosition = FormStartPosition.CenterParent;
-            AutoScaleMode = AutoScaleMode.Dpi;
-            BackColor = Drawing.Color.FromArgb(9,9,9);
-            ForeColor = Drawing.Color.White;
-            Font = new Drawing.Font("Segoe UI", 11f);
-            var layout = new TableLayoutPanel {
-                Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7,
-                Padding = new Padding(22), BackColor = BackColor
-            };
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 85));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-            Controls.Add(layout);
-            layout.Controls.Add(new Label {
-                Dock = DockStyle.Fill,
-                Font = new Drawing.Font("Segoe UI Semibold", 15f),
-                ForeColor = Drawing.Color.FromArgb(236,236,236),
-                Text = "FLIGHT DATA / SELECT CONNECTION PATH" + Environment.NewLine +
-                       "A cloud viewer is NOT a flight-control link."
-            },0,0);
+            Selection=AeroHelmLinkPath.Cancel;
+            Text="Vihanga GCS | Connections";
+            Width=800;Height=570;
+            MinimumSize=new Drawing.Size(580,510);
+            StartPosition=FormStartPosition.CenterParent;
+            AutoScaleMode=AutoScaleMode.Dpi;
+            BackColor=Drawing.Color.FromArgb(17,21,27);
+            ForeColor=Drawing.Color.FromArgb(239,243,247);
+            Font=new Drawing.Font("Segoe UI",10f);
 
-            var cloud = Action(
-                "CLOUD VIEW — receive-only / Tailscale HTTPS + localhost",
-                "Requires a real Pixhawk HEARTBEAT/ATTITUDE over the Pi→Oracle path. " +
-                "No parameter writes, missions, calibration or commands can pass.");
-            cloud.BackColor = Drawing.Color.FromArgb(29,48,62);
-            cloud.Click += (sender,args)=>Select(AeroHelmLinkPath.CloudReadOnly);
+            var layout=new TableLayoutPanel {
+                Dock=DockStyle.Fill, ColumnCount=1,RowCount=7,
+                Padding=new Padding(20,16,20,14),BackColor=BackColor
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            foreach(int height in new[]{66,94,94,94,40})
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute,height));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute,48));
+            Controls.Add(layout);
+
+            var header=new TableLayoutPanel {
+                Dock=DockStyle.Fill,ColumnCount=1,RowCount=2
+            };
+            header.RowStyles.Add(new RowStyle(SizeType.Absolute,38));
+            header.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+            header.Controls.Add(new Label {
+                Text="Connections",Dock=DockStyle.Fill,
+                Font=new Drawing.Font("Segoe UI Semibold",20f,Drawing.FontStyle.Bold),
+                ForeColor=ForeColor,
+                TextAlign=Drawing.ContentAlignment.MiddleLeft
+            },0,0);
+            header.Controls.Add(new Label {
+                Text="Select a telemetry source",Dock=DockStyle.Fill,
+                ForeColor=Drawing.Color.FromArgb(166,177,190),
+                TextAlign=Drawing.ContentAlignment.MiddleLeft
+            },0,1);
+            layout.Controls.Add(header,0,0);
+
+            var cloud=new VihangaLinkChoice("Cloud telemetry",
+                "Read-only   |   Raspberry Pi to private cloud to GCS",
+                Drawing.Color.FromArgb(66,155,210));
+            cloud.Click+=(s,e)=>Select(AeroHelmLinkPath.CloudReadOnly);
             layout.Controls.Add(cloud,0,1);
 
-            var direct = Action(
-                "PILOT BACKUP — native USB / telemetry-radio COM",
-                "Use Mission Planner's normal COM port and baud controls; " +
-                "hardware radio must be independently wired and bench-tested. " +
-                "This selection does NOT connect or arm automatically.");
-            // Amber distinguishes deliberate local pilot authority from the
-            // blue receive-only cloud viewer; neither color asserts readiness.
-            direct.BackColor = Drawing.Color.FromArgb(70,55,34);
-            direct.Click += (sender,args)=>Select(AeroHelmLinkPath.PilotDirect);
+            var direct=new VihangaLinkChoice("Direct telemetry",
+                "Pilot connection   |   USB or telemetry-radio COM port",
+                Drawing.Color.FromArgb(211,163,83));
+            direct.Click+=(s,e)=>Select(AeroHelmLinkPath.PilotDirect);
             layout.Controls.Add(direct,0,2);
-            var preview=Action(
-                "CLOUD ATTITUDE — real-only visual monitor",
-                "Independent observation panel for actual cloud ATTITUDE data. "+
-                "It does NOT connect Mission Planner, generate fake readings or control the aircraft.");
-            preview.Click+=(sender,args)=>Select(AeroHelmLinkPath.CloudAttitudePreview);
-            layout.Controls.Add(preview,0,3);
+
+            var attitude=new VihangaLinkChoice("Attitude monitor",
+                "Cloud roll and pitch   |   Independent read-only view",
+                Drawing.Color.FromArgb(122,172,166));
+            attitude.Click+=(s,e)=>Select(AeroHelmLinkPath.CloudAttitudePreview);
+            layout.Controls.Add(attitude,0,3);
+
             layout.Controls.Add(new Label {
                 Dock=DockStyle.Fill,
-                ForeColor=Drawing.Color.FromArgb(205,187,153),
-                Text="NO AUTO-FAILOVER: cloud loss only raises an alert. " +
-                     "The pilot deliberately selects the independent local radio/USB path. " +
-                     "Never treat network reconnection as permission to transmit commands."
+                Text="Connection changes are manual. No automatic radio switchover.",
+                ForeColor=Drawing.Color.FromArgb(175,186,198),
+                TextAlign=Drawing.ContentAlignment.MiddleLeft
             },0,4);
+
             cloudEvidence.Dock=DockStyle.Fill;
-            cloudEvidence.Text="Cloud link assessment: checking authenticated path...";
-            cloudEvidence.ForeColor=Drawing.Color.FromArgb(205,205,205);
-            cloudEvidence.AutoEllipsis=true;
-            cloudEvidence.AccessibleName="Cloud diagnostic evidence; not flight control authorization";
+            cloudEvidence.Text="Cloud status: checking...";
+            cloudEvidence.ForeColor=Drawing.Color.FromArgb(192,203,215);
+            cloudEvidence.TextAlign=Drawing.ContentAlignment.MiddleLeft;
+            cloudEvidence.AccessibleName="Cloud status; read-only observation";
             layout.Controls.Add(cloudEvidence,0,5);
-            Shown+=async(sender,args)=>await RefreshEvidenceAsync();
+
             var cancel=new Button {
-                Text="CANCEL",Dock=DockStyle.Right,Width=160,Height=44,
-                DialogResult=DialogResult.Cancel,
-                FlatStyle=FlatStyle.Flat,
-                ForeColor=ForeColor,BackColor=Drawing.Color.FromArgb(43,43,43)
+                Text="Close",Dock=DockStyle.Right,Width=112,Height=38,
+                DialogResult=DialogResult.Cancel,FlatStyle=FlatStyle.Flat,
+                ForeColor=ForeColor,BackColor=Drawing.Color.FromArgb(42,49,57),
+                UseVisualStyleBackColor=false
             };
+            cancel.FlatAppearance.BorderColor=Drawing.Color.FromArgb(85,94,104);
             layout.Controls.Add(cancel,0,6);
             CancelButton=cancel;
             KeyPreview=true;
@@ -103,65 +202,79 @@ namespace AeroHelm.GcsCloud
                 if(e.KeyCode==Keys.Escape)
                 {
                     DialogResult=DialogResult.Cancel;
-                    Close();e.Handled=true;e.SuppressKeyPress=true;
+                    Close();
+                    e.Handled=true;
                 }
             };
+            Shown+=async(s,e)=>await RefreshEvidenceAsync();
         }
 
         private async Task RefreshEvidenceAsync()
         {
             try
             {
-                string data=await Task.Run(()=>
-                    OperationsApi.Request("GET","api/v1/mavlink/paths"));
-                if(IsDisposed||Disposing)return;
-                var json=new JavaScriptSerializer();
-                var record=json.Deserialize<Dictionary<string,object>>(data);
-                var paths=record["paths"] as object[];
-                if(paths==null || paths.Length<2)
-                    throw new InvalidOperationException("Incomplete cloud link assessment");
-                var cloud=paths[0] as Dictionary<string,object>;
-                if(cloud==null)
-                    throw new InvalidOperationException("Invalid cloud link status");
-                cloudEvidence.Text="CLOUD / "+Convert.ToString(cloud["status"])+
-                    " | GCS viewers "+Convert.ToString(cloud["viewer_count"])+
-                    "     •     DIRECT / independent; not observable by Oracle";
+                string status=await Task.Run(()=>{
+                    try
+                    {
+                        var data=OperationsApi.Request("GET","api/v1/mavlink/paths");
+                        var record=new JavaScriptSerializer()
+                            .Deserialize<Dictionary<string,object>>(data);
+                        object rawPaths;
+                        if(!record.TryGetValue("paths",out rawPaths))
+                            return "Cloud status: path data unavailable";
+                        var paths=rawPaths as object[];
+                        if(paths==null || paths.Length==0)
+                            return "Cloud status: path data unavailable";
+                        var first=paths[0] as Dictionary<string,object>;
+                        if(first==null)return "Cloud status: path data unavailable";
+                        object value;
+                        return "Cloud status: "+Convert.ToString(
+                            first.TryGetValue("status",out value)?value:"unknown");
+                    }
+                    catch(WebException ex)
+                    {
+                        var response=ex.Response as HttpWebResponse;
+                        bool legacy=response!=null &&
+                            response.StatusCode==HttpStatusCode.NotFound;
+                        if(response!=null)response.Dispose();
+                        if(!legacy)throw;
+                        // M1 has a healthy legacy telemetry endpoint; its
+                        // readiness does not prove a fresh ATTITUDE stream.
+                        var data=OperationsApi.Request("GET","api/v1/mavlink/health");
+                        var health=new JavaScriptSerializer()
+                            .Deserialize<Dictionary<string,object>>(data);
+                        object online,fresh;
+                        bool device=health.TryGetValue("device_online",out online) &&
+                            online is bool && (bool)online;
+                        bool current=health.TryGetValue("fresh",out fresh) &&
+                            fresh is bool && (bool)fresh;
+                        return "Cloud status: M1 "+(device&&current?"receiving telemetry":
+                            "not ready")+"  |  Attitude not verified";
+                    }
+                });
+                if(!IsDisposed && !Disposing) cloudEvidence.Text=status;
+            }
+            catch(InvalidOperationException)
+            {
+                if(!IsDisposed&&!Disposing)
+                    cloudEvidence.Text="Cloud status: sign in required";
             }
             catch(WebException ex)
             {
-                if(IsDisposed||Disposing)return;
                 var response=ex.Response as HttpWebResponse;
-                cloudEvidence.Text=response!=null &&
-                    response.StatusCode==HttpStatusCode.NotFound ?
-                    "CLOUD / legacy Oracle API — upgrade path monitoring separately" :
-                    "CLOUD / path check unavailable — use LINK diagnostics";
+                var auth=response!=null &&
+                    (response.StatusCode==HttpStatusCode.Unauthorized ||
+                     response.StatusCode==HttpStatusCode.Forbidden);
                 if(response!=null)response.Dispose();
+                if(!IsDisposed&&!Disposing)
+                    cloudEvidence.Text=auth?"Cloud status: sign in required":
+                        "Cloud status: unavailable";
             }
             catch(Exception)
             {
                 if(!IsDisposed&&!Disposing)
-                    cloudEvidence.Text="CLOUD / path state unknown — direct backup is independent";
+                    cloudEvidence.Text="Cloud status: unavailable";
             }
-        }
-
-        private static Button Action(string title, string details)
-        {
-            var button=new Button {
-                Text=title+Environment.NewLine+details,
-                TextAlign=Drawing.ContentAlignment.MiddleLeft,
-                Dock=DockStyle.Fill,FlatStyle=FlatStyle.Flat,
-                ForeColor=Drawing.Color.White,
-                BackColor=Drawing.Color.FromArgb(31,31,31),
-                Font=new Drawing.Font("Segoe UI",11f),
-                Padding=new Padding(18,8,12,8),
-                UseVisualStyleBackColor=false,
-                AccessibleName=title,
-                AccessibleDescription=details,
-                TabStop=true
-            };
-            button.FlatAppearance.BorderColor=Drawing.Color.FromArgb(82,82,82);
-            button.FlatAppearance.BorderSize=1;
-            return button;
         }
 
         private void Select(AeroHelmLinkPath path)
