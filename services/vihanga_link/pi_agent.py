@@ -18,6 +18,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import tempfile
 import subprocess
 import threading
 import time
@@ -44,6 +45,7 @@ class Config:
     token_file: Path
     stream_probe: bool
     pinned_relay_host: str
+    parameter_snapshot: bool = False
 
     @staticmethod
     def from_env() -> "Config":
@@ -56,6 +58,7 @@ class Config:
             token_file=Path(os.getenv("VIHANGA_DEVICE_TOKEN_FILE", "")),
             stream_probe=os.getenv("VIHANGA_DISARMED_STREAM_PROBE", "0") == "1",
             pinned_relay_host=os.getenv("VIHANGA_PINNED_RELAY_HOST", ""),
+            parameter_snapshot=os.getenv("VIHANGA_DISARMED_PARAM_SNAPSHOT", "0") == "1",
         )
         cfg.validate()
         return cfg
@@ -127,6 +130,16 @@ def request_streams_once(port, heartbeat, cfg: Config) -> bool:
     return True
 
 
+def request_parameter_snapshot_once(port, heartbeat, cfg: Config) -> bool:
+    """One local read-only FC parameter-list request on the disarmed bench."""
+    if not cfg.parameter_snapshot or not is_disarmed_autopilot_heartbeat(
+            heartbeat, cfg.system_id):
+        return False
+    port.mav.param_request_list_send(cfg.system_id, 1)
+    LOG.info("Requested a disarmed-only PARAM_VALUE snapshot on local Pi UART")
+    return True
+
+
 class Publisher:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -137,6 +150,7 @@ class Publisher:
         self.port = None
         self._uart_thread = None
         self._loop = None
+        self._lock_fd: int | None = None
 
     def _offer(self, raw: bytes) -> None:
         if self.queue.full():
@@ -146,6 +160,7 @@ class Publisher:
 
     def _read_uart(self) -> None:
         probed = False
+        parameters_requested = False
         seen_armed = False
         while not self.stop.is_set():
             try:
@@ -165,8 +180,12 @@ class Publisher:
                     # Never start stream reconfiguration if this session has
                     # EVER observed an armed FC. An onboard operator must
                     # explicitly restart a disarmed maintenance session.
-                    if self.cfg.stream_probe and not probed and not seen_armed:
-                        probed = request_streams_once(self.port, msg, self.cfg)
+                    if not seen_armed:
+                        if self.cfg.stream_probe and not probed:
+                            probed = request_streams_once(self.port, msg, self.cfg)
+                        if self.cfg.parameter_snapshot and not parameters_requested:
+                            parameters_requested = request_parameter_snapshot_once(
+                                self.port, msg, self.cfg)
                 raw = bytes(msg.get_msgbuf())
                 if raw and len(raw) <= MAX_FRAME and raw[0] in (0xFE, 0xFD):
                     self._loop.call_soon_threadsafe(self._offer, raw)
@@ -176,10 +195,25 @@ class Publisher:
                 return
 
     def open_uart(self) -> None:
-        valid_uart_owner_probe(self.cfg.device)
-        self.port = mavutil.mavlink_connection(
-            self.cfg.device, baud=self.cfg.baud, autoreconnect=False,
-            source_system=255, source_component=190, dialect="ardupilotmega")
+        # Cooperative lock closes the fuser/open race between two instances.
+        name = hashlib.sha256(os.path.realpath(self.cfg.device).encode()).hexdigest()[:20]
+        lock_path = os.path.join(tempfile.gettempdir(), "vihanga-uart-" + name + ".lock")
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(lock_path, flags, 0o600)
+        try:
+            if os.fstat(fd).st_uid != os.getuid():
+                raise PermissionError("UART lockfile belongs to another user")
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            valid_uart_owner_probe(self.cfg.device)
+            self.port = mavutil.mavlink_connection(
+                self.cfg.device, baud=self.cfg.baud, autoreconnect=False,
+                source_system=255, source_component=190, dialect="ardupilotmega")
+            self._lock_fd = fd
+        except BaseException:
+            os.close(fd)
+            raise
         self._loop = asyncio.get_running_loop()
         self._uart_thread = threading.Thread(
             target=self._read_uart, name="vihanga-sole-uart-reader", daemon=True)
@@ -225,6 +259,10 @@ class Publisher:
                 self.port.close()
             if self._uart_thread is not None:
                 self._uart_thread.join(timeout=2)
+            if self._lock_fd is not None:
+                fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
+                os.close(self._lock_fd)
+                self._lock_fd = None
             LOG.info("UART publisher stopped; frames %s; queue drops %d",
                 dict(self.counts), self.dropped)
 
