@@ -260,6 +260,23 @@ namespace AeroHelm.GcsCloud
             _cloudProbeBusy = true;
             try
             {
+                // A dedicated private telemetry relay owns its own token and
+                // receiver. Never infer its HUD health from Oracle M1 status.
+                if (VihangaLinkSession.UsesDedicatedRelay)
+                {
+                    var active = ActiveNativeBridge;
+                    bool hbLive = active != null && active.NativeHeartbeatFresh;
+                    bool attLive = active != null && active.NativeAttitudeFresh;
+                    _paths.Text = "PATHS";
+                    _paths.ForeColor = hbLive && attLive ?
+                        FrameworkDrawing::System.Drawing.Color.FromArgb(195,228,195) :
+                        FrameworkDrawing::System.Drawing.Color.FromArgb(242,198,139);
+                    _paths.ToolTipText = hbLive && attLive ?
+                        "Private relay: live Pixhawk heartbeat and attitude." :
+                        hbLive ? "Private relay: heartbeat live; attitude missing." :
+                        "Private relay: not receiving verified native MAVLink.";
+                    return;
+                }
                 // Local USB/telemetry-radio recovery is usable without
                 // Oracle, cloud credentials or Kerberos. Never treat the
                 // absence of a cloud token as a native aircraft fault.
