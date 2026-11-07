@@ -97,6 +97,19 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("if(-not $Apply)", cleanup)
         self.assertIn("Consolidate-AeroHelmWindows.ps1", cleanup)
 
+    def test_recovery_rebuilds_before_manifest_verification(self):
+        repair=source("scripts/Repair-AeroHelmWindows.ps1")
+        release=source("scripts/Consolidate-AeroHelmWindows.ps1")
+        updater=source("scripts/Update-AeroHelmLatest.ps1")
+        self.assertIn("Invoke-FreshReleaseStep @('Build','-Apply','-WithBranding')",repair)
+        self.assertIn("Invoke-FreshReleaseStep @('Verify')",repair)
+        self.assertIn("& powershell.exe @arguments",repair)
+        self.assertIn("if($code -ne 0)",repair)
+        self.assertIn("& powershell.exe @buildArgs",release)
+        self.assertIn("if($buildCode -ne 0)",release)
+        self.assertIn("$repairExit=$LASTEXITCODE",updater)
+        self.assertIn("if ($repairExit -ne 0)",updater)
+
     def test_manifest_diagnosis_is_read_only_and_verify_fails_closed(self):
         release = source("scripts/Consolidate-AeroHelmWindows.ps1")
         self.assertIn("ValidateSet('Inspect','Build','Verify','Diagnose')", release)

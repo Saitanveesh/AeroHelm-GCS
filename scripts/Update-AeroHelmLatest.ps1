@@ -37,7 +37,7 @@ if (-not $Apply) {
 if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close every Mission Planner window before updating the live GCS EXE/DLL.'
 }
-Write-Host 'Checking exact reviewed Vihanga GCS branch...'
+Write-Host 'Checking reviewed Vihanga GCS source. A prior build manifest is stale after a source update until this exact commit has been rebuilt.'
 & git -C $root fetch --prune origin $branch
 if ($LASTEXITCODE -ne 0) { throw 'Remote Git fetch failed. No build performed.' }
 & git -C $root merge --ff-only ('origin/' + $branch)
@@ -57,9 +57,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 # Execution uses a fresh script process so the just-updated build/test logic
 # is loaded from disk, never stale function definitions in this updater.
-& powershell -NoProfile -ExecutionPolicy Bypass -File $repair -Apply
-if ($LASTEXITCODE -ne 0) {
-    throw 'Native GCS build/install/verification failed. Previous runtime backup retained.'
+& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $repair -Apply
+$repairExit=$LASTEXITCODE
+if ($repairExit -ne 0) {
+    throw "Native GCS rebuild/install failed (exit $repairExit). Previous runtime backup retained. See build-logs/aerohelm-solution.log and plugin logs."
 }
 # Verify the exact checkout and binary hashes for this source revision.
 & powershell -NoProfile -ExecutionPolicy Bypass -File $inspect -Stage Verify

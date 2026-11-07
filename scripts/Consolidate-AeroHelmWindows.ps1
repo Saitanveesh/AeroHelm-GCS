@@ -177,14 +177,16 @@ if((Hash (Join-Path $snapshot 'MissionPlanner.exe')) -ne $oldHash){
 # Any failure after backup restores the whole former runtime (not just plugin).
 try{
     $build=Join-Path $PSScriptRoot 'Build-Integrated-AeroHelm.ps1'
-    $global:LASTEXITCODE=0
-    if($WithBranding){
-        & $build
-    } else {
-        & $build -SkipBranding
-    }
-    if($LASTEXITCODE -ne 0){
-        throw "Integrated Windows build returned exit code $LASTEXITCODE."
+    # A fresh PowerShell process gives the complete build/test/install sequence
+    # a trustworthy success/failure exit code. Never rebaseline the manifest
+    # based on stale LASTEXITCODE or a pre-existing cached executable.
+    $buildArgs=@('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
+                 '-File',$build)
+    if(-not $WithBranding){$buildArgs+='-SkipBranding'}
+    & powershell.exe @buildArgs
+    $buildCode=$LASTEXITCODE
+    if($buildCode -ne 0){
+        throw "Integrated Windows build failed (exit $buildCode). Previous runtime must be restored."
     }
     # Archive only exact known obsolete DLL names; never delete arbitrary
     # Mission Planner or third-party plugins. The installer already archives
