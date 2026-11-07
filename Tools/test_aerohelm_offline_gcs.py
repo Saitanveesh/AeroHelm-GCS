@@ -18,6 +18,18 @@ def source(path: str) -> str:
 
 
 class OfflineGcsContracts(unittest.TestCase):
+    def test_native_mavlink_harness_qualifies_mission_planner_login_stub(self):
+        harness = source("Tools/AeroHelmMavlinkBridgeTests/Program.cs")
+        self.assertIn("namespace MissionPlanner", harness)
+        self.assertIn("public static class Program", harness)
+        for field in ("AeroHelmOperatorToken", "AeroHelmCloudOrigin",
+                      "AeroHelmTokenExpiresUtc"):
+            self.assertIn(f"global::MissionPlanner.Program.{field}", harness)
+        self.assertNotRegex(
+            harness,
+            r"(?<![A-Za-z0-9_.:])Program[.]AeroHelm(?:OperatorToken|CloudOrigin|TokenExpiresUtc)",
+        )
+
     def test_readonly_tcp_always_uses_local_bridge(self):
         native = source("MainV2.cs")
         self.assertIn('bool aeroHelmReadOnlyTcp =', native)
