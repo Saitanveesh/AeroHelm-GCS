@@ -5,9 +5,26 @@ param(
     [switch]$NoInternalBridge,
     [switch]$NoAutoTcp,
     [switch]$ShowNativeToolbar,
-    [switch]$LocalDirectBackup
+    [switch]$LocalDirectBackup,
+    [string]$LinkOrigin = ''
 )
 $ErrorActionPreference = 'Stop'
+if($LocalDirectBackup -and $LinkOrigin) {
+    throw 'Dedicated cloud telemetry cannot be selected for an offline direct backup session.'
+}
+$requestedLinkOrigin = if ($LinkOrigin) { $LinkOrigin } else { $env:VIHANGA_LINK_ORIGIN }
+if ($requestedLinkOrigin) {
+    $linkUri = $null
+    if (-not [Uri]::TryCreate($requestedLinkOrigin,[UriKind]::Absolute,[ref]$linkUri) -or
+        $linkUri.Scheme -ne 'https' -or
+        -not $linkUri.Host.EndsWith('.ts.net',[StringComparison]::OrdinalIgnoreCase) -or
+        $linkUri.UserInfo -or $linkUri.Query -or $linkUri.Fragment -or
+        $linkUri.AbsolutePath -ne '/') {
+        throw 'LinkOrigin must be an exact private *.ts.net HTTPS origin without credentials or path.'
+    }
+    [Environment]::SetEnvironmentVariable('VIHANGA_LINK_ORIGIN',
+        $linkUri.GetLeftPart([UriPartial]::Authority),'Process')
+}
 if($LocalDirectBackup -and (-not $NoInternalBridge -or -not $NoAutoTcp)) {
     throw 'Offline DIRECT requires -NoInternalBridge and -NoAutoTcp; cloud path cannot be silently enabled.'
 }
@@ -102,6 +119,9 @@ if (-not $env:AEROHELM_VISION_AUTO_OPEN) {
 [Environment]::SetEnvironmentVariable('AEROHELM_CLOUD_READONLY','1','Process')
 Write-Host 'Starting VIHANGA Ground Station (Mission Planner native interface).'
 Write-Host 'Use PATHS to select cloud view or an independent local pilot radio.'
+if ($requestedLinkOrigin) {
+    Write-Host 'Dedicated telemetry relay selected; PATHS will request separate operator sign-in.'
+}
 Write-Host 'OPS is simulation/bench-only. INTEL and MORE are authenticated inspection tools.'
 if (-not $LocalDirectBackup) {
     Write-Host 'Cloud operator authentication is required at startup.'
