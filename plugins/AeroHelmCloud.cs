@@ -87,6 +87,12 @@ namespace AeroHelm.GcsCloud
             };
             _workspaces.DropDownItems.Add("Link diagnostics", null,
                 (sender,e) => ShowWorkspace(new AeroHelmLinkWindow()));
+            _workspaces.DropDownItems.Add("Attitude monitor", null,
+                (sender,e) =>
+                {
+                    if (VihangaLinkLoginWindow.EnsureSignedIn(MainV2.instance))
+                        ShowWorkspace(new AeroHelmCloudAttitudeWindow());
+                });
             _workspaces.DropDownItems.Add("Survey planner", null,
                 (sender,e) => ShowWorkspace(new AeroHelmSurveyWindow()));
             _workspaces.DropDownItems.Add("Operations / simulation", null,
