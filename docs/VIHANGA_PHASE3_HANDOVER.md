@@ -84,6 +84,22 @@ Release scripts reject unverified EXE/DLL hashes, dirty tracked files and
 unknown bridge-port ownership; none performs automated flight tests or
 uploads commands to a real aircraft.
 
+## Backend API compatibility
+
+Two distinct backend contracts coexist in this development stack:
+
+| Backend contract | Supported examples | Native GCS availability |
+| --- | --- | --- |
+| Existing M1/M2 server | `/api/v1/auth/login`, `/api/v1/operations/*`, `/api/v2/fleet`, `/api/v2/vehicles/*/parameters` | GCS CLOUD, legacy OPS simulator and INTEL modules use these authenticated routes |
+| New standalone cloud R2 | `/api/v1/capabilities`, `/api/v1/fleet/status`, `/api/v1/fleet/metrics`, `/api/v1/missions` | OPS and INTEL now expose **read-only** checks for these routes; mission dispatch is not wired |
+| R2 production identity | OIDC bearer tokens with dedicated scopes | The existing M1 password-login dialog is **not** an R2 OIDC onboarding flow; an approved identity gateway or verified client integration is still required |
+
+Do not claim that OPS or INTEL works end-to-end against R2 until the
+identity origin, scope claims, routing, backend migration and
+operation semantics have been tested together. R2 virtual mission state is
+not evidence of a Pixhawk command. The cloud R2 feature stack is a
+separate sequence of draft pull requests, not part of this Windows GCS PR.
+
 ## Open integration gates
 
 - Exact-commit Windows CI and hands-on GUI acceptance.

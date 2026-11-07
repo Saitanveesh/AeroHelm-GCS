@@ -65,6 +65,15 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn('"api/v1/vehicles/"+Id()+"/parameters"', intel)
         self.assertIn('vehicle.Text=""', intel)
 
+    def test_new_cloud_fleet_contract_is_visible_without_mutation(self):
+        ops = source("plugins/AeroHelmOperations.cs")
+        intel = source("plugins/AeroHelmPlatformV2.cs")
+        self.assertIn('Api("GET","api/v1/capabilities")', ops)
+        self.assertIn('Api("GET","api/v1/missions?limit=50")', ops)
+        self.assertIn('"api/v1/fleet/status"', intel)
+        self.assertIn('"api/v1/fleet/metrics"', intel)
+        self.assertIn('"api/v1/missions?limit=50"', intel)
+
     def test_mission_validation_is_invalidated_after_edits(self):
         intel = source("plugins/AeroHelmPlatformV2.cs")
         for event in ("points.TextChanged", "fence.TextChanged",
@@ -76,6 +85,8 @@ class VihangaNativeToolbarContracts(unittest.TestCase):
         self.assertIn("Revalidate before starting a passive shadow", intel)
         self.assertIn("new SortedDictionary<string,double>(StringComparer.Ordinal)", intel)
         self.assertIn("Duplicate parameter:", intel)
+        self.assertIn("Sort parameter targets locally", intel)
+        self.assertIn("ParseParameterTargets()", intel)
 
     def test_release_pins_source_and_native_binary_hashes(self):
         launcher = source("scripts/Start-VihangaGCS.ps1")

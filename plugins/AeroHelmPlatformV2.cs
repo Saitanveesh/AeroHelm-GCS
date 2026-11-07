@@ -80,6 +80,14 @@ namespace AeroHelm.GcsCloud
             fleetPanel.Controls.Add(ActionButton("Aircraft risk flags",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/vehicles/"+Id()+"/alerts"),"Aircraft alerts")));
+            // R2 exposes a separate read-only, virtual-fleet contract.
+            // Do not treat an R2 telemetry aggregate as flight clearance.
+            fleetPanel.Controls.Add(ActionButton("Cloud fleet status (v1)",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                    "api/v1/fleet/status"),"Cloud fleet status — not flight authority")));
+            fleetPanel.Controls.Add(ActionButton("Cloud fleet metrics (v1)",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                    "api/v1/fleet/metrics"),"Cloud fleet metrics")));
             fleetPanel.Controls.Add(new Label{Text="Fleet lists real telemetry only. Unavailable telemetry stays UNKNOWN.",
                 AutoSize=true,ForeColor=Drawing.Color.DarkRed});
 
@@ -123,6 +131,13 @@ namespace AeroHelm.GcsCloud
                 Width=650,Height=24});
             targets.Width=650;targets.Height=160;targets.Multiline=true;
             targets.ScrollBars=ScrollBars.Vertical;paramPanel.Controls.Add(targets);
+            paramPanel.Controls.Add(new Label {
+                Text="Group by prefix: ARMING / BATT / FS / INS / RC / SERIAL. " +
+                     "Names and values are compared only; cloud writes are disabled.",
+                AutoSize=true
+            });
+            paramPanel.Controls.Add(ActionButton("Sort parameter targets locally",
+                ()=>SortParameterTargets()));
             paramPanel.Controls.Add(ActionButton("Compare parameter snapshot",
                 async()=>await CompareParameters()));
             paramPanel.Controls.Add(ActionButton("Request read-only parameter refresh from Pi",
@@ -137,6 +152,9 @@ namespace AeroHelm.GcsCloud
             hPanel.Controls.Add(ActionButton("Recent live telemetry (up to 100)",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/vehicles/"+Id()+"/history?limit=100"),"Live history")));
+            hPanel.Controls.Add(ActionButton("Virtual mission registry (v1)",
+                async()=>await Run(()=>OperationsApi.Request("GET",
+                    "api/v1/missions?limit=50"),"Virtual mission registry — no hardware dispatch")));
             hPanel.Controls.Add(ActionButton("Generate flight data report",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/vehicles/"+Id()+"/report"),"Flight report")));
@@ -328,31 +346,49 @@ namespace AeroHelm.GcsCloud
             finally{running=false;}
         }
 
-        private async Task CompareParameters()
+        private SortedDictionary<string,double> ParseParameterTargets()
         {
             var parsed=new SortedDictionary<string,double>(StringComparer.Ordinal);
+            foreach(string line in targets.Lines)
+            {
+                if(string.IsNullOrWhiteSpace(line))continue;
+                var parts=line.Split(new[]{'='},2);
+                if(parts.Length!=2)throw new ArgumentException("Use NAME=VALUE per line");
+                double value;
+                if(!double.TryParse(parts[1].Trim(),NumberStyles.Float,
+                    CultureInfo.InvariantCulture,out value) ||
+                   double.IsNaN(value)||double.IsInfinity(value))
+                    throw new ArgumentException("Invalid parameter value");
+                string key=parts[0].Trim();
+                if(key.Length<1||key.Length>16||key.Any(x=>!char.IsLetterOrDigit(x)&&x!='_'))
+                    throw new ArgumentException("Invalid parameter name");
+                if(parsed.ContainsKey(key))
+                    throw new ArgumentException("Duplicate parameter: "+key);
+                parsed.Add(key,value);
+            }
+            if(parsed.Count<1||parsed.Count>300)
+                throw new ArgumentException("Supply 1–300 parameters");
+            return parsed;
+        }
+
+        private void SortParameterTargets()
+        {
             try
             {
-                foreach(string line in targets.Lines)
-                {
-                    if(string.IsNullOrWhiteSpace(line))continue;
-                    var parts=line.Split(new[]{'='},2);
-                    if(parts.Length!=2)throw new ArgumentException("Use NAME=VALUE per line");
-                    double value;
-                    if(!double.TryParse(parts[1].Trim(),NumberStyles.Float,
-                        CultureInfo.InvariantCulture,out value) ||
-                       double.IsNaN(value)||double.IsInfinity(value))
-                        throw new ArgumentException("Invalid parameter value");
-                    string key=parts[0].Trim();
-                    if(key.Length<1||key.Length>16||key.Any(x=>!char.IsLetterOrDigit(x)&&x!='_'))
-                        throw new ArgumentException("Invalid parameter name");
-                    if(parsed.ContainsKey(key))
-                        throw new ArgumentException("Duplicate parameter: "+key);
-                    parsed.Add(key,value);
-                }
-                if(parsed.Count<1||parsed.Count>300)
-                    throw new ArgumentException("Supply 1–300 parameters");
+                if(running) return;
+                var sorted=ParseParameterTargets();
+                targets.Lines=sorted.Select(pair=>pair.Key+"="+
+                    pair.Value.ToString("R",CultureInfo.InvariantCulture)).ToArray();
+                report.Text=sorted.Count+" parameter targets sorted locally. "+
+                    "No parameters were read from or written to the aircraft.";
             }
+            catch(Exception ex){report.Text=ex.Message;}
+        }
+
+        private async Task CompareParameters()
+        {
+            SortedDictionary<string,double> parsed;
+            try { parsed=ParseParameterTargets(); }
             catch(Exception ex){report.Text=ex.Message;return;}
             await Run(()=>OperationsApi.Request("POST",
                  "api/v2/vehicles/"+Id()+"/parameters/compare",

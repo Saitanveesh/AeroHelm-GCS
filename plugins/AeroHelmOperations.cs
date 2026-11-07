@@ -180,6 +180,46 @@ namespace AeroHelm.GcsCloud
             };
             policyPage.Controls.Add(refreshPolicy);
             policyPage.Controls.Add(capabilityReport);
+            // The newer fleet service has a different, virtual-only API.
+            // These GET actions do not create leases, missions or device jobs.
+            var cloudR2Capabilities=new Button {
+                Text="Inspect fleet service capabilities (read-only)",Width=350
+            };
+            cloudR2Capabilities.Click+=async(s,e)=>{
+                cloudR2Capabilities.Enabled=false;
+                try
+                {
+                    capabilityReport.Text="Cloud fleet service capabilities (reported):"+
+                        Environment.NewLine+
+                        await Api("GET","api/v1/capabilities")+
+                        Environment.NewLine+
+                        "This is not evidence of supported physical aircraft control.";
+                }
+                catch(Exception ex)
+                {
+                    capabilityReport.Text="Fleet service unavailable: "+Error(ex);
+                }
+                finally { if(!IsDisposed)cloudR2Capabilities.Enabled=true; }
+            };
+            policyPage.Controls.Add(cloudR2Capabilities);
+            var cloudR2Missions=new Button {
+                Text="Inspect virtual mission registry (read-only)",Width=350
+            };
+            cloudR2Missions.Click+=async(s,e)=>{
+                cloudR2Missions.Enabled=false;
+                try
+                {
+                    capabilityReport.Text="Virtual mission registry (no commands):"+
+                        Environment.NewLine+
+                        await Api("GET","api/v1/missions?limit=50");
+                }
+                catch(Exception ex)
+                {
+                    capabilityReport.Text="Virtual mission registry unavailable: "+Error(ex);
+                }
+                finally { if(!IsDisposed)cloudR2Missions.Enabled=true; }
+            };
+            policyPage.Controls.Add(cloudR2Missions);
             policyPage.Controls.Add(new Label {
                 Width=680,Height=80,
                 Text="Only a physically present Pi operator may authorize permitted supervised calibration."+
