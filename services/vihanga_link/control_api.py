@@ -151,6 +151,67 @@ class ControlContext:
             return False
         return False
 
+    def observe_fc_safety_evidence(self, raw: str) -> bool:
+        """Read an FC-owned safety snapshot only from authenticated Pi WSS.
+
+        No HTTP caller can supply these fields. A report does NOT establish
+        hardware airworthiness or allow an RC override to be ignored.
+        """
+        if not isinstance(raw, str) or len(raw) > 4096:
+            return False
+        try:
+            msg = json.loads(raw)
+        except (TypeError, ValueError):
+            return False
+        if not isinstance(msg, dict) or set(msg) != {
+                "type", "vehicle_id", "control_epoch", "sequence",
+                "reported_at_unix_ms", "observation", "missing_fc_messages",
+                "physical_control_qualified"}:
+            return False
+        if (msg["type"] != "fc_safety_evidence" or
+            msg["vehicle_id"] != self.vehicle_id or
+            type(msg["control_epoch"]) is not int or
+            msg["control_epoch"] != self.state.control_epoch or
+            type(msg["sequence"]) is not int or msg["sequence"] < 1 or
+            msg["sequence"] <= self.state.fc_safety_report_sequence or
+            type(msg["reported_at_unix_ms"]) is not int or
+            abs(int(time.time()*1000) - msg["reported_at_unix_ms"]) > 3000 or
+            msg["physical_control_qualified"] is not False or
+            not isinstance(msg["missing_fc_messages"], list) or
+            len(msg["missing_fc_messages"]) > 16 or
+            any(not isinstance(x, str) or len(x) > 40
+                for x in msg["missing_fc_messages"])):
+            return False
+        fields = msg["observation"]
+        if not isinstance(fields, dict) or set(fields) != set(ObservedVehicle.__dataclass_fields__):
+            return False
+        try:
+            snapshot = ObservedVehicle(**fields)
+        except (ValueError, TypeError):
+            return False
+        if (snapshot.vehicle_id != self.vehicle_id or
+            snapshot.system_id != self.state.fc_system_id or
+            snapshot.source != "PHYSICAL_FC"):
+            return False
+        boolean_fields = ("home_verified", "ekf_healthy", "geofence_healthy",
+                          "rc_link_healthy", "rc_override_active", "on_ground",
+                          "armed", "failsafe_clear")
+        if any(type(getattr(snapshot, key)) is not bool for key in boolean_fields):
+            return False
+        if (any(type(getattr(snapshot, key)) is not int or
+                getattr(snapshot, key) < 0 for key in
+                ("heartbeat_age_ms", "attitude_age_ms")) or
+            snapshot.gps_age_ms is not None and (
+                type(snapshot.gps_age_ms) is not int or snapshot.gps_age_ms < 0) or
+            snapshot.battery_percent is not None and (
+                type(snapshot.battery_percent) not in (int, float) or
+                not 0 <= snapshot.battery_percent <= 100)):
+            return False
+        self.state.fc_safety_report = msg
+        self.state.fc_safety_report_at = self.clock()
+        self.state.fc_safety_report_sequence = msg["sequence"]
+        return True
+
     def _physical_evidence(self) -> ObservedVehicle:
         """Unknown safety inputs stay false, never operator-supplied.
 
@@ -160,6 +221,29 @@ class ControlContext:
         now = self.clock()
         def age(stamp: float) -> int:
             return int((now - stamp) * 1000) if self.state.connected and stamp >= 0 else 999999
+        report = self.state.fc_safety_report
+        if (self.settings.typed_downlink and isinstance(report, dict) and
+            self.state.connected and self.state.fresh(self.state.last_heartbeat) and
+            report.get("control_epoch") == self.state.control_epoch and
+            self.state.fc_safety_report_at >= 0 and
+            0 <= self.clock() - self.state.fc_safety_report_at <= 1.5):
+            try:
+                snap = ObservedVehicle(**report["observation"])
+                lag = int(max(0, self.clock() - self.state.fc_safety_report_at) * 1000)
+                # Combine Pi and relay freshness: never trust a smaller age
+                # from one link as proof that the other is current.
+                from dataclasses import replace
+                return replace(
+                    snap,
+                    heartbeat_age_ms=max(snap.heartbeat_age_ms + lag, age(self.state.last_heartbeat)),
+                    attitude_age_ms=max(snap.attitude_age_ms + lag, age(self.state.last_attitude)),
+                    gps_age_ms=(None if snap.gps_age_ms is None else
+                        max(snap.gps_age_ms + lag, age(self.state.last_gps_raw_at))),
+                    home_verified=(snap.home_verified and
+                        self.state.fresh(self.state.last_valid_home_at)),
+                )
+            except (KeyError, ValueError, TypeError):
+                pass
         return ObservedVehicle(
             vehicle_id=self.vehicle_id, system_id=self.state.fc_system_id,
             source="PHYSICAL_FC",
@@ -223,6 +307,11 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
             "typed_arm_disarm_downlink_configured": cfg.typed_downlink,
             "hardware_actuation_qualified": False,
             "pilot_to_pi_shadow_probe": bool(cfg.enabled),
+            "fc_safety_report_received": bool(state.fc_safety_report),
+            "fc_safety_report_age_ms": (int(max(0, context.clock() -
+                state.fc_safety_report_at)*1000)
+                if state.fc_safety_report_at >= 0 else None),
+            "physical_release_accepted": False,
             "pilot_role_required": True,
             "independent_approver_required": True,
             "pi_hardware_interlock_verified": False,
