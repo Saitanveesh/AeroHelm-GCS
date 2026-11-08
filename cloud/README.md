@@ -190,5 +190,5 @@ or equivalent. No endpoint accepts raw MAVLink bytes or arbitrary commands.
 
 ## Production promotion gates
 
-See [cloud production gates](../docs/CLOUD_CONTROL_PLANE_RELEASE_GATES.md).
+For the current deployed Vihanga capability and qualification limits, see [project status](../docs/AEROHELM_STATUS.md). Any cloud-fleet production promotion requires a separate approved deployment and safety review.
 A passing test suite alone is not a production or flight-safety approval.
