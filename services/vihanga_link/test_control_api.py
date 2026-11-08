@@ -186,3 +186,46 @@ def test_control_config_rejects_same_identity_or_missing_secrets():
         ControlSettings(enabled=True, pilot_name="pilot1", approver_name="safety1",
                         pilot_password_hash="", approver_password_hash="$argon2id$stub",
                         jwt_key="x"*48).validate()
+
+
+def test_fc_reboot_revokes_old_pilot_lease_and_approver_nonce():
+    relay_cfg, control_cfg, device_token = make_configs()
+    with TestClient(create_app(relay_cfg, control_cfg)) as client:
+        pilot, approver = authenticated_roles(client)
+        path = "/api/v1/vehicles/" + VEHICLE + "/control"
+        pilot_headers = {"Authorization": "Bearer " + pilot}
+        approver_headers = {"Authorization": "Bearer " + approver}
+        with client.websocket_connect(
+                "/ws/mavlink/device/" + VEHICLE,
+                headers={"Authorization": "Bearer " + device_token}) as device:
+            device.send_bytes(heartbeat())
+            wait_heartbeat(client)
+            first = client.post(path + "/approvals",
+                                headers=approver_headers,
+                                json={"plan_sha256": PLAN}).json()
+            lease = client.post(path + "/lease", headers=pilot_headers,
+                                json={"plan_sha256": PLAN,
+                                      "approval_id": first["approval_id"]})
+            assert lease.status_code == 200
+            first_lease = lease.json()
+            spare = client.post(path + "/approvals",
+                                headers=approver_headers,
+                                json={"plan_sha256": PLAN}).json()
+            client.app.state.link.last_heartbeat = time.monotonic() - 5.0
+            device.send_bytes(heartbeat())
+            for _ in range(100):
+                if client.get("/api/v1/mavlink/health").json()["control_epoch"] == 2:
+                    break
+                time.sleep(0.01)
+            assert client.get("/api/v1/mavlink/health").json()["control_epoch"] == 2
+            assert client.post(path + "/lease", headers=pilot_headers,
+                               json={"plan_sha256": PLAN,
+                                     "approval_id": spare["approval_id"]}
+                               ).status_code == 403
+            client.app.state.control.evidence_provider = physical_state
+            assert client.post(path + "/commands", headers={
+                **pilot_headers, "X-Control-Lease": first_lease["lease_token"],
+            }, json={
+                "request_id": "a"*32, "sequence": 1, "action": "ARM",
+                "plan_sha256": PLAN, "params": {},
+            }).status_code == 409
