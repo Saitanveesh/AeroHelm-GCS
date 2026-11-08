@@ -138,6 +138,7 @@ def test_authenticated_pi_safety_report_must_be_typed_current_monotonic_and_epoc
         "reported_at_unix_ms": int(time.time() * 1000),
         "observation": evidence, "missing_fc_messages": [],
         "physical_control_qualified": False,
+        "local_hardware_interlock_active": True,
     }
     assert control.observe_fc_safety_evidence(json.dumps(msg))
     current = control._physical_evidence()
