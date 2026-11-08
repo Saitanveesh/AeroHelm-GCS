@@ -31,6 +31,8 @@ jobs:
       - name: Syntax
         run: |
           python -m compileall -q services/vihanga_link
+      - name: Deployment shell syntax
+        run: bash -n services/vihanga_link/deploy/*.sh
       - name: Offline relay and Pi tests, no flight hardware
         run: |
           python -m pytest -q services/vihanga_link/test_link.py services/vihanga_link/test_deploy_contracts.py services/vihanga_link/test_full_duplex.py
