@@ -5,7 +5,11 @@ using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+#if NET8_0_OR_GREATER
+using System.Text.Json;
+#else
 using System.Web.Script.Serialization;
+#endif
 
 namespace AeroHelm.GcsCloud
 {
@@ -132,27 +136,67 @@ namespace AeroHelm.GcsCloud
                     throw new IOException("Private relay identity endpoint unavailable.");
                 responseText = reader.ReadToEnd();
             }
-            var payload = new JavaScriptSerializer()
-                .Deserialize<System.Collections.Generic.Dictionary<string,object>>(responseText);
-            object detail;
-            var verified = payload != null && payload.TryGetValue("oracle_instance", out detail) ?
-                detail as System.Collections.Generic.Dictionary<string,object> : null;
-            object ready, configured, digest;
-            if (verified == null || !verified.TryGetValue("configured", out configured) ||
-                !verified.TryGetValue("verified", out ready) ||
-                !verified.TryGetValue("instance_sha256", out digest) ||
-                !(configured is bool) || !(bool)configured ||
-                !(ready is bool) || !(bool)ready)
-                throw new InvalidOperationException(
-                    "Oracle instance identity was not verified by the private relay.");
+            string claimedDigest = VerifiedOracleDigest(responseText);
             string expectedDigest;
             using (var hasher = SHA256.Create())
                 expectedDigest = BitConverter.ToString(hasher.ComputeHash(
                     Encoding.ASCII.GetBytes(expected))).Replace("-", "").ToLowerInvariant();
-            if (!string.Equals(Convert.ToString(digest), expectedDigest,
+            if (!string.Equals(claimedDigest, expectedDigest,
                                StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException(
                     "Private relay belongs to a different Oracle compute instance.");
+        }
+
+        // Parse only the relay's declared identity evidence, never an untyped
+        // login result. net8.0 test harness cannot link System.Web.Extensions,
+        // whereas the deployed net472 plugin must retain its framework parser.
+        // Both paths reject absent or string-coerced verification booleans.
+        internal static string VerifiedOracleDigest(string responseText)
+        {
+#if NET8_0_OR_GREATER
+            using (var doc = JsonDocument.Parse(responseText))
+            {
+                JsonElement identity, configured, verified, digest;
+                if (doc.RootElement.ValueKind != JsonValueKind.Object ||
+                    !doc.RootElement.TryGetProperty("oracle_instance", out identity) ||
+                    identity.ValueKind != JsonValueKind.Object ||
+                    !identity.TryGetProperty("configured", out configured) ||
+                    configured.ValueKind != JsonValueKind.True ||
+                    !identity.TryGetProperty("verified", out verified) ||
+                    verified.ValueKind != JsonValueKind.True ||
+                    !identity.TryGetProperty("instance_sha256", out digest) ||
+                    digest.ValueKind != JsonValueKind.String)
+                    throw new InvalidOperationException(
+                        "Oracle instance identity was not verified by the private relay.");
+                return ValidateInstanceDigest(digest.GetString());
+            }
+#else
+            var payload = new JavaScriptSerializer()
+                .Deserialize<System.Collections.Generic.Dictionary<string, object>>(responseText);
+            object detail;
+            var identity = payload != null && payload.TryGetValue("oracle_instance", out detail)
+                ? detail as System.Collections.Generic.Dictionary<string, object> : null;
+            object configured, verified, digest;
+            if (identity == null ||
+                !identity.TryGetValue("configured", out configured) ||
+                !identity.TryGetValue("verified", out verified) ||
+                !identity.TryGetValue("instance_sha256", out digest) ||
+                !(configured is bool) || !(bool)configured ||
+                !(verified is bool) || !(bool)verified ||
+                !(digest is string))
+                throw new InvalidOperationException(
+                    "Oracle instance identity was not verified by the private relay.");
+            return ValidateInstanceDigest((string)digest);
+#endif
+        }
+
+        private static string ValidateInstanceDigest(string digest)
+        {
+            if (string.IsNullOrWhiteSpace(digest) ||
+                !System.Text.RegularExpressions.Regex.IsMatch(
+                    digest, @"^[0-9a-fA-F]{64}$"))
+                throw new InvalidOperationException("Invalid private relay instance digest.");
+            return digest;
         }
 
         // Parameter inspection is a distinct authenticated GET-only operation.
