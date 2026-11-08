@@ -23,6 +23,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from .mission_preview import PreviewRequest, preview
+from .oracle_identity import validate_instance_ocid, verify_instance_binding
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
 import jwt
@@ -48,6 +49,7 @@ class Config:
     allowed_hosts: tuple[str, ...]
     fc_system_id: int = 1
     allow_disarmed_telemetry_requests: bool = False
+    oracle_instance_ocid: str = ""
 
     @staticmethod
     def from_env() -> "Config":
@@ -62,11 +64,14 @@ class Config:
             fc_system_id=int(os.getenv("VIHANGA_FC_SYSID", "1")),
             allow_disarmed_telemetry_requests=(
                 os.getenv("VIHANGA_ALLOW_DISARMED_STREAM_REQUEST", "0") == "1"),
+            oracle_instance_ocid=os.getenv("VIHANGA_ORACLE_INSTANCE_OCID", ""),
         )
         cfg.validate()
         return cfg
 
     def validate(self) -> None:
+        if self.oracle_instance_ocid:
+            validate_instance_ocid(self.oracle_instance_ocid)
         if not DEVICE_ID.fullmatch(self.vehicle_id):
             raise ValueError("VIHANGA_VEHICLE_ID must be a single explicit aircraft identifier")
         if not 1 <= self.fc_system_id <= 254:
@@ -392,7 +397,9 @@ class Login(BaseModel):
 def create_app(config: Config | None = None) -> FastAPI:
     cfg = config or Config.from_env()
     cfg.validate()
+    binding = verify_instance_binding(cfg.oracle_instance_ocid)
     app = FastAPI(title="Vihanga private MAVLink relay", docs_url=None, redoc_url=None)
+    app.state.oracle_binding = binding
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(cfg.allowed_hosts))
     state = LinkState(fc_system_id=cfg.fc_system_id)
     app.state.link = state
@@ -426,7 +433,8 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        return {"status": "ok", "mode": APP_MODE}
+        return {"status": "ok", "mode": APP_MODE,
+                "oracle_instance": app.state.oracle_binding}
 
     @app.post("/api/v1/auth/login")
     async def login(body: Login) -> dict[str, Any]:

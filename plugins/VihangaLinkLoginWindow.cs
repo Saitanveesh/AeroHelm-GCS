@@ -147,6 +147,9 @@ namespace AeroHelm.GcsCloud
         private static Dictionary<string, object> Authenticate(
             string origin, string user, string secret)
         {
+            // Never POST a password to the old Oracle VM or an unverified
+            // replacement; compare expected OCID with local IMDSv2 proof.
+            VihangaLinkSession.VerifyOracleTargetIdentity();
             Uri endpoint = new Uri(new Uri(origin + "/"), "api/v1/auth/login");
             byte[] payload = Encoding.UTF8.GetBytes(
                 new JavaScriptSerializer().Serialize(

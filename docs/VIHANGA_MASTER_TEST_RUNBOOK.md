@@ -40,13 +40,19 @@ fixture and validated power/safety procedures.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-VihangaGCS.ps1 -LocalDirectBackup -NoInternalBridge -NoAutoTcp
 ```
 
+The **full OCI Compute instance OCID** and new private HTTPS relay hostname
+must be obtained from the actual replacement Oracle VM; neither is inferred
+from the previous M1 URL. See `docs/VIHANGA_ORACLE_M1_CUTOVER.md`.
+
 For the **new private relay only after that service and Pi have actually been
 provisioned**, launch a separate fresh session. The `LinkOrigin` argument
 must be the exact, approved private Tailscale HTTPS origin. Do not paste
 JWTs, device tokens or passwords into logs or issue comments.
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-VihangaGCS.ps1 -NoAutoTcp -LinkOrigin 'https://YOUR-PRIVATE-RELAY.ts.net'
+$newOcid = 'REPLACE-WITH-NEW-OCI-COMPUTE-INSTANCE-OCID'
+$newRelay = 'https://REPLACE-WITH-NEW-RELAY.ts.net'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-VihangaGCS.ps1 -NoAutoTcp -LinkOrigin $newRelay -OracleInstanceOcid $newOcid
 ```
 
 Within PATHS, authenticate to the new telemetry service. Observe the real

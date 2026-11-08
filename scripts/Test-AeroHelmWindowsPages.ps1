@@ -324,6 +324,16 @@ $privatePi = Read-Source 'services/vihanga_link/pi_agent.py'
 $missionPreview = Read-Source 'services/vihanga_link/mission_preview.py'
 $simWorkflow = Read-Source 'services/vihanga_link/simulation_workflow.py'
 $nativePreview = Read-Source 'plugins/VihangaMissionPreviewWindow.cs'
+Require-Text $launcher 'OracleInstanceOcid' 'New Oracle compute OCID must be selected explicitly.'
+Require-Text $launcher 'VIHANGA_EXPECTED_ORACLE_INSTANCE_OCID' 'Windows must pin the selected Oracle instance.'
+Require-Text $relaySession 'VerifyOracleTargetIdentity()' 'Private sign-in must compare the configured Oracle identity.'
+Require-Text $relayLogin 'VihangaLinkSession.VerifyOracleTargetIdentity()' 'Credential exchange must fail closed on wrong Oracle instance.'
+Require-Text $privateRelay 'verify_instance_binding(cfg.oracle_instance_ocid)' 'Relay must verify local IMDSv2 OCI identity.'
+Require-Text $privatePi 'verify_remote_oracle_instance' 'Pi must verify Oracle VM before transmitting its device token.'
+if ($launcher.Contains('https://aerohelm-vcn.tailf3ab6a.ts.net') -or
+    $session.Contains('https://aerohelm-vcn.tailf3ab6a.ts.net')) {
+    throw 'Windows launchers cannot silently use retired Oracle M1 defaults.'
+}
 Require-Text $relaySession 'MissionPlanner.Program.AeroHelmOperatorToken' 'Legacy Oracle M1 session must remain independent of new relay.'
 Require-Text $relaySession 'VIHANGA_LINK_ORIGIN' 'Dedicated relay origin must be explicit.'
 Require-Text $relaySession 'relayExpiresUtc' 'Dedicated viewer JWT must have bounded expiry.'

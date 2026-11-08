@@ -6,10 +6,24 @@ param(
     [switch]$NoAutoTcp,
     [switch]$ShowNativeToolbar,
     [switch]$LocalDirectBackup,
-    [string]$LinkOrigin = ''
+    [string]$LinkOrigin = '',
+    [string]$OracleInstanceOcid = ''
 )
 $ErrorActionPreference = 'Stop'
 $requestedLinkOrigin = if ($LinkOrigin) { $LinkOrigin } else { $env:VIHANGA_LINK_ORIGIN }
+$requestedOcid = if ($OracleInstanceOcid) { $OracleInstanceOcid } else {
+    $env:VIHANGA_EXPECTED_ORACLE_INSTANCE_OCID
+}
+if ($requestedOcid) {
+    if ($requestedOcid -notmatch '^ocid1[.]instance[.]oc[0-9]+[.][A-Za-z0-9_.-]{24,}$') {
+        throw 'Specify the full OCI Compute instance OCID, not an instance name or IP address.'
+    }
+    if (-not $requestedLinkOrigin) {
+        throw 'An Oracle instance OCID requires -LinkOrigin pointing to its dedicated private HTTPS relay.'
+    }
+    [Environment]::SetEnvironmentVariable(
+        'VIHANGA_EXPECTED_ORACLE_INSTANCE_OCID', $requestedOcid, 'Process')
+}
 if($LocalDirectBackup -and $requestedLinkOrigin) {
     throw 'Dedicated cloud telemetry cannot be selected for an offline direct backup session.'
 }
@@ -23,6 +37,9 @@ if ($requestedLinkOrigin) {
         throw 'LinkOrigin must be an exact private *.ts.net HTTPS origin without credentials or path.'
     }
     [Environment]::SetEnvironmentVariable('VIHANGA_LINK_ORIGIN',
+        $linkUri.GetLeftPart([UriPartial]::Authority),'Process')
+    # Dedicated relay must not inherit the retired M1 origin.
+    [Environment]::SetEnvironmentVariable('AEROHELM_CLOUD_URL',
         $linkUri.GetLeftPart([UriPartial]::Authority),'Process')
 }
 if($LocalDirectBackup -and (-not $NoInternalBridge -or -not $NoAutoTcp)) {
@@ -91,7 +108,7 @@ if (-not $NoInternalBridge) {
 # Cloud login is required for network viewing; offline pilot mode is explicit.
 # Native maintenance remains available via --local-maintenance.
 [Environment]::SetEnvironmentVariable('AEROHELM_REQUIRE_LOGIN',
-    $(if($LocalDirectBackup){'0'}else{'1'}),'Process')
+    $(if($LocalDirectBackup -or $requestedLinkOrigin){'0'}else{'1'}),'Process')
 # The reduced operator toolbar keeps native controls available through their menus.
 # Their upstream functionality is preserved for maintenance/recovery.
 [Environment]::SetEnvironmentVariable('AEROHELM_REDUCED_TOOLBAR',
@@ -103,9 +120,8 @@ if (-not $NoInternalBridge) {
 # still enforces the normal heartbeat checks.
 [Environment]::SetEnvironmentVariable('AEROHELM_AUTO_NATIVE_TCP',
     $(if ($NoAutoTcp -or $NoInternalBridge) { '0' } else { '1' }), 'Process')
-if (-not $env:AEROHELM_CLOUD_URL) {
-    [Environment]::SetEnvironmentVariable('AEROHELM_CLOUD_URL',
-        'https://aerohelm-vcn.tailf3ab6a.ts.net', 'Process')
+if (-not $env:AEROHELM_CLOUD_URL -and -not $LocalDirectBackup) {
+    throw 'No cloud origin selected. Use -LinkOrigin for the dedicated relay, or explicitly configure AEROHELM_CLOUD_URL for legacy M1.'
 }
 if (-not $env:AEROHELM_CAMERA1_URL) {
     [Environment]::SetEnvironmentVariable('AEROHELM_CAMERA1_URL',
@@ -122,6 +138,7 @@ Write-Host 'Starting VIHANGA Ground Station (Mission Planner native interface).'
 Write-Host 'Use PATHS to select cloud view or an independent local pilot radio.'
 if ($requestedLinkOrigin) {
     Write-Host 'Dedicated telemetry relay selected; PATHS will request separate operator sign-in.'
+    if ($requestedOcid) { Write-Host 'Oracle instance OCID binding: required before relay sign-in.' }
 }
 Write-Host 'Toolbar: native DATA, PLAN, SETUP, CONFIG; Vihanga PATHS, CAMERA, TOOLS.'
 if (-not $LocalDirectBackup) {

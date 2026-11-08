@@ -8,10 +8,12 @@ cloud flight-command bridge and never accepts command bytes from the relay.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import Counter
 from dataclasses import dataclass
 import fcntl
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -24,6 +26,8 @@ import subprocess
 import threading
 import time
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+from .oracle_identity import validate_instance_ocid
 
 # pymavlink auto-detects MAVLink2 on 0xFD frames, retaining the
 # correct protocol when issuing local stream requests on MAVLink1 ports.
@@ -55,6 +59,7 @@ class Config:
     stream_probe: bool
     pinned_relay_host: str
     parameter_snapshot: bool = False
+    oracle_instance_ocid: str = ""
 
     @staticmethod
     def from_env() -> "Config":
@@ -68,11 +73,14 @@ class Config:
             stream_probe=os.getenv("VIHANGA_DISARMED_STREAM_PROBE", "0") == "1",
             pinned_relay_host=os.getenv("VIHANGA_PINNED_RELAY_HOST", ""),
             parameter_snapshot=os.getenv("VIHANGA_DISARMED_PARAM_SNAPSHOT", "0") == "1",
+            oracle_instance_ocid=os.getenv("VIHANGA_ORACLE_INSTANCE_OCID", ""),
         )
         cfg.validate()
         return cfg
 
     def validate(self) -> None:
+        if self.oracle_instance_ocid:
+            validate_instance_ocid(self.oracle_instance_ocid)
         if not self.device.startswith("/dev/") or ".." in self.device:
             raise ValueError("VIHANGA_PI_SERIAL must be a real /dev serial device")
         if not 9600 <= self.baud <= 921600:
@@ -89,6 +97,41 @@ class Config:
             not self.pinned_relay_host or
             url.hostname != self.pinned_relay_host.lower()):
             raise ValueError("Device uplink requires a pinned private relay hostname and WSS URL")
+
+
+def verify_remote_oracle_instance(cfg: Config, fetch=None) -> bool:
+    """Pin Pi WSS destination to the expected OCI VM and TLS hostname.
+
+    Oracle instance OCID does not replace the pinned Tailscale TLS identity.
+    Verify before the device bearer token is ever transmitted.
+    """
+    if not cfg.oracle_instance_ocid:
+        return False
+    cfg.validate()
+    expected = hashlib.sha256(cfg.oracle_instance_ocid.encode("ascii")).hexdigest()
+    base = urlsplit(cfg.url)
+    target = "https://" + base.hostname + "/health"
+    if fetch is None:
+        def fetch():
+            request = Request(target, headers={"Accept": "application/json"})
+            with urlopen(request, timeout=5.0) as response:
+                if response.geturl() != target:
+                    raise RuntimeError("Relay health identity redirect forbidden")
+                content = response.read(8193)
+                if len(content) > 8192:
+                    raise RuntimeError("Relay health response too large")
+                return json.loads(content)
+    try:
+        report = fetch()
+    except Exception as ex:
+        raise RuntimeError("Cannot verify Oracle-bound private relay") from ex
+    binding = report.get("oracle_instance", {}) if isinstance(report, dict) else {}
+    if (not isinstance(binding, dict) or binding.get("configured") is not True or
+        binding.get("verified") is not True or
+        not isinstance(binding.get("instance_sha256"), str) or
+        not hmac.compare_digest(binding["instance_sha256"], expected)):
+        raise RuntimeError("Private relay is not bound to the expected Oracle instance")
+    return True
 
 
 def token_from_file(path: Path) -> str:
@@ -352,6 +395,7 @@ class Publisher:
         try:
             while not self.stop.is_set():
                 try:
+                    await asyncio.to_thread(verify_remote_oracle_instance, self.cfg)
                     # After an outage, do not replay buffered old telemetry.
                     while not self.queue.empty():
                         self.queue.get_nowait()
