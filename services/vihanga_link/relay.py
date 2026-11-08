@@ -172,6 +172,7 @@ class LinkState:
     ping_count: int = 0
     ping_rtt_ms: int | None = None
     epoch: int = 0
+    control_epoch: int = 0
     viewers: set[asyncio.Queue[tuple[float, bytes]]] = field(default_factory=set)
     counters: Counter[int] = field(default_factory=Counter)
     last_message_by_id: dict[int, float] = field(default_factory=dict)
@@ -269,6 +270,9 @@ class LinkState:
             # parameter table as one complete FC snapshot.
             if self.last_heartbeat >= 0 and now - self.last_heartbeat > 4.0:
                 self.fc_restart_count += 1
+                # A physical FC reboot invalidates existing command leases
+                # even if the Pi-to-Oracle WSS stays connected.
+                self.control_epoch += 1
                 self.parameter_frames.clear()
                 self.parameter_expected = 0
                 self.parameter_source = -1
@@ -583,6 +587,7 @@ class LinkState:
             "message_ids": {str(k): v for k, v in sorted(self.counters.items())},
             "gcs_viewers": len(self.viewers),
             "epoch": self.epoch,
+            "control_epoch": self.control_epoch,
             "fc_restarts_observed": self.fc_restart_count,
             "parameter_snapshot": self.parameter_status(),
             "parameter_capture": {
@@ -802,6 +807,7 @@ def create_app(config: Config | None = None,
                 return
             state.connected = True
             state.epoch += 1
+            state.control_epoch += 1
             state.clear_session()
         try:
             # A failed handshake must release the reserved publisher slot.
@@ -829,6 +835,7 @@ def create_app(config: Config | None = None,
                 state.connected = False
                 state.device_socket = None
                 app.state.control.broker.revoke("DEVICE_DISCONNECTED")
+                app.state.control.approvals.clear()
                 state.clear_session()
 
     @app.websocket("/ws/mavlink/view/{vehicle_id}")
