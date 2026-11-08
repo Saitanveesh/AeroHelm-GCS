@@ -1,102 +1,120 @@
-# AeroHelm GCS
+# Vihanga Ground Control Station
 
-**Cloud-first UAV fleet coordination and ground operations.**
+**Vihanga GCS** is a Windows ground-control station based on [ArduPilot Mission Planner](https://github.com/ArduPilot/MissionPlanner). It adds an authenticated private-cloud telemetry path from an actual flight controller to the native Mission Planner interface.
 
-AeroHelm is a ground-control engineering project exploring how one operator can coordinate multiple aircraft through a private cloud service without making the cloud responsible for onboard flight safety.
+The source repository remains named `AeroHelm-GCS` for compatibility with existing build scripts, namespaces and installations. **Vihanga GCS** is the operator-facing product name.
 
-The project combines fleet state, secure telemetry, mission records and a lightweight ground interface. The design also retains a separate physical telemetry or USB connection for an on-site pilot when the cloud path is unavailable.
+## What works
 
-## The problem
+An aircraft equipped with a Pixhawk and Raspberry Pi can send MAVLink telemetry over a private Tailscale connection to an Oracle Cloud relay. An authenticated Windows viewer can then show the real flight data in Mission Planner's native HUD.
 
-A field operator needs to know which aircraft is connected, when each telemetry sample was received, who currently holds operational authority and whether a mission was approved. These questions become harder as the number of aircraft grows.
+During a supervised bench session on **8 November 2026**, the operator reported these results:
 
-AeroHelm divides responsibility between the aircraft, the companion computer, cloud coordination and the ground station:
+| Test | Observed result |
+| --- | --- |
+| Pixhawk serial port | Raspberry Pi 5 `/dev/ttyAMA0`, 57,600 baud, FC system ID 1 |
+| Pi to Oracle | Authenticated device WebSocket connected |
+| Oracle to Pi diagnostic | Matched round trip, 286 ms in one measurement |
+| Physical MAVLink telemetry | HEARTBEAT ~1 Hz; ATTITUDE ~5 Hz; position and VFR_HUD ~2 Hz |
+| Native Windows interface | Flight values visible in the GCS HUD and Quick data panel |
+| Physical flight commands through cloud | **Disabled and not accepted** |
 
-| Part | Responsibility |
-|---|---|
-| Flight controller | Stabilization, onboard failsafes and actual aircraft control |
-| Companion computer | Sole ownership of the flight-controller serial link and collection of observed telemetry |
-| Private network | Authenticated uplink and explicit stale-data handling |
-| Cloud service | Fleet identity, mission records, independent leases, virtual workflow state and audit |
-| Ground interface | Fleet overview, connection status, mission review and operator workflows |
-| Direct pilot link | Independent USB or telemetry-radio connection, explicitly selected by the pilot |
+These are results from one aircraft and its operator logs, **not fleet-scale testing, flight certification, a network latency guarantee or evidence of airborne control**. A physical roll/pitch movement test, reboot recovery and independent direct-backup acceptance remain separate checks.
 
-## System layout
+## How the connection works
 
-This is the **intended architecture across development branches**, not a diagram of a single certified deployment.
+```text
+Pixhawk flight controller
+   |  MAVLink serial telemetry
+   v
+Raspberry Pi 5
+   |  /dev/ttyAMA0 (single serial-port owner)
+   |  authenticated WebSocket over private Tailscale
+   v
+Oracle Cloud VM
+   |  Vihanga relay on 127.0.0.1:8765
+   |  Tailscale HTTPS :8443
+   v
+Windows Vihanga GCS
+   |  signed-in viewer / receive-only loopback bridge
+   v
+Mission Planner DATA page, HUD and Quick view
+```
 
-~~~text
-  AIRCRAFT
-  Flight controller
-        |
-        | MAVLink telemetry
-        v
-  Companion computer
-  (single serial-port owner)
-        |
-        | Authenticated private uplink
-        v
-  CLOUD
-  Vehicle identities / tenant scope
-  Fleet state / mission records / leases
-  Virtual workflow dispatch / audit
-        |
-        | API and fresh telemetry state
-        v
-  GROUND INTERFACE
-  Operator view / link diagnostics / fleet status
+The Pixhawk runs stabilization and onboard failsafes. The Pi reads its physical serial port. Oracle relays verified MAVLink data. The Windows application displays it. The existing Oracle API on HTTPS `:443` is a separate, older service and is **not** the Vihanga relay on `:8443`.
 
+A local USB cable or telemetry radio is an **independent pilot-selected backup**, not an automatic takeover. It must be tested separately and must not share the Pi UART with another serial reader.
 
-  INDEPENDENT PILOT BACKUP
-  Local pilot <-- USB or telemetry radio --> Flight controller
-  (manual selection, separate connection)
-~~~
+## Set up the Windows GCS
 
-An HTTP success response, a virtual-job acknowledgement and a physical flight-controller acknowledgement are different signals. One cannot be substituted for another.
+**Requirements:** Windows, Visual Studio 2022 with the C++/.NET workloads used by Mission Planner, .NET SDK for the offline test projects, and access to the authorized private tailnet. See [the upstream build reference](docs/UPSTREAM_BUILD_REFERENCE.md).
 
-## Engineering work
+Close Mission Planner. In PowerShell, from the repository root:
 
-| Workstream | Where to inspect it | Current limitation |
-|---|---|---|
-| Native ground-station foundation | master branch | Inherited desktop application, not the completed cloud platform |
-| Fleet API and mission coordination | [Cloud R1, draft PR #24](https://github.com/Saitanveesh/AeroHelm-GCS/pull/24) | Virtual-only dispatch; no aircraft commands |
-| Telemetry freshness and sessions | [Cloud R1 source](https://github.com/Saitanveesh/AeroHelm-GCS/tree/feat/cloud-fleet-control-plane-r1/cloud) | Integration and deployment acceptance still required |
-| Ground UI, cloud HUD and link handling | [Desktop integration branches](https://github.com/Saitanveesh/AeroHelm-GCS/pulls) | Source experiments are not equivalent to a tested installed executable |
-| Cloud analytics offload | [Analytics development branch](https://github.com/Saitanveesh/AeroHelm-GCS/tree/feat/cloud-analytics-offload-r1) | Experimental, not a flight-control loop |
-| Direct telemetry backup | [Dual-path design](https://github.com/Saitanveesh/AeroHelm-GCS/blob/feat/aerohelm-duplex-link-console/docs/DUAL_PATHS_CLOUD_HUD_RELEASE_PLAN.md) | Requires testing with a separately wired pilot connection |
-
-The engineering focus is to keep aircraft identity, operator authorization, telemetry freshness, command authority and recovery independent. Each aircraft needs separate credentials and state. A cloud disconnect must not lead to automatic replay of uncertain aircraft commands.
-
-[Detailed implementation and verification status](docs/AEROHELM_STATUS.md)
-
-## Build
-
-The default branch still contains the native Windows desktop foundation. Existing solution and executable filenames are retained for compatibility.
-
-Use Visual Studio 2022 and the configuration in [vs2022.vsconfig](vs2022.vsconfig).
-
-~~~powershell
-git clone https://github.com/Saitanveesh/AeroHelm-GCS.git
-cd AeroHelm-GCS
+```powershell
 git submodule update --init --recursive
-# Open MissionPlanner.sln in Visual Studio 2022
-~~~
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-AeroHelmWindowsPages.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Repair-AeroHelmWindows.ps1 -Apply
+```
 
-The separate cloud-service implementation lives in a development branch. Follow the [Cloud R1 README](https://github.com/Saitanveesh/AeroHelm-GCS/blob/feat/cloud-fleet-control-plane-r1/cloud/README.md) and [acceptance runbook](https://github.com/Saitanveesh/AeroHelm-GCS/blob/feat/cloud-fleet-control-plane-r1/cloud/ACCEPTANCE_RUNBOOK.md) to inspect that work. It is not authorized for physical flight commands.
+The repair command performs source checks, builds the Windows solution, installs the plugin and verifies recorded executable/DLL hashes. **A failed build restores the previous runtime; do not edit the release manifest to bypass a mismatch.**
 
-## Technical documentation
+For a previously configured machine with a verified build, start the private cloud viewer:
 
-- [Project architecture and design decisions](docs/AEROHELM_PROJECT.md)
-- [Current status and acceptance boundaries](docs/AEROHELM_STATUS.md)
-- [Cloud release and safety gates](https://github.com/Saitanveesh/AeroHelm-GCS/blob/feat/cloud-fleet-control-plane-r1/docs/CLOUD_CONTROL_PLANE_RELEASE_GATES.md)
-- [Ground-station cloud integration design](https://github.com/Saitanveesh/AeroHelm-GCS/blob/feat/aerohelm-duplex-link-console/docs/AEROHELM_FULL_CLOUD_GCS_RFC.md)
-- [Original native build documentation](docs/UPSTREAM_BUILD_REFERENCE.md)
-- [Copyright, license and source attribution](docs/AEROHELM_PROVENANCE.md)
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-VihangaGCS.ps1 `
+  -NoAutoTcp `
+  -LinkOrigin "https://YOUR-TAILSCALE-HOST.ts.net:8443" `
+  -OracleInstanceOcid "YOUR-FULL-OCI-COMPUTE-INSTANCE-OCID"
+```
 
-## Safety and licensing
+In the GCS choose **PATHS → Cloud telemetry**, then sign in with the separate Vihanga relay operator credentials. Do not paste passwords, device tokens or private configuration files into issues.
 
-**AeroHelm is an engineering research project, not a flight-certified multi-UAV system.** The Cloud R1 draft does not arm vehicles, upload physical missions or transmit arbitrary flight-control commands. Hardware acceptance needs independently verified telemetry, onboard failsafes, pilot recovery, test records and qualified sign-off.
+## Set up the Pi and Oracle relay
 
-The native application includes substantial work derived from [ArduPilot Mission Planner](https://github.com/ArduPilot/MissionPlanner), distributed under GPL-3.0 (see [COPYING.txt](COPYING.txt)). AeroHelm-specific work is described separately. Copyright and redistribution obligations are retained.
+These are **separate machines**. Never run Pi systemd or UART commands on the Oracle VM.
 
-**There are no marketing illustrations in this README.** Actual photographs and software screenshots should be added only when they come from a verified hardware setup or known build.
+Follow the [physical link deployment guide](docs/VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md) to install and configure the dedicated services:
+
+| Machine | Service | Purpose |
+| --- | --- | --- |
+| Raspberry Pi | `vihanga-pi.service` | Exclusive physical MAVLink serial reader and cloud publisher |
+| Oracle VM | `vihanga-relay.service` | Private, identity-pinned relay and authenticated viewer endpoint |
+| Windows PC | `Start-VihangaGCS.ps1` | Verified native desktop launch |
+
+The Pi UART must use the actual connected physical pins and verified baud rate. A Pi 5's `/dev/ttyAMA10` is normally its **debug UART**; the 40-pin GPIO UART typically uses `/dev/ttyAMA0` when enabled.
+
+An operator may request fixed **nonpersistent telemetry message intervals** on a physically disarmed, propellers-removed bench. That diagnostic does not authorize arming, takeoff, mode changes, mission execution or parameter writes. Do not leave maintenance opt-ins enabled for ordinary operation.
+
+## Check whether telemetry is live
+
+From the Oracle VM or an authorized tailnet device:
+
+```bash
+curl -fsS https://YOUR-TAILSCALE-HOST.ts.net:8443/api/v1/mavlink/health
+```
+
+For a genuine HUD data stream, check `device_online`, `fresh`, `real_heartbeat_frames`, `real_attitude_frames` and `native_quick_data_ready`. A WebSocket connection alone does **not** prove the flight controller is sending attitude data. Missing GPS should be reported as missing, never replaced with a made-up map location.
+
+For a fuller authenticated transport test see [the live-link guide](docs/VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md). For the latest capability and acceptance matrix see [project status](docs/AEROHELM_STATUS.md).
+
+## What is not finished
+
+Cloud flight-control commands are **not enabled**. The software currently does not provide USB-equivalent remote arming, flying, mission upload or general parameter writes. The cloud-side supervised command model is a **simulator-only safety contract**. Multi-aircraft fleet management, enterprise Kerberos SSO, autonomous cloud mission execution and production safety qualification require further implementation and independent tests.
+
+## Where to find things
+
+| Path | Contents |
+| --- | --- |
+| `GCSViews/`, `MainV2.cs` | Inherited Mission Planner flight-data UI and native connection handling |
+| `plugins/`, `Plugins/AeroHelmCloud/` | Vihanga link, cloud UI and compiled plugin project |
+| `services/vihanga_link/` | Pi UART publisher, private relay, identity verification and telemetry tests |
+| `cloud/` | Separate fleet-control/analytics research code; **not** the live `:8443` relay |
+| `scripts/` | Windows build, installation, launch and verification |
+| `docs/` | Deployment, bench tests, architecture and historical engineering records |
+
+See [architecture](docs/AEROHELM_PROJECT.md), [status](docs/AEROHELM_STATUS.md), [contributing](CONTRIBUTING.md) and [source attribution](docs/AEROHELM_PROVENANCE.md).
+
+## Safety, license and attribution
+
+This repository contains substantial code derived from ArduPilot Mission Planner and retains its [GPL-3.0 license](COPYING.txt) and original copyright notices. Vihanga is an engineering ground station, **not a certified flight-control system**. Use propellers-removed, disarmed test conditions for initial hardware commissioning, and retain an independently tested local pilot/failsafe path.
