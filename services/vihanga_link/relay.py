@@ -809,6 +809,7 @@ def create_app(config: Config | None = None,
             state.epoch += 1
             state.control_epoch += 1
             state.clear_session()
+            app.state.control.shadow_transport.reset_device_session()
         try:
             # A failed handshake must release the reserved publisher slot.
             await ws.accept()
@@ -827,7 +828,12 @@ def create_app(config: Config | None = None,
                 if isinstance(packet, bytes):
                     await state.publish(packet)
                 elif isinstance(event.get("text"), str):
-                    state.observe_device_text(event["text"])
+                    # Shadow replies may only prove this device WSS round-trip;
+                    # they can never be promoted to a MAVLink/FC command ACK.
+                    raw = event["text"]
+                    if not app.state.control.shadow_transport.observe_ack(
+                            raw, epoch=state.control_epoch):
+                        state.observe_device_text(raw)
         except (WebSocketDisconnect, asyncio.TimeoutError):
             pass
         finally:
@@ -836,6 +842,7 @@ def create_app(config: Config | None = None,
                 state.device_socket = None
                 app.state.control.broker.revoke("DEVICE_DISCONNECTED")
                 app.state.control.approvals.clear()
+                app.state.control.shadow_transport.reset_device_session()
                 state.clear_session()
 
     @app.websocket("/ws/mavlink/view/{vehicle_id}")
