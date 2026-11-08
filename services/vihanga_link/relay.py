@@ -161,6 +161,7 @@ class LinkState:
     probe_request_id: str = ""
     probe_status: str = "NOT_REQUESTED"
     ping_request_id: str = ""
+    ping_vehicle_id: str = ""
     ping_sent_at: float = -1.0
     ping_received_at: float = -1.0
     ping_status: str = "NOT_REQUESTED"
@@ -198,6 +199,7 @@ class LinkState:
         self.probe_request_id = ""
         self.probe_status = "NOT_REQUESTED"
         self.ping_request_id = ""
+        self.ping_vehicle_id = ""
         self.ping_sent_at = self.ping_received_at = -1.0
         self.ping_status = "NOT_REQUESTED"
         self.ping_count = 0
@@ -323,6 +325,7 @@ class LinkState:
                 raise HTTPException(status_code=429, detail="Pi ping rate limit")
             request_id = uuid.uuid4().hex
             self.ping_request_id = request_id
+            self.ping_vehicle_id = vehicle_id
             self.ping_sent_at = now
             self.ping_received_at = -1.0
             self.ping_rtt_ms = None
@@ -354,7 +357,7 @@ class LinkState:
             if (self.connected and self.ping_status == "WAITING_FOR_PI" and
                     self.ping_request_id and
                     message.get("request_id") == self.ping_request_id and
-                    message.get("vehicle_id") and
+                    message.get("vehicle_id") == self.ping_vehicle_id and
                     message.get("flight_control_enabled") is False):
                 self.ping_received_at = time.monotonic()
                 self.ping_rtt_ms = round(
