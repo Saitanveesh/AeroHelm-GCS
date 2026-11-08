@@ -19,6 +19,7 @@ import pytest
 from starlette.websockets import WebSocketDisconnect
 
 from services.vihanga_link import relay as relay_module
+from services.vihanga_link import pi_agent as pi_module
 from services.vihanga_link.relay import (Config, create_app, envelope, valid_evidence,
                                         valid_frame_crc, valid_native_attitude)
 from services.vihanga_link.pi_agent import (
@@ -174,6 +175,39 @@ def test_pi_refuses_wrong_oracle_instance_before_device_auth(tmp_path):
         })
     with pytest.raises(RuntimeError, match="not bound"):
         verify_remote_oracle_instance(cfg, fetch=lambda: {"status": "ok"})
+
+
+def test_pi_instance_binding_preserves_nonlegacy_8443_port(monkeypatch, tmp_path):
+    """A separate :8443 relay cannot be checked against old API :443."""
+    ocid = "ocid1.instance.oc1.iad." + "a" * 48
+    cfg = PiConfig(
+        "/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+        "wss://aerohelm-vcn.tailf3ab6a.ts.net:8443/ws/mavlink/device/AH-HW-001",
+        tmp_path / "token", False, "aerohelm-vcn.tailf3ab6a.ts.net",
+        oracle_instance_ocid=ocid,
+    )
+    expected = hashlib.sha256(ocid.encode()).hexdigest()
+    checked = []
+    url = "https://aerohelm-vcn.tailf3ab6a.ts.net:8443/health"
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def geturl(self): return url
+        def read(self, limit): return json.dumps({
+            "oracle_instance": {
+                "configured": True, "verified": True,
+                "instance_sha256": expected,
+            }
+        }).encode()
+
+    def fake_urlopen(request, timeout):
+        checked.append(request.full_url)
+        return Response()
+
+    monkeypatch.setattr(pi_module, "urlopen", fake_urlopen)
+    assert verify_remote_oracle_instance(cfg)
+    assert checked == [url]
 
 
 def test_relay_validates_exact_oracle_identity_on_startup(monkeypatch, credentials):
