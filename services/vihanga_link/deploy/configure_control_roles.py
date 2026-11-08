@@ -6,6 +6,8 @@ UART ownership, hardware interlocks or the Mission Planner control bridge.
 from __future__ import annotations
 
 from getpass import getpass
+import hashlib
+import hmac
 import os
 from pathlib import Path
 import re
@@ -17,7 +19,7 @@ from argon2 import PasswordHasher
 DEST = Path("/etc/vihanga/control.env")
 
 
-def read_role(role: str) -> tuple[str, str]:
+def read_role(role: str) -> tuple[str, str, str]:
     username = input(role + " username: ").strip()
     if not re.fullmatch(r"[A-Za-z0-9_-]{3,64}", username):
         raise SystemExit("Invalid " + role + " username")
@@ -25,9 +27,12 @@ def read_role(role: str) -> tuple[str, str]:
     repeat = getpass("Repeat " + role + " password: ")
     if not secrets.compare_digest(password, repeat) or len(password) < 16:
         raise SystemExit("Passwords differ or are too short")
+    # Only a transient comparison digest is retained to reject reuse
+    # across independent roles. No password or comparison digest is printed.
+    reuse_digest = hashlib.sha256(password.encode("utf-8")).hexdigest()
     result = PasswordHasher().hash(password)
     del password, repeat
-    return username, result
+    return username, result, reuse_digest
 
 
 def main() -> None:
@@ -36,10 +41,12 @@ def main() -> None:
     if DEST.exists():
         raise SystemExit("Control credential file exists. Refusing to overwrite/rotate")
     print("Independent SIMULATOR-ONLY control roles. No physical flight commands.")
-    pilot_name, pilot_hash = read_role("Pilot")
-    approver_name, approver_hash = read_role("Safety approver")
-    if pilot_name == approver_name or pilot_hash == approver_hash:
+    pilot_name, pilot_hash, pilot_compare = read_role("Pilot")
+    approver_name, approver_hash, approver_compare = read_role("Safety approver")
+    if (pilot_name == approver_name or
+        hmac.compare_digest(pilot_compare, approver_compare)):
         raise SystemExit("Distinct human identities and credentials required")
+    del pilot_compare, approver_compare
     enabled = input("Type SIMULATOR to enable ONLY simulator authorization: ").strip()
     if enabled != "SIMULATOR":
         raise SystemExit("Not enabled")
