@@ -201,6 +201,9 @@ class LinkState:
     last_valid_home_at: float = -1.0
     fc_autopilot: int | None = None
     fc_restart_count: int = 0
+    fc_safety_report: dict | None = None
+    fc_safety_report_at: float = -1.0
+    fc_safety_report_sequence: int = 0
 
     def clear_session(self) -> None:
         self.counters.clear()
@@ -237,6 +240,9 @@ class LinkState:
         self.last_valid_home_at = -1.0
         self.fc_autopilot = None
         self.fc_restart_count = 0
+        self.fc_safety_report = None
+        self.fc_safety_report_at = -1.0
+        self.fc_safety_report_sequence = 0
         # No stale session packets may survive a device reconnection.
         for queue in self.viewers:
             while not queue.empty():
@@ -270,6 +276,9 @@ class LinkState:
             # parameter table as one complete FC snapshot.
             if self.last_heartbeat >= 0 and now - self.last_heartbeat > 4.0:
                 self.fc_restart_count += 1
+                self.fc_safety_report = None
+                self.fc_safety_report_at = -1.0
+                self.fc_safety_report_sequence = 0
                 # A physical FC reboot invalidates existing command leases
                 # even if the Pi-to-Oracle WSS stays connected.
                 self.control_epoch += 1
@@ -815,6 +824,14 @@ def create_app(config: Config | None = None,
             await ws.accept()
             async with state.lock:
                 state.device_socket = ws
+                # Epoch comes from the authenticated relay, never from an
+                # untrusted operator intent or a Pi-supplied timestamp.
+                await ws.send_json({
+                    "type": "control_session_epoch",
+                    "vehicle_id": cfg.vehicle_id,
+                    "control_epoch": state.control_epoch,
+                    "physical_command_dispatch": False,
+                })
             while True:
                 # MAVLink may be temporarily silent while the physical UART
                 # is diagnosed. Never treat 12 seconds without application
@@ -836,6 +853,8 @@ def create_app(config: Config | None = None,
                                 raw, epoch=state.control_epoch):
                             continue
                         if app.state.control.observe_pi_command_receipt(raw):
+                            continue
+                        if app.state.control.observe_fc_safety_evidence(raw):
                             continue
                         state.observe_device_text(raw)
         except (WebSocketDisconnect, asyncio.TimeoutError):
