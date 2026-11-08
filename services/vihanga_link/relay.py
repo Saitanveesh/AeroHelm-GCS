@@ -23,6 +23,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from .mission_preview import PreviewRequest, preview
+from .control_api import install_control_api
 from .oracle_identity import validate_instance_ocid, verify_instance_binding
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
@@ -648,6 +649,9 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(cfg.allowed_hosts))
     state = LinkState(fc_system_id=cfg.fc_system_id)
     app.state.link = state
+    # Separate role-scoped flight authorization endpoint. It never transmits
+    # aircraft commands and is disabled without dedicated control credentials.
+    install_control_api(app, cfg.vehicle_id, state)
     ph = PasswordHasher()
 
     def issue_jwt() -> str:
@@ -823,6 +827,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             async with state.lock:
                 state.connected = False
                 state.device_socket = None
+                app.state.control.broker.revoke("DEVICE_DISCONNECTED")
                 state.clear_session()
 
     @app.websocket("/ws/mavlink/view/{vehicle_id}")
