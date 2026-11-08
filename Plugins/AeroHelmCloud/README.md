@@ -1,86 +1,56 @@
-# AeroHelm Cloud — Mission Planner plugin, milestone 1
+# Vihanga Windows plugin
 
-**Current recommended installation:** see [Windows DLL installation and troubleshooting](INSTALL_WINDOWS.md). Use the compiled DLL installer instead of copying the raw `.cs` source into the runtime folder.
+This project builds the native Windows plug-in used by **Vihanga GCS**, the operator-facing name for the Mission Planner-based application. Source folders and assembly identifiers retain `AeroHelm` for compatibility.
 
+The plugin implements the private cloud viewer, link selection, on-screen diagnostics and related Vihanga workspaces. It does **not** authorize general cloud aircraft control.
 
-The original Mission Planner user interface, calibration workflows, firmware tools and MAVLink transport are **unchanged**.
+## How it is installed
 
-This first plugin adds a **AeroHelm Cloud** menu item to Mission Planner that allows the operator to:
+**Do not copy `plugins/AeroHelmCloud.cs` into the runtime as a second source plugin.** Vihanga uses a compiled DLL and refuses duplicate source/DLL installations.
 
-- Enter a private HTTPS AeroHelm Cloud origin (for example \`https://host.tailnet.ts.net\`).
-- Authenticate with the existing AeroHelm Cloud operator account.
-- List registered aircraft and their server-reported online/offline state.
-- Open and close a **telemetry view session** for a fresh hardware aircraft.
-
-**This does not install a MAVLink stream into Mission Planner.** The existing AeroHelm Cloud backend is a structured telemetry API; it is not a raw bidirectional MAVLink relay. A view session is not a Pixhawk connection or permission to fly. The desktop GCS's top-right native Connect button still uses the original serial/TCP/UDP connection modes.
-
-## Source and loading
-
-The plugin source is at \`plugins/AeroHelmCloud.cs\`. Mission Planner's existing \`PluginLoader\` discovers \`*.cs\` in the runtime \`plugins\` directory and compiles them on startup. Its C# source plugin mechanism is distinct from standard MSBuild inclusion: the main \`MissionPlanner.csproj\` excludes \`plugins/**\`.
-
-After compiling Mission Planner, copy this plugin source to the folder containing the running \`MissionPlanner.exe\`, under \`plugins\AeroHelmCloud.cs\`. Do **not** run it directly from your cloned repository unless that is also the application's runtime plugins folder.
-
-Check **Ctrl+P → Plugins** in the app for load errors. An AeroHelm Cloud menu entry should appear after the plugin loads. Keep the original Mission Planner connection intact.
-
-## Build validation
-
-A standalone project validates plugin source against the actual Mission Planner application, without modifying its project files:
-
-    dotnet restore Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj
-    dotnet build Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj -c Release --no-restore
-
-This requires Windows .NET Framework 4.7.2 developer targeting pack and the dependencies required by upstream Mission Planner. A GitHub Actions workflow performs the same check on a Windows runner.
-
-### Windows installation (PowerShell)
-
-From a finished checkout:
-
-    git fetch origin
-    git switch --track origin/feat/aerohelm-cloud-plugin
-    git submodule update --init --recursive
-
-Build and run upstream Mission Planner from Visual Studio **before** installing the plugin. Identify the directory actually containing \`MissionPlanner.exe\` (do not guess Debug/Release).
-
-Then copy the \`plugins/AeroHelmCloud.cs\` file into that executable's adjacent \`plugins\` folder, and restart the application.
-
-## Server requirements and security
-
-- AeroHelm Cloud must be reachable from Windows via a trusted private HTTPS URL.
-- Access is via \`/api/v1/auth/login\`, \`/api/v1/vehicles\` and \`/api/v1/connections\`.
-- Credentials and access token remain only in the transient dialog, not in Mission Planner settings or disk.
-- All non-loopback URLs **must** use HTTPS. The plugin does not disable TLS certificate verification and disallows redirects for authenticated requests.
-- Tailscale access control and cloud operator credentials are independent requirements.
-- There is no flight control, no calibration RPC, no parameter writing, and no raw MAVLink tunneling in this milestone.
-
-## Next engineering task
-
-Implement a separate, versioned **AeroHelm MAVLink relay protocol** between Pi, server, and desktop, with per-aircraft exclusive authority and message freshness enforced onboard. Validate it on a propellers-removed Pixhawk and in SITL. After this, bind its stream to Mission Planner's existing transport interface, then test parameters and calibration behaviour end to end. Do not simply make the cloud API forward arbitrary commands from web clients.
-
-## Troubleshooting toolchain detection
-
-If the script reports that Visual Studio MSBuild was not found, it may mean you have only the .NET SDK installed, or Visual Studio was installed without the MSBuild/.NET desktop components. The build script now searches Visual Studio **2022 and 2026**, including Build Tools, without a 2022-only version filter.
-
-To inspect installations:
+After closing Mission Planner, run this from the repository root in Windows PowerShell:
 
 ```powershell
-& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -all -products '*' -property installationPath
-& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -all -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-AeroHelmWindowsPages.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Repair-AeroHelmWindows.ps1 -Apply
 ```
 
-If the first command returns a Visual Studio location but the second returns nothing, open Visual Studio Installer -> Modify -> select **.NET desktop development** (Visual Studio) or **.NET desktop build tools** (Build Tools), including the .NET Framework 4.7.2 targeting pack. Re-run the script. The script deliberately creates `build-logs/aerohelm-solution.log` only after it has found a valid MSBuild.exe, so a missing log following a discovery error is expected.
+That process runs the offline source and MAVLink bridge checks, builds Mission Planner, installs the compiled plug-in, and verifies the release. The installed plug-in file is:
 
-## Building the full legacy solution on Windows
+```text
+bin\Release\net461\plugins\AeroHelm.Cloud.Plugin.Validation.dll
+```
 
-Do **not** use `dotnet build MissionPlanner.sln` for the complete solution. The .NET SDK MSBuild host cannot run the COM reference task (`MSB4803`) and may fail on legacy WinForms `.resx` files (`MSB3822` / `MSB3823`). Use the VS2022 .NET Framework MSBuild executable instead:
+The launcher checks that the file exists, that an obsolete source plug-in is not installed beside it, and that the recorded EXE/DLL hashes match the exact Git revision.
+
+## Start the private cloud viewer
+
+From a **verified** Windows installation, run:
 
 ```powershell
-.\scripts\Build-AeroHelmGCS.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-VihangaGCS.ps1 `
+  -NoAutoTcp `
+  -LinkOrigin "https://YOUR-TAILSCALE-HOST.ts.net:8443" `
+  -OracleInstanceOcid "YOUR-FULL-OCI-COMPUTE-INSTANCE-OCID"
 ```
 
-Or check just the plugin validation target:
+In the GCS, open **PATHS → Cloud telemetry** and sign in with the independent Vihanga relay account. The private relay runs on Oracle HTTPS `:8443`, not the older AeroHelm API on `:443`.
 
-```powershell
-.\scripts\Build-AeroHelmGCS.ps1 -Target Plugin
-```
+The native DATA page uses genuine physical MAVLink packets. The cloud bridge is receive-only for aircraft control. Physical USB/radio operation remains a separate pilot-selected link.
 
-The script discovers Visual Studio 2022, forces a serial MSBuild run to limit DLL locking, prints errors, and retains all warnings in an untracked `build-logs` folder. Close Mission Planner and other active builds first. The main executable may compile while optional solution projects fail; treat the complete build as successful only if MSBuild exits zero. Legacy vulnerable NuGet dependencies are tracked separately from build-tool errors and should not be suppressed for a production release.
+## Components
+
+- `plugins/AeroHelmCloud.cs`: plug-in entry point and consolidated toolbar.
+- `plugins/AeroHelmLinkSelector.cs`: cloud versus independent pilot connection selection.
+- `plugins/VihangaLinkSession.cs` and `VihangaLinkLoginWindow.cs`: dedicated relay identity verification and short-lived operator authentication.
+- `plugins/AeroHelmReceiveOnlyBridge.cs` and `AeroHelmLinkQuality.cs`: read-only MAVLink forwarding, frame validation and freshness.
+- `plugins/AeroHelmCloudAttitudeWindow.cs`: independent attitude diagnostics.
+- `Plugins/AeroHelmCloud/AeroHelmCloud.Plugin.csproj`: compiled plug-in project.
+
+See [Windows deployment](../../docs/VIHANGA_WINDOWS_BENCH_UPGRADE.md), [verified project status](../../docs/AEROHELM_STATUS.md) and [Pi–Oracle live-link setup](../../docs/VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md).
+
+## Development and safety limits
+
+The plugin project targets .NET Framework 4.7.2. The separate offline MAVLink bridge tests target .NET 8; the shared session code accounts for those different frameworks. Running unit tests does not replace a real Windows UI or Pixhawk acceptance test.
+
+This software must never invent flight-controller telemetry, silently transfer pilot authority, or infer a physical command acknowledgment from an HTTP or WebSocket success. Cloud arm, takeoff, mission upload and arbitrary parameter writes are **not enabled** by this plugin.

@@ -1,225 +1,122 @@
-# Vihanga private cloud MAVLink transport
+# Vihanga private MAVLink link
 
-**Live deployment:** [parallel Oracle/Pi instructions](../../docs/VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md).
-The old AeroHelm API remains on Tailscale :443; the separate Vihanga service
-uses Tailscale :8443 to loopback :8765 and preserves the original service.
-Physical FC stream-rate `COMMAND_ACK` ID77 is distinct from the Pi WSS
-intent ACK. This service still does not enable armed flight commands.
+This directory contains the **current single-aircraft physical telemetry transport**. It connects a Pixhawk to a Raspberry Pi, an Oracle VM and an authenticated Windows GCS viewer over a private Tailscale network.
 
+**Current capability:** real flight-controller telemetry and restricted, supervised telemetry diagnostics. **Not implemented:** cloud arming, takeoff, mode changes, mission execution, arbitrary MAVLink forwarding or USB-equivalent remote flight control.
 
-This is a new, independently deployable telemetry service. It is NOT the
-running Oracle M1 service or the existing Pi UART agent; writing this source
-does not deploy it or make the current aircraft cloud link functional.
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `pi_agent.py` | Exclusively read the physical Pixhawk UART; forward original verified MAVLink messages |
+| `relay.py` | Authenticate the Pi and operator viewers, validate frames, record freshness and expose private health |
+| `oracle_identity.py` | Check the exact Oracle Compute instance identity |
+| `deploy/install_pi.sh` | Install the Pi service and dependencies without starting it |
+| `deploy/configure_pi.py` | Write Pi-only device token and configuration |
+| `deploy/install_oracle.sh` | Install the private Oracle relay and dependencies without starting it |
+| `deploy/configure_relay.py` | Configure relay identity, separate operator login and device-token digest |
+| `deploy/preflight_pi.sh` | Refuse unsafe UART ownership or serial-console conditions |
+| `deploy/verify_link.py` | Check real MAVLink messages from a private viewer |
+| `deploy/validate_full_duplex.py` | Verify Oracle identity, Pi round-trip ping and actual FC telemetry; optional isolated bench probe |
+| `deploy/probe_uart_readonly.py` | Inspect a UART without transmitting any commands |
+| `mission_preview.py` | Bounded simulation preview, not dispatch |
+| `simulation_workflow.py`, `supervised_control.py` | Simulator-only planning and authority model |
+| `test_*.py` | Offline protocol and contract tests; no physical aircraft required |
 
 ## Data path
 
-    Pixhawk TELEM UART
-      -> sole Pi serial owner (services/vihanga_link/pi_agent.py)
-      -> private device WSS -> private relay (services/vihanga_link/relay.py)
-      -> short-lived operator-authenticated viewer WSS
-      -> Windows receive-only 127.0.0.1:5760 -> Mission Planner native HUD
+```text
+Pixhawk / ArduPilot
+   |  MAVLink serial bytes
+   v
+Raspberry Pi : /dev/ttyAMA0 (verified example; not universal)
+   |  vihanga-pi.service
+   |  authenticated, private WSS
+   v
+Oracle VM : 127.0.0.1:8765
+   |  vihanga-relay.service, exposed only via Tailscale HTTPS :8443
+   v
+Windows Mission Planner / Vihanga GCS
+   |  signed-in, receive-only viewer
+   v
+Native HUD, Quick data, link diagnostics
+```
 
-The Pi and relay both enforce the configured flight-controller system ID.
-The relay verifies MAVLink X25/CRC-extra for every recognized ArduPilot dialect
-message and rejects unknown or damaged packets before forwarding intact frames.
-NaN, infinite or out-of-range ATTITUDE angles cannot mark the HUD live.
-MAVLink2 frame CRC does not authenticate an optional MAVLink2 signature.
-The relay never forwards arbitrary Windows MAVLink to the aircraft. An
-**explicitly opt-in disarmed telemetry-request duplex** can carry only a
-fixed `disarmed_stream_probe` intent to the authenticated Pi, where a
-fresh identified DISARMED heartbeat, a permanent armed-observed latch and
-request quotas independently guard local nonpersistent stream negotiation.
-Device ACK means the Pi queued an intent, **not** that ATTITUDE or position
-arrived. Its viewer tokens are restricted to one aircraft and expire after
-ten minutes. A dropped connection cannot replay old queued telemetry.
+On the deployed Pi 5 test, `/dev/ttyAMA0` carried the Pixhawk data at 57,600 baud. `/dev/ttyAMA10` was the Pi's debug UART, not the wired flight-controller port. Always verify the actual physical port before starting the agent. The old `aerohelm-agent@` service and `vihanga-pi.service` must never run simultaneously on the same UART.
 
-For the exact VM migration, credentials isolation and Windows launch, use
-[the new Oracle instance cutover runbook](../../docs/VIHANGA_ORACLE_M1_CUTOVER.md).
-The previous M1 hostname is no longer assumed by either Windows launcher.
-Do not enter a compute OCID where an HTTPS origin is required.
+## Set up and operate
 
-## Relay provisioning (not automatic)
+Use [the full Pi–Oracle deployment runbook](../../docs/VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md). The install scripts put service files under systemd, and the configure scripts create protected environment files and device credentials.
 
-Use Python 3.12, a private Tailscale HTTPS proxy and secret storage.
-Do not expose the application directly to the public Internet.
+The Pi's secret token remains on the Pi. Only its SHA-256 **digest** is entered into the Oracle relay. The Oracle operator login uses a separate password; the Pi token must not be sent to Windows. The relay compares its configured Oracle instance identity to local Oracle metadata before serving private viewers.
 
-    python3 -m venv .venv-vihanga
-    . .venv-vihanga/bin/activate
-    python -m pip install -r services/vihanga_link/requirements-cloud.txt
+Two separate services are involved:
 
-The service requires these variables from a protected private environment:
+```bash
+# On the Raspberry Pi — ONLY after UART safety preflight:
+sudo systemctl status vihanga-pi.service --no-pager
 
-- VIHANGA_VEHICLE_ID: explicit aircraft ID (example AH-HW-001)
-- VIHANGA_FC_SYSID: physically verified flight-controller MAVLink system ID; set the **same** value on relay and Pi
-- VIHANGA_ORACLE_INSTANCE_OCID: full OCI Compute instance OCID of the **new** M1; when provided the relay verifies its own IMDSv2 instance identity before startup and Pi verifies the same instance's identity digest over TLS before sending its device token
-- VIHANGA_ALLOWED_HOSTS: exact private gateway hostname, not a wildcard
-- VIHANGA_OPERATOR_NAME: dedicated operator username
-- VIHANGA_OPERATOR_PASSWORD_HASH: Argon2id password hash, NOT plaintext
-- VIHANGA_JWT_KEY: independent cryptographically random key, 32+ bytes
-- VIHANGA_DEVICE_TOKEN_SHA256: hex SHA-256 of random Pi-only device secret
-- VIHANGA_ALLOW_DISARMED_STREAM_REQUEST=1: **optional** allow a signed-in operator to request preset disarmed telemetry streams via the private device WSS; default 0 denies all requests
+# On the Oracle VM:
+sudo systemctl status vihanga-relay.service --no-pager
+curl -fsS http://127.0.0.1:8765/health
+```
 
-Generate the operator hash without exposing the password in process arguments:
+The Oracle VM does not have the Pixhawk UART or the `vihanga-pi.service` unit. The Raspberry Pi does not host the `vihanga-relay.service` unit. Do not mix their commands.
 
-    python -c "import getpass; from argon2 import PasswordHasher; print(PasswordHasher().hash(getpass.getpass()))"
+## Confirm actual telemetry
 
-Store the raw Pi token in a file with mode 0600. Never commit credentials.
-Run the relay behind the approved private HTTPS reverse proxy:
+Check the private relay on an authorized tailnet device:
 
-    python -m services.vihanga_link.relay
+```bash
+curl -fsS https://YOUR-TAILSCALE-HOST.ts.net:8443/api/v1/mavlink/health
+```
 
-The process binds 127.0.0.1:8765. Proxy these routes at a single exact host:
+Healthy native HUD telemetry requires fresh **HEARTBEAT (ID 0)** and **ATTITUDE (ID 30)**, plus position **ID 33** or VFR_HUD **ID 74** where available. Report GPS or other values as unavailable if the FC does not provide them. The health endpoint reports message counts, observed rates and age instead of synthesizing missing values.
 
-- /health
-- /api/v1/auth/login
-- /api/v1/mavlink/health
-- /api/v1/mavlink/paths
-- /api/v1/vehicles/{vehicle_id}/telemetry/probe (opt-in, POST, JWT, bounded)
-- /ws/mavlink/device/{vehicle_id}
-- /ws/mavlink/view/{vehicle_id}
+During the 8 November 2026 operator bench test, the Pi and Oracle measured heartbeat at about 1 Hz, attitude at about 5 Hz, and position and VFR_HUD at about 2 Hz. The private round-trip ping returned 286 ms in one test. These values are measurements, not service-level guarantees.
 
-Protect the gateway with tailnet ACLs. JWT verification does not replace
-network identity or a firewall. Do not give the device token to Windows
-clients or the operator JWT to the Pi.
+For an authenticated read-only validation on Oracle:
 
-## Pi provisioning (disarmed, propellers removed)
+```bash
+cd /opt/vihanga/source
+/opt/vihanga/venv/bin/python -m services.vihanga_link.deploy.verify_link \
+  --origin https://YOUR-TAILSCALE-HOST.ts.net:8443 \
+  --vehicle AH-HW-001 --operator operator --seconds 12
+```
 
-Use the physically confirmed serial interface and baud, not generic
-example defaults. The old serial owner must be stopped by an operator
-and verified stopped. The new agent refuses startup if fuser reports the
-port in use. Never start a second UART reader.
+That command prompts privately for the independent relay password. It does not send aircraft commands.
 
-    python3 -m venv .venv-vihanga-pi
-    . .venv-vihanga-pi/bin/activate
-    python -m pip install -r services/vihanga_link/requirements-pi.txt
+## Why the HUD may initially show only a heartbeat
 
-Set the following private variables (the sample values are illustrative):
+ArduPilot may not publish all message streams on every serial port without a stream-rate request. On a **physically disarmed, propellers-removed bench**, and only with explicit local authorization, the Pi can request these nonpersistent rates:
 
-    VIHANGA_PI_SERIAL=/dev/ttyAMA0
-    VIHANGA_PI_BAUD=57600
-    VIHANGA_VEHICLE_ID=AH-HW-001
-    VIHANGA_FC_SYSID=1
-    VIHANGA_DEVICE_WS_URL=wss://YOUR-PRIVATE-RELAY.ts.net/ws/mavlink/device/AH-HW-001
-    VIHANGA_PINNED_RELAY_HOST=YOUR-PRIVATE-RELAY.ts.net
-    VIHANGA_DEVICE_TOKEN_FILE=/etc/vihanga/device-token
-    VIHANGA_DISARMED_STREAM_PROBE=1
-    VIHANGA_DISARMED_PARAM_SNAPSHOT=0
+| Message | MAVLink ID | Requested rate |
+| --- | ---: | ---: |
+| ATTITUDE | 30 | 5 Hz |
+| GLOBAL_POSITION_INT | 33 | 2 Hz |
+| VFR_HUD | 74 | 2 Hz |
+| SYS_STATUS | 1 | 1 Hz |
+| GPS_RAW_INT | 24 | 1 Hz |
+| BATTERY_STATUS | 147 | 1 Hz |
 
-Run:
+The Pi issues `MAV_CMD_SET_MESSAGE_INTERVAL` (511) only when a verified ArduPilot heartbeat identifies the controller as **disarmed** and the opt-in is active. A physical `COMMAND_ACK` with result 0 confirms that the FC accepted the request, but actual ATTITUDE frames must still be observed. These rates may disappear after FC power loss. **Do not keep maintenance opt-ins enabled for ordinary operations.**
 
-    python -m services.vihanga_link.pi_agent
+The private cloud request channel accepts only `link_ping` and a restricted `disarmed_stream_probe` diagnostic. It cannot accept raw MAVLink from a Windows client, and it does not expose a physical flight-control API.
 
-The local-only, opt-in stream probe uses MAV_CMD_SET_MESSAGE_INTERVAL
-when an identified ArduPilot heartbeat proves disarmed. It requests
-non-persistent rates: ATTITUDE 30 (5 Hz), GLOBAL_POSITION_INT 33 (2 Hz),
-VFR_HUD 74 (2 Hz), SYS_STATUS 1 (1 Hz), GPS_RAW_INT 24 (1 Hz),
-BATTERY_STATUS 147 (1 Hz). If no actual ID30 is observed, at most one
-additional local probe is attempted after a minimum 15-second interval.
-Any observed ID30 or armed heartbeat disables further probes in that
-session. It never changes persistent parameters or accepts cloud-originated
-flight commands. Enable this feature only for an approved, disarmed bench.
+## Fault handling
 
-The Pi accepts only the named `disarmed_stream_probe` JSON intent over the
-private device WSS; any `COMMAND_LONG`, arming, mission, calibration,
-parameter-set or raw GCS MAVLink payload is ignored and never decoded into
-an FC write. After explicit operator consent, the PI local UART thread may
-issue one preconfigured volatile set of stream-rate requests while disarmed.
-At most two remote intents are queued per process, with a 15-second cooldown;
-loss of disarmed heartbeat or any observed arming refuses them. No automatic
-flight authorization is provided.
+| Symptom | First check |
+| --- | --- |
+| Cloud health says `device_online=false` | Pi service journal, private tailnet reachability, device authentication |
+| Cloud says device online but frames are zero | UART pins, correct serial device, verified baud, physical Pixhawk power |
+| HEARTBEAT arrives but ATTITUDE is zero | Per-port FC stream rate on an approved disarmed bench |
+| Pi sees ATTITUDE but Oracle does not | WebSocket stability, packet rejection, stale queue and identity configuration |
+| Oracle receives ATTITUDE but Windows HUD does not | Native viewer sign-in, correct relay origin and Windows bridge connection |
+| After reboot, attitude messages disappear | Revalidate FC output interval policy rather than assuming volatile requests persist |
+| UART is occupied | Inspect its owner; never terminate unknown Python processes or start a second reader |
 
-The UART owner logs measured 10-second HEARTBEAT (ID 0), ATTITUDE (ID 30),
-position, GPS and HUD windows together with the forwarded WSS counts, queue
-drops and foreign-system rejections. If the Pi counts HEARTBEAT but no ID 30,
-inspect the FC stream rate on the disarmed bench; a cloud or GCS UI update
-cannot generate missing physical telemetry. If Pi reports ID 30 but the cloud
-relay does not, inspect relay authentication, CRC rejection counts and WSS
-backpressure. `/api/v1/mavlink/health` additionally reports genuine 5-second
-packet rates, frame/heartbeat/attitude ages, and per-ID counters. Missing
-samples return null ages and zero rates, not synthetic values.
+For the full acceptance matrix and release boundaries, see [Vihanga project status](../../docs/AEROHELM_STATUS.md).
 
-This cannot repair wrong wiring, serial baud/protocol, a broken UART
-owner, an FC that ignores interval requests, or a missing relay deployment.
+## Security and constraints
 
-## Windows source update and launch
-
-Close all Mission Planner/Vihanga processes before rebuilding:
-
-    cd "$HOME\AeroHelm-GCS"
-    git switch master
-    git pull --ff-only origin master
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-VihangaVerified.ps1 -Apply
-
-Launch the verified build with the new dedicated private relay origin:
-
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start-VihangaGCS.ps1 -NoAutoTcp -LinkOrigin https://YOUR-PRIVATE-RELAY.ts.net
-
-This does not replace Oracle M1 authentication. The PATHS connection
-prompts for a separate new relay login when LinkOrigin is configured.
-The simplified operator toolbar retains native DATA / PLAN / SETUP /
-CONFIG plus PATHS / CAMERA / TOOLS. PATHS has just two connection choices:
-Cloud telemetry and Direct USB/radio. LINK diagnostics, SURVEY and Settings live under TOOLS. The separate
-ATTITUDE canvas is confined to the explicit engineering tools profile;
-native Mission Planner DATA/Quick is the primary flight display. Simulation mission previews appear
-under TOOLS only when a dedicated relay origin is configured.
-Experimental Operations and Fleet/INTEL pages are hidden by default;
-they can be inspected in a development profile by setting
-VIHANGA_ADVANCED_TOOLS=1 before launching.
-Open TOOLS -> Link diagnostics to inspect `message_ids`, live stream ages,
-real HB/ATT frames and the last Pi telemetry-request ACK. When configured,
-use `Request real FC streams` **only for a physically disarmed, propeller-free
-bench**, after explicit operator confirmation. The relay's accepted/queued
-response is not evidence of any FC sample; wait for rising real ID30/33/74
-counts. Then choose PATHS -> Cloud telemetry to connect the native HUD. Disconnect
-a previous USB/radio connection deliberately; automatic link transfer
-is disabled.
-
-## Tests and release acceptance
-
-    python -m pip install -r services/vihanga_link/requirements-test.txt
-    python -m pytest -q services/vihanga_link
-
-An optional one-time parameter-list query can be enabled with
-VIHANGA_DISARMED_PARAM_SNAPSHOT=1 after verifying FC identity and the
-disarmed bench. It issues only PARAM_REQUEST_LIST locally over the Pi UART
-and forwards the resulting PARAM_VALUE frames; it does not write parameters,
-prove cache completeness, or enable remote GCS commands. The Pi also holds
-an exclusive lock to prevent two instances starting across an ownership check.
-
-The private relay exposes POST /api/v1/sim/mission/preview to a short-lived
-authenticated operator viewer. It validates operator-declared rectangular
-geofences, finite coordinates, speed and altitude limits, route length,
-declared endurance/reserve and returns a deterministic plan digest,
-virtual waypoint timeline and approximate camera capture count. It is
-simulation-only: it never sends MAVLink, changes parameters, starts missions
-or claims calibrated energy/dynamics prediction.
-
-These are synthetic offline tests, NOT Oracle deployment tests or
-physical aircraft acceptance.
-
-Acceptance gates:
-1. The sole Pi UART reader counts verified real HB (0) and ATTITUDE (30),
-   plus relevant position/GPS/battery IDs, with correct stream rates and
-   the configured FC SYSID verified on both Pi and cloud relay.
-2. Authenticated Pi WSS forwards real raw frames to the private hub;
-   the operator viewer receives the identical bytes and count.
-3. Native Windows Mission Planner HUD and attitude monitor follow
-   disarmed prop-off vehicle movement and mark interruption stale.
-4. Zero replay of stale frames after a drop/reconnect; exclusive UART
-   ownership, no auto-radio switchover, and JWT expiration enforced.
-5. Windows compiled EXE/DLL and source commit match the release manifest.
-6. Demonstrate that unauthenticated probe requests, armed/stale FC state,
-   excess quota, foreign system ID and arbitrary raw MAVLink commands are
-   rejected without FC actuation. The ACK and a fresh real ID30/33/74 count
-   must be checked separately.
-7. Arming, mission upload, parameter mutation, actuator commands,
-   automatic flight authority and autonomous flight are NOT enabled
-   by this diagnostic-duplex development service.
-
-Providing full USB-equivalent COMMAND and AUTONOMY authority requires
-separate supervised, audited bidirectional control with onboard failsafe,
-geofence, command TTL/idempotency and hardware acceptance. This telemetry
-transport alone cannot satisfy that separate milestone.
-
-Do not paste JWTs, private endpoints, passwords or device secrets into
-public bug reports.
+The relay binds only to the local VM loopback, behind private Tailscale HTTPS. Authentication uses a separate Pi credential and operator JWT. Access control and freshness limits do not replace flight-controller or pilot failsafes. The native cloud path is receive-only for aircraft flight control. No source file in this directory certifies a remote flight system for operational use.
