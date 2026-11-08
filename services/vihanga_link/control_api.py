@@ -364,6 +364,8 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
                 "failsafe_clear": snapshot.failsafe_clear,
             },
             "candidate_preflight_evidence_complete": candidate,
+            "local_hardware_interlock_active": (
+                report.get("local_hardware_interlock_active") is True),
             "independent_hardware_acceptance_passed": False,
             "flight_control_enabled": False,
         }
