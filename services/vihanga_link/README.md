@@ -26,6 +26,11 @@ Device ACK means the Pi queued an intent, **not** that ATTITUDE or position
 arrived. Its viewer tokens are restricted to one aircraft and expire after
 ten minutes. A dropped connection cannot replay old queued telemetry.
 
+For the exact VM migration, credentials isolation and Windows launch, use
+[the new Oracle instance cutover runbook](../../docs/VIHANGA_ORACLE_M1_CUTOVER.md).
+The previous M1 hostname is no longer assumed by either Windows launcher.
+Do not enter a compute OCID where an HTTPS origin is required.
+
 ## Relay provisioning (not automatic)
 
 Use Python 3.12, a private Tailscale HTTPS proxy and secret storage.
@@ -39,6 +44,7 @@ The service requires these variables from a protected private environment:
 
 - VIHANGA_VEHICLE_ID: explicit aircraft ID (example AH-HW-001)
 - VIHANGA_FC_SYSID: physically verified flight-controller MAVLink system ID; set the **same** value on relay and Pi
+- VIHANGA_ORACLE_INSTANCE_OCID: full OCI Compute instance OCID of the **new** M1; when provided the relay verifies its own IMDSv2 instance identity before startup and Pi verifies the same instance's identity digest over TLS before sending its device token
 - VIHANGA_ALLOWED_HOSTS: exact private gateway hostname, not a wildcard
 - VIHANGA_OPERATOR_NAME: dedicated operator username
 - VIHANGA_OPERATOR_PASSWORD_HASH: Argon2id password hash, NOT plaintext
