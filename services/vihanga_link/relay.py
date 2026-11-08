@@ -826,12 +826,13 @@ def create_app(config: Config | None = None,
                 state.device_socket = ws
                 # Epoch comes from the authenticated relay, never from an
                 # untrusted operator intent or a Pi-supplied timestamp.
-                await ws.send_json({
-                    "type": "control_session_epoch",
-                    "vehicle_id": cfg.vehicle_id,
-                    "control_epoch": state.control_epoch,
-                    "physical_command_dispatch": False,
-                })
+                if app.state.control.settings.typed_downlink:
+                    await ws.send_json({
+                        "type": "control_session_epoch",
+                        "vehicle_id": cfg.vehicle_id,
+                        "control_epoch": state.control_epoch,
+                        "physical_command_dispatch": False,
+                    })
             while True:
                 # MAVLink may be temporarily silent while the physical UART
                 # is diagnosed. Never treat 12 seconds without application
