@@ -198,6 +198,7 @@ class LinkState:
     last_valid_position_at: float = -1.0
     last_valid_home_at: float = -1.0
     fc_autopilot: int | None = None
+    fc_restart_count: int = 0
 
     def clear_session(self) -> None:
         self.counters.clear()
@@ -233,6 +234,7 @@ class LinkState:
         self.last_valid_position_at = -1.0
         self.last_valid_home_at = -1.0
         self.fc_autopilot = None
+        self.fc_restart_count = 0
         # No stale session packets may survive a device reconnection.
         for queue in self.viewers:
             while not queue.empty():
@@ -261,6 +263,24 @@ class LinkState:
         self.last_frame = now
         self.recent_frames.append(now)
         if msg_id == 0:
+            # A device WSS session can outlive a Pixhawk power cycle.
+            # Never publish old Home/GPS or a mixed pre/post-reboot
+            # parameter table as one complete FC snapshot.
+            if self.last_heartbeat >= 0 and now - self.last_heartbeat > 4.0:
+                self.fc_restart_count += 1
+                self.parameter_frames.clear()
+                self.parameter_expected = 0
+                self.parameter_source = -1
+                self.parameter_seen_at = -1.0
+                self.last_valid_home_at = -1.0
+                self.last_valid_position_at = -1.0
+                self.last_gps_raw_at = -1.0
+                self.gps_fix_type = None
+                self.gps_satellites_visible = None
+                self.last_attitude = -1.0
+                self.param_request_count = 0
+                self.param_request_id = ""
+                self.param_request_status = "RESET_ON_FC_RESTART"
             header = 6 if packet[0] == 0xFE else 10
             self.fc_autopilot = int(packet[header + 5])
             self.last_heartbeat = now
@@ -470,7 +490,8 @@ class LinkState:
         oldest = min((stamp for stamp, _ in self.parameter_frames.values()),
                      default=-1.0)
         age_seconds = time.monotonic() - oldest if oldest >= 0 else None
-        complete = (self.connected and self.parameter_expected > 0 and
+        complete = (self.connected and self.fresh(self.last_heartbeat) and
+                    self.parameter_expected > 0 and
                     len(self.parameter_frames) == self.parameter_expected and
                     age_seconds is not None and 0 <= age_seconds <= 300)
         return {
@@ -561,6 +582,7 @@ class LinkState:
             "message_ids": {str(k): v for k, v in sorted(self.counters.items())},
             "gcs_viewers": len(self.viewers),
             "epoch": self.epoch,
+            "fc_restarts_observed": self.fc_restart_count,
             "parameter_snapshot": self.parameter_status(),
             "parameter_capture": {
                 "status": self.param_request_status,
