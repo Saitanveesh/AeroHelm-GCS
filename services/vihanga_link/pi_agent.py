@@ -319,6 +319,10 @@ class Publisher:
                     self.foreign_system_dropped += 1
                     continue
                 self.counts[mid] += 1
+                if mid == 77 and msg.get_srcComponent() == 1 and \
+                        int(msg.command) == mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL:
+                    LOG.info("REAL FC COMMAND_ACK for stream interval: MAV_RESULT=%d",
+                             int(msg.result))
                 if mid == 30:
                     attitude_seen = True
                     with self._state_lock:
