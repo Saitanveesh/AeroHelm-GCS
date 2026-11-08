@@ -486,6 +486,9 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
                 raise ControlDenied("Typed live downlink currently supports ARM/DISARM only")
             if not cfg.physical_release_accepted:
                 raise ControlDenied("Physical flight release has not passed on-site acceptance")
+            if (not isinstance(state.fc_safety_report, dict) or
+                state.fc_safety_report.get("local_hardware_interlock_active") is not True):
+                raise ControlDenied("Independent Pi hardware key/pilot/RC inputs are not confirmed")
             async with state.lock:
                 if (not state.connected or state.device_socket is None or
                         not state.fresh(state.last_heartbeat)):
