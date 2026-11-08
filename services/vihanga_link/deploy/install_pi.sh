@@ -20,7 +20,8 @@ id -u vihanga >/dev/null 2>&1 ||
 getent group dialout >/dev/null ||
   { echo "No dialout group. Inspect serial-device permissions first." >&2; exit 1; }
 usermod -aG dialout vihanga
-install -d -m 0755 /opt/vihanga /var/lib/vihanga
+install -d -m 0755 /opt/vihanga
+install -d -o vihanga -g vihanga -m 0700 /var/lib/vihanga
 install -d -m 0700 /etc/vihanga
 if [[ ! -d /opt/vihanga/source/services/vihanga_link ]]; then
   echo "Expected sparse checkout at /opt/vihanga/source." >&2
