@@ -78,3 +78,11 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile("./scripts/Request-VihangaTypedArmDisarm.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
           Write-Output "PASS: Interactive requester syntax parsed; no live relay or aircraft contacted."
+      - name: Parse integrated one-command Windows acceptance harness
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("./scripts/Invoke-VihangaIntegratedAcceptance.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          Write-Output "PASS: One-command offline/live-readonly test harness parsed."
