@@ -64,7 +64,5 @@ if ($receipt.status -ne "PI_ECHO_NO_ACTUATION" -or
     $receipt.flight_control_enabled -ne $false) {
     throw "Shadow round trip failed or was inconclusive: $($receipt.status)"
 }
-$receipt | Select-Object request_id, vehicle_id, control_epoch, status,
-    pi_transport_confirmed, uart_touched, fc_ack_received,
-    physical_command_dispatch, flight_control_enabled | Format-List
+$receipt | Select-Object request_id, vehicle_id, control_epoch, status, pi_transport_confirmed, uart_touched, fc_ack_received, physical_command_dispatch, flight_control_enabled | Format-List
 Write-Output "PASS: Pilot-to-Pi private transport round-trip only. NO FLIGHT CONTROL VERIFIED."
