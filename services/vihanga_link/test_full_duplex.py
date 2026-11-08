@@ -80,3 +80,58 @@ def test_cloud_to_pi_ping_requires_login_and_matching_pong():
             assert state["flight_control_enabled"] is False
         state = client.get("/api/v1/mavlink/health").json()
         assert not state["transport_ping"]["round_trip_verified"]
+
+
+def test_idle_device_does_not_disconnect_after_legacy_twelve_seconds():
+    """An unpowered FC must not force endless :8443 Pi WSS reconnects."""
+    import hashlib
+    import time
+    from argon2 import PasswordHasher
+    from fastapi.testclient import TestClient
+    from services.vihanga_link.relay import Config as RelayConfig, create_app
+
+    token = "test-only-" + "x" * 48
+    cfg = RelayConfig(
+        vehicle_id="AH-HW-001", operator_name="operator",
+        operator_password_hash=PasswordHasher().hash("offline-test-only"),
+        jwt_key="J" * 48,
+        device_token_sha256=hashlib.sha256(token.encode()).hexdigest(),
+        allowed_hosts=("testserver",),
+    )
+    with TestClient(create_app(cfg)) as client:
+        with client.websocket_connect(
+                "/ws/mavlink/device/AH-HW-001",
+                headers={"Authorization": "Bearer " + token}) as device:
+            initial = client.get("/api/v1/mavlink/health").json()
+            assert initial["device_online"]
+            assert initial["frames"] == 0
+            time.sleep(13.0)
+            result = client.get("/api/v1/mavlink/health").json()
+            assert result["device_online"], "Silent Pi was forcibly disconnected"
+            assert result["epoch"] == initial["epoch"]
+            assert result["frames"] == 0
+            # Transport controls can be sent over a live, otherwise idle WSS.
+            auth = client.post("/api/v1/auth/login", json={
+                "username": "operator", "password": "offline-test-only"
+            }).json()["access_token"]
+            request = client.post(
+                "/api/v1/vehicles/AH-HW-001/link/ping",
+                headers={"Authorization": "Bearer " + auth},
+            )
+            assert request.status_code == 200
+            delivered = device.receive_json()
+            assert delivered["type"] == "link_ping"
+            assert delivered["request_id"] == request.json()["request_id"]
+
+
+def test_readonly_probe_rejects_active_vihanga_service(monkeypatch):
+    import subprocess
+    import pytest
+    from services.vihanga_link.deploy import probe_uart_readonly as diag
+
+    def fake_run(cmd, **_kwargs):
+        assert cmd[:3] == ["systemctl", "is-active", "--quiet"]
+        return subprocess.CompletedProcess(cmd, 0)
+    monkeypatch.setattr(diag.subprocess, "run", fake_run)
+    with pytest.raises(RuntimeError, match="Stop vihanga-pi"):
+        diag.ensure_exclusive("/dev/null")
