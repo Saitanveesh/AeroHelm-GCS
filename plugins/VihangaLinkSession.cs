@@ -3,6 +3,9 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using System.Web.Script.Serialization;
 
 namespace AeroHelm.GcsCloud
 {
@@ -96,6 +99,60 @@ namespace AeroHelm.GcsCloud
                 relayToken = token;
                 relayExpiresUtc = DateTime.UtcNow.AddSeconds(expiresIn - 15);
             }
+        }
+
+        // Verify the new Oracle VM *before* sending operator credentials.
+        // OCID is an infrastructure identity, not a substitute for WSS/TLS.
+        internal static void VerifyOracleTargetIdentity()
+        {
+            string expected = Environment.GetEnvironmentVariable(
+                "VIHANGA_EXPECTED_ORACLE_INSTANCE_OCID");
+            if (string.IsNullOrWhiteSpace(expected)) return;
+            if (!UsesDedicatedRelay)
+                throw new InvalidOperationException(
+                    "Oracle instance binding requires an explicit private relay origin.");
+            if (!expected.StartsWith("ocid1.instance.oc", StringComparison.Ordinal) ||
+                expected.Length < 40 ||
+                !System.Text.RegularExpressions.Regex.IsMatch(expected,
+                    @"^[A-Za-z0-9_.-]+$"))
+                throw new InvalidOperationException("Invalid expected Oracle instance OCID.");
+
+            var request = (HttpWebRequest)WebRequest.Create(
+                new Uri(new Uri(TargetOrigin + "/"), "health"));
+            request.Method = "GET";
+            request.AllowAutoRedirect = false;
+            request.Timeout = 5000;
+            request.ReadWriteTimeout = 5000;
+            request.Accept = "application/json";
+            string responseText;
+            using (var response = (HttpWebResponse)request.GetResponse())
+            using (var reader = new StreamReader(response.GetResponseStream()))
+            {
+                if (response.StatusCode != HttpStatusCode.OK)
+                    throw new IOException("Private relay identity endpoint unavailable.");
+                responseText = reader.ReadToEnd();
+            }
+            var payload = new JavaScriptSerializer()
+                .Deserialize<System.Collections.Generic.Dictionary<string,object>>(responseText);
+            object detail;
+            var verified = payload != null && payload.TryGetValue("oracle_instance", out detail) ?
+                detail as System.Collections.Generic.Dictionary<string,object> : null;
+            object ready, configured, digest;
+            if (verified == null || !verified.TryGetValue("configured", out configured) ||
+                !verified.TryGetValue("verified", out ready) ||
+                !verified.TryGetValue("instance_sha256", out digest) ||
+                !(configured is bool) || !(bool)configured ||
+                !(ready is bool) || !(bool)ready)
+                throw new InvalidOperationException(
+                    "Oracle instance identity was not verified by the private relay.");
+            string expectedDigest;
+            using (var hasher = SHA256.Create())
+                expectedDigest = BitConverter.ToString(hasher.ComputeHash(
+                    Encoding.ASCII.GetBytes(expected))).Replace("-", "").ToLowerInvariant();
+            if (!string.Equals(Convert.ToString(digest), expectedDigest,
+                               StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "Private relay belongs to a different Oracle compute instance.");
         }
 
         // Parameter inspection is a distinct authenticated GET-only operation.
