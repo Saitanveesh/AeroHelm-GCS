@@ -283,6 +283,12 @@ class LinkState:
                     now - self.probe_requested_at < 15.0):
                 raise HTTPException(status_code=429, detail="Disarmed stream request cooldown or session quota")
             request_id = uuid.uuid4().hex
+            # Publish pending state before sending; an immediate Pi reply
+            # must not race with request accounting on this event loop.
+            self.probe_request_count += 1
+            self.probe_requested_at = now
+            self.probe_request_id = request_id
+            self.probe_status = "QUEUED_ON_PRIVATE_LINK"
             # No native TCP command, raw MAVLink or user-supplied rate crosses
             # the network. The Pi independently decides whether it is safe.
             try:
@@ -291,11 +297,8 @@ class LinkState:
                     "request_id": request_id,
                 })
             except (RuntimeError, OSError) as ex:
+                self.probe_status = "TRANSPORT_FAILED"
                 raise HTTPException(status_code=503, detail="Pi diagnostic channel unavailable") from ex
-            self.probe_request_count += 1
-            self.probe_requested_at = now
-            self.probe_request_id = request_id
-            self.probe_status = "QUEUED_ON_PRIVATE_LINK"
             return {"status": self.probe_status, "request_id": request_id,
                     "fc_stream_confirmed": False, "flight_control_enabled": False}
 
