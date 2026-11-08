@@ -107,26 +107,37 @@ def test_independent_roles_lease_policy_and_receipts_never_contact_fc():
         pilot, approver = authenticated_roles(client)
         path = "/api/v1/vehicles/" + VEHICLE + "/control"
         pilot_headers = {"Authorization": "Bearer " + pilot}
-        approval_headers = {**pilot_headers,
-                            "X-Approver-Authorization": "Bearer " + approver}
+        approval_headers = {"Authorization": "Bearer " + approver}
         body = {"plan_sha256": PLAN}
-        assert client.post(path + "/lease", json=body).status_code == 403
+        fake_lease = {**body, "approval_id": "f"*32}
+        assert client.post(path + "/lease", json=fake_lease).status_code == 403
         assert client.post(path + "/lease", headers=pilot_headers,
-                           json=body).status_code == 403
-        assert client.post(path + "/lease", headers=approval_headers,
+                           json=fake_lease).status_code == 403
+        assert client.post(path + "/approvals", headers=pilot_headers,
+                           json=body).status_code == 401
+        assert client.post(path + "/approvals", headers=approval_headers,
                            json=body).status_code == 409  # no FC
         with client.websocket_connect(
                 "/ws/mavlink/device/" + VEHICLE,
                 headers={"Authorization": "Bearer " + device_token}) as device:
             device.send_bytes(heartbeat())
             wait_heartbeat(client)
+            approved = client.post(path + "/approvals",
+                                   headers=approval_headers, json=body)
+            assert approved.status_code == 200, approved.text
+            approval = approved.json()
+            assert approval["control_epoch"] == 1
+            lease_body = {**body, "approval_id": approval["approval_id"]}
+            assert client.post(path + "/lease", headers=pilot_headers,
+                               json={**lease_body, "plan_sha256": "e"*64}
+                               ).status_code == 403
             lease_request = client.post(path + "/lease",
-                                        headers=approval_headers, json=body)
+                                        headers=pilot_headers, json=lease_body)
             assert lease_request.status_code == 200, lease_request.text
             lease = lease_request.json()
             assert lease["control_epoch"] == 1
-            assert client.post(path + "/lease", headers=approval_headers,
-                               json=body).status_code == 409
+            assert client.post(path + "/lease", headers=pilot_headers,
+                               json=lease_body).status_code == 403
             command = {
                 "request_id": "e"*32, "sequence": 1, "action": "ARM",
                 "plan_sha256": PLAN, "params": {},
