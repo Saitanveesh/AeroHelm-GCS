@@ -63,6 +63,7 @@ def main() -> None:
         "VIHANGA_PINNED_RELAY_HOST": host,
         "VIHANGA_ORACLE_INSTANCE_OCID": ocid,
         "VIHANGA_DISARMED_STREAM_PROBE": "0",
+        "VIHANGA_DISARMED_STREAM_RECOVERY": "0",
         "VIHANGA_DISARMED_PARAM_SNAPSHOT": "0",
     }
     fd = os.open(str(ENV), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
