@@ -101,7 +101,8 @@ class FlightIntent:
             not isinstance(self.request_id, str) or
             re.fullmatch(r"[a-f0-9]{32}", self.request_id) is None or
             type(self.sequence) is not int or self.sequence < 1 or
-            self.action not in ACTIONS or type(self.params) is not dict or
+            not isinstance(self.action, str) or self.action not in ACTIONS or
+            type(self.params) is not dict or
             not isinstance(self.plan_sha256, str) or
             re.fullmatch(r"[a-f0-9]{64}", self.plan_sha256) is None or
             type(self.ttl_ms) is not int or not 500 <= self.ttl_ms <= 5000):
@@ -122,12 +123,14 @@ class FlightIntent:
                 not 2 <= self.params["relative_alt_m"] <= 30):
                 raise ControlDenied("Takeoff altitude must be 2–30 metres")
         elif self.action == "SET_MODE":
-            if self.params.keys() != {"mode"} or self.params["mode"] not in MODES:
+            if (self.params.keys() != {"mode"} or
+                not isinstance(self.params["mode"], str) or
+                self.params["mode"] not in MODES):
                 raise ControlDenied("Unsupported flight mode")
         elif self.action == "PARAM_SET":
             name, value = self.params.get("name"), self.params.get("value")
             if (set(self.params) != {"name", "value"} or
-                name not in PARAMETER_ALLOWLIST or
+                not isinstance(name, str) or name not in PARAMETER_ALLOWLIST or
                 type(value) not in (float, int) or not math.isfinite(value)):
                 raise ControlDenied("Parameter not approved for guarded write")
         elif self.action == "MISSION_UPLOAD":
@@ -191,7 +194,8 @@ class FlightControlBroker:
                 ttl_seconds: int = 20) -> dict:
         if (not _id(vehicle_id) or not 1 <= system_id <= 254 or
             not _id(pilot) or not _id(approver) or pilot == approver or
-            re.fullmatch(r"[a-f0-9]{64}", plan_sha256 or "") is None or
+            not isinstance(plan_sha256, str) or
+            re.fullmatch(r"[a-f0-9]{64}", plan_sha256) is None or
             type(control_epoch) is not int or control_epoch < 0 or
             not 5 <= ttl_seconds <= 30):
             raise ControlDenied("Invalid independent pilot approval or lease")
