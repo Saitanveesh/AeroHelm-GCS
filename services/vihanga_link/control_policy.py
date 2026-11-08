@@ -27,9 +27,14 @@ NAV_ACTIONS = frozenset({
 MISSION_ACTIONS = frozenset({"MISSION_UPLOAD", "MISSION_START"})
 PREPARE_ACTIONS = frozenset({"PARAM_SET", "MISSION_UPLOAD"})
 # Never permit safety bypasses, force-arm, force-disarm or arbitrary param writes.
-PARAMETER_ALLOWLIST = frozenset({
-    "WPNAV_SPEED", "WPNAV_ACCEL", "RTL_ALT", "RTL_SPEED",
-})
+PARAMETER_BOUNDS = {
+    # ArduCopter units for these specific firmware parameters are cm/s,
+    # cm/s/s or centimetres. Bounds are conservative but still require
+    # on-airframe confirmation before any physical PARAM_SET transport.
+    "WPNAV_SPEED": (50, 1000), "WPNAV_ACCEL": (50, 1000),
+    "RTL_ALT": (500, 10000), "RTL_SPEED": (50, 1000),
+}
+PARAMETER_ALLOWLIST = frozenset(PARAMETER_BOUNDS)
 MODES = frozenset({"STABILIZE", "ALT_HOLD", "LOITER", "GUIDED", "AUTO",
                    "BRAKE", "RTL", "LAND"})
 
@@ -131,7 +136,8 @@ class FlightIntent:
             name, value = self.params.get("name"), self.params.get("value")
             if (set(self.params) != {"name", "value"} or
                 not isinstance(name, str) or name not in PARAMETER_ALLOWLIST or
-                type(value) not in (float, int) or not math.isfinite(value)):
+                type(value) not in (float, int) or not math.isfinite(value) or
+                not PARAMETER_BOUNDS[name][0] <= value <= PARAMETER_BOUNDS[name][1]):
                 raise ControlDenied("Parameter not approved for guarded write")
         elif self.action == "MISSION_UPLOAD":
             if self.params != {"revision": self.plan_sha256}:
