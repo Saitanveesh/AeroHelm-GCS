@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
+from services.vihanga_link import relay as relay_module
 from services.vihanga_link.relay import (Config, create_app, envelope, valid_evidence,
                                         valid_frame_crc, valid_native_attitude)
 from services.vihanga_link.pi_agent import (
@@ -173,6 +174,25 @@ def test_pi_refuses_wrong_oracle_instance_before_device_auth(tmp_path):
         })
     with pytest.raises(RuntimeError, match="not bound"):
         verify_remote_oracle_instance(cfg, fetch=lambda: {"status": "ok"})
+
+
+def test_relay_validates_exact_oracle_identity_on_startup(monkeypatch, credentials):
+    cfg, _ = credentials
+    ocid = "ocid1.instance.oc1.ap-hyderabad-1." + "a" * 48
+    actual = replace(cfg, oracle_instance_ocid=ocid)
+    observed = []
+    def verifier(expected):
+        observed.append(expected)
+        return {"configured": True, "verified": True,
+                "instance_sha256": hashlib.sha256(expected.encode()).hexdigest()}
+    monkeypatch.setattr(relay_module, "verify_instance_binding", verifier)
+    app = create_app(actual)
+    assert observed == [ocid]
+    with TestClient(app) as client:
+        profile = client.get("/health").json()["oracle_instance"]
+        assert profile["verified"] is True
+        assert profile["instance_sha256"] == hashlib.sha256(ocid.encode()).hexdigest()
+        assert ocid not in str(profile)
 
 
 def test_no_implicit_or_default_credentials():
