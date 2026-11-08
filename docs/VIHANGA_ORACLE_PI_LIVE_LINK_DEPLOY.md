@@ -30,6 +30,12 @@ execution or parameter mutation is enabled on the cloud.
 SSH into the VM as `ubuntu`. Run:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y git
+```
+
+
+```bash
 sudo install -d -m 0755 /opt/vihanga
 sudo git clone --filter=blob:none --sparse --depth=1 --branch master \
   https://github.com/Saitanveesh/AeroHelm-GCS.git /opt/vihanga/source
