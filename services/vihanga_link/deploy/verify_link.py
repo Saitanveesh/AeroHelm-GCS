@@ -10,9 +10,8 @@ import asyncio
 from collections import Counter
 from getpass import getpass
 import json
-import ssl
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 import websockets
 
@@ -35,7 +34,10 @@ async def inspect(base: str, vehicle: str, operator: str, seconds: float) -> Non
     request = Request(base.rstrip("/") + "/api/v1/auth/login",
                       data=auth, headers={"Content-Type": "application/json"},
                       method="POST")
-    with urlopen(request, timeout=7) as response:
+    class RejectRedirect(HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+    with build_opener(RejectRedirect).open(request, timeout=7) as response:
         if response.geturl() != request.full_url:
             raise RuntimeError("Login redirect not permitted")
         token = json.load(response)["access_token"]
