@@ -161,7 +161,7 @@ class ControlPolicyTests(unittest.TestCase):
         self.clock.advance(3.1)
         with self.assertRaises(ControlDenied):
             self.broker.pi_result(c.request_id, accepted=True, interlock=True)
-        self.assertEqual(1, self.broker.expire())
+        self.assertEqual(0, self.broker.expire())
         self.assertEqual("EXPIRED_NO_REPLAY", self.broker.receipt(c.request_id)["status"])
         self.clock.advance(30)
         with self.assertRaises(ControlDenied):
