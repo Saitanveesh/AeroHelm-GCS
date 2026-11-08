@@ -197,6 +197,7 @@ class LinkState:
     gps_satellites_visible: int | None = None
     last_valid_position_at: float = -1.0
     last_valid_home_at: float = -1.0
+    fc_autopilot: int | None = None
 
     def clear_session(self) -> None:
         self.counters.clear()
@@ -231,6 +232,7 @@ class LinkState:
         self.gps_satellites_visible = None
         self.last_valid_position_at = -1.0
         self.last_valid_home_at = -1.0
+        self.fc_autopilot = None
         # No stale session packets may survive a device reconnection.
         for queue in self.viewers:
             while not queue.empty():
@@ -259,6 +261,8 @@ class LinkState:
         self.last_frame = now
         self.recent_frames.append(now)
         if msg_id == 0:
+            header = 6 if packet[0] == 0xFE else 10
+            self.fc_autopilot = int(packet[header + 5])
             self.last_heartbeat = now
             self.recent_heartbeats.append(now)
         if msg_id == 30:
@@ -496,14 +500,20 @@ class LinkState:
                 raise ValueError("Duplicate or blank FC parameter identifier")
             ptype = packet[header + 24]
             value_bytes = packet[header:header + 4]
-            # Avoid false drift conclusions from integer bytewise encoding.
-            # Only REAL32 is safe to display as an ordinary float.
+            # ArduPilot uses C-style numeric floats for PARAM_VALUE even
+            # when param_type describes an integer. Other autopilots may
+            # bytewise-encode integer types: never reinterpret them blindly.
             displayed = None
-            if ptype == 9:
+            if ptype == 9 or (
+                    self.fc_autopilot == mavlink_dialect.MAV_AUTOPILOT_ARDUPILOTMEGA
+                    and ptype in (1, 2, 3, 4, 5, 6)):
                 val = struct.unpack("<f", value_bytes)[0]
                 if val == val and abs(val) != float("inf"):
                     displayed = val
             values[name] = {"index": index, "type": ptype,
+                            "encoding": "ARDUPILOT_NUMERIC_FLOAT"
+                                if ptype != 9 and displayed is not None
+                                else "REAL32" if ptype == 9 else "UNINTERPRETED",
                             "float32": displayed,
                             "raw_value_hex": value_bytes.hex()}
         return {"snapshot": status, "values": values,
