@@ -80,13 +80,23 @@ of its FC UART. A second MAVLink session must not steal the serial device.
   encoder for `ARM`, landed `DISARM`, `TAKEOFF`, `LAND`, `RTL`,
   verified `SET_MODE` and `MISSION_START`. It has **no default enabled
   interlock** and is not instantiated in the active Pi publisher.
+- `services/vihanga_link/mission_transaction.py`: isolated physical MAVLink
+  `MISSION_COUNT` → real `MISSION_REQUEST_INT` → `MISSION_ITEM_INT`
+  → matching `MISSION_ACK` transaction. It refuses to report a verified
+  mission until the FC is downloaded again and matches the approved SHA-256
+  route digest. Abort never silently clears the previous mission.
+- `services/vihanga_link/parameter_transaction.py`: isolated
+  `PARAM_SET` / `PARAM_VALUE` readback transaction restricted to
+  approved, bounded `REAL32` parameters while landed and disarmed.
+  No blind retries or persistent bypass settings.
 - `services/vihanga_link/deploy/configure_control_roles.py`: separate
   simulator-only Argon2id pilot and approver credentials.
 - `plugins/VihangaLinkSession.cs`: reads the private control status, no
   control token persistence or aircraft commands.
 - `plugins/AeroHelmPlatformV2.cs`: read-only control-readiness display.
 - `services/vihanga_link/test_control_policy.py`,
-  `test_control_api.py`, `test_pi_control_adapter.py`: mocked
+  `test_control_api.py`, `test_pi_control_adapter.py`,
+  `test_mission_transaction.py`, `test_parameter_transaction.py`: mocked
   rejection/authorization/ACK tests, **not** Pixhawk acceptance.
 
 ## Explicit current default
@@ -161,6 +171,8 @@ python -m compileall -q services/vihanga_link
 python -m pytest -q services/vihanga_link/test_control_policy.py \
   services/vihanga_link/test_control_api.py \
   services/vihanga_link/test_pi_control_adapter.py \
+  services/vihanga_link/test_mission_transaction.py \
+  services/vihanga_link/test_parameter_transaction.py \
   services/vihanga_link/test_link.py
 ```
 
