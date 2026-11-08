@@ -1,0 +1,59 @@
+name: Vihanga supervised flight-control safety contracts
+
+on:
+  pull_request:
+    paths:
+      - "services/vihanga_link/**"
+      - "plugins/**"
+      - "scripts/Test-AeroHelmWindowsPages.ps1"
+      - ".github/workflows/vihanga-control-authority.yml"
+  push:
+    branches: [master]
+    paths:
+      - "services/vihanga_link/**"
+      - ".github/workflows/vihanga-control-authority.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  control-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install existing private-link dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r services/vihanga_link/requirements-test.txt
+      - name: Syntax compile (no serial ports or credentials)
+        run: python -m compileall -q services/vihanga_link
+      - name: Supervised command policy, independent auth and Pi encoder
+        run: |
+          python -m pytest -q \
+            services/vihanga_link/test_control_policy.py \
+            services/vihanga_link/test_control_api.py \
+            services/vihanga_link/test_pi_control_adapter.py
+      - name: Existing Pi and relay regression checks
+        run: |
+          python -m pytest -q \
+            services/vihanga_link/test_link.py \
+            services/vihanga_link/test_deploy_contracts.py
+      - name: Record explicit safety scope
+        run: |
+          echo "PASS: OFFLINE PYTHON CONTRACTS ONLY"
+          echo "NO PIXHAWK, RC RADIO, LIVE NETWORK, WINDOWS GUI OR FLIGHT COMMAND TESTED"
+
+  windows-source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source contracts and denied raw MAVLink command paths
+        shell: pwsh
+        run: |
+          ./scripts/Test-AeroHelmWindowsPages.ps1
