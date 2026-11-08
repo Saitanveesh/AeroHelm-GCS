@@ -65,8 +65,11 @@ class RoleLogin(BaseModel):
     role: str = Field(pattern=r"^(pilot|approver)$")
 
 
-class LeaseRequest(BaseModel):
+class ApprovalRequest(BaseModel):
     plan_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class LeaseRequest(ApprovalRequest):
     approval_id: str = Field(pattern=r"^[a-f0-9]{32}$")
 
 
@@ -195,7 +198,7 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
 
     @app.post("/api/v1/vehicles/{vehicle}/control/approvals")
     async def approve_plan(
-        vehicle: str, body: LeaseRequest,
+        vehicle: str, body: ApprovalRequest,
         authorization: str = Header(default=""),
     ) -> dict:
         assert_vehicle(vehicle)
