@@ -37,7 +37,8 @@ jobs:
           python -m pytest -q \
             services/vihanga_link/test_control_policy.py \
             services/vihanga_link/test_control_api.py \
-            services/vihanga_link/test_pi_control_adapter.py
+            services/vihanga_link/test_pi_control_adapter.py \
+            services/vihanga_link/test_mission_transaction.py
       - name: Existing Pi and relay regression checks
         run: |
           python -m pytest -q \
