@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from .control_policy import (
     ControlDenied, FlightControlBroker, FlightIntent, ObservedVehicle,
 )
+from .control_transport_probe import ControlTransportProbe, ProbeDenied
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,7 @@ class ControlContext:
         self.state = state
         self.clock = clock
         self.broker = FlightControlBroker(clock=clock)
+        self.shadow_transport = ControlTransportProbe(clock=clock)
         self.password_hasher = PasswordHasher()
         self.login_attempts: deque[float] = deque(maxlen=20)
         # Single-use, FC-epoch- and plan-revision-bound consent minted by a
@@ -166,12 +168,37 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
             "mode": "SIMULATOR_AUTHORITY_ONLY" if cfg.enabled else "DISABLED",
             "physical_command_dispatch": False,
             "native_mavlink_command_tunnel": False,
+            "pilot_to_pi_shadow_probe": bool(cfg.enabled),
             "pilot_role_required": True,
             "independent_approver_required": True,
             "pi_hardware_interlock_verified": False,
             "vehicle_evidence_complete": False,
             "flight_control_enabled": False,
         }
+
+    @app.post("/api/v1/vehicles/{vehicle}/control/transport/probe")
+    async def probe_control_transport(
+        vehicle: str, authorization: str = Header(default=""),
+    ) -> dict:
+        """Pilot-scoped non-actuating round-trip, not an aircraft command."""
+        assert_vehicle(vehicle)
+        context.identity(token_from_auth(authorization), "pilot")
+        try:
+            return await context.shadow_transport.issue(state, vehicle)
+        except ProbeDenied as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/v1/vehicles/{vehicle}/control/transport/probe/{request_id}")
+    async def control_transport_receipt(
+        vehicle: str, request_id: str,
+        authorization: str = Header(default=""),
+    ) -> dict:
+        assert_vehicle(vehicle)
+        context.identity(token_from_auth(authorization), "pilot")
+        try:
+            return context.shadow_transport.receipt(request_id, state.control_epoch)
+        except ProbeDenied as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.post("/api/v1/flight-control/auth/login")
     async def control_login(body: RoleLogin) -> dict:
