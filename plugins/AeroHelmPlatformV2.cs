@@ -178,6 +178,12 @@ namespace AeroHelm.GcsCloud
                      "Server RAM history disappears on restart; the optional Pi SQLite journal persists locally."});
 
             var secPanel=Panel();security.Controls.Add(secPanel);
+            secPanel.Controls.Add(ActionButton("Inspect cloud flight-control readiness",
+                async()=>await Run(()=>
+                    VihangaLinkSession.UsesDedicatedRelay ?
+                        VihangaLinkSession.ReadFlightControlStatus() :
+                        "Dedicated private relay not selected.",
+                    "Cloud flight-control readiness — physical dispatch disabled")));
             secPanel.Controls.Add(ActionButton("Cloud security posture",
                 async()=>await Run(()=>OperationsApi.Request("GET",
                     "api/v2/security/posture"),"Security posture")));
