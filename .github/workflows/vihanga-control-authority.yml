@@ -8,7 +8,7 @@ on:
       - "scripts/Test-AeroHelmWindowsPages.ps1"
       - ".github/workflows/vihanga-control-authority.yml"
   push:
-    branches: [master]
+    branches: [master, "release/vihanga-integrated-bench-candidate-20261108"]
     paths:
       - "services/vihanga_link/**"
       - ".github/workflows/vihanga-control-authority.yml"
@@ -38,6 +38,8 @@ jobs:
             services/vihanga_link/test_control_policy.py \
             services/vihanga_link/test_control_api.py \
             services/vihanga_link/test_control_transport_probe.py \
+            services/vihanga_link/test_fc_readiness.py \
+            services/vihanga_link/test_typed_downlink.py \
             services/vihanga_link/test_pi_control_adapter.py \
             services/vihanga_link/test_mission_transaction.py \
             services/vihanga_link/test_parameter_transaction.py
@@ -68,3 +70,11 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile("./scripts/Test-VihangaControlTransport.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
           Write-Output "PASS: Windows shadow probe syntax parsed; no network or aircraft operations performed"
+      - name: Parse Windows ARM/DISARM requester without executing commands
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("./scripts/Request-VihangaTypedArmDisarm.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          Write-Output "PASS: Interactive requester syntax parsed; no live relay or aircraft contacted."
