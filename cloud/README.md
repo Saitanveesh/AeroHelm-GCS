@@ -1,8 +1,10 @@
-# AeroHelm Cloud Fleet Control Plane R1
+# Cloud fleet coordination research
 
-**Authoritative repository:** [Saitanveesh/AeroHelm-GCS](https://github.com/Saitanveesh/AeroHelm-GCS).
-This is a standalone Python service under `cloud/`. It does not build,
-modify, launch, or depend on the native Windows Mission Planner GCS.
+**Status:** separate fleet-management and simulator-oriented development code. **Not** the live Vihanga Pi-to-Oracle MAVLink relay and not a physical aircraft command service.
+
+The deployed single-aircraft telemetry transport is under [`services/vihanga_link/`](../services/vihanga_link/README.md). The operator-facing system is [Vihanga GCS](../README.md). The `cloud/` application is a standalone Python service with its own database, identity and workflow model. It does not build, modify or launch the native Windows Mission Planner application.
+
+This directory retains earlier AeroHelm R1/R2 terminology in API names, schema identifiers and historical sections for compatibility. Treat its deployment instructions as a **separate experimental system**, not instructions for modifying the working Oracle `:8443` relay.
 
 ## Execution boundary
 
