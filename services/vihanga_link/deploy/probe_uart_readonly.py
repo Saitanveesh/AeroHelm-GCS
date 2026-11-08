@@ -13,7 +13,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from pymavlink import mavutil
+from pymavlink.dialects.v20 import ardupilotmega as mavlink_dialect
 import serial
 
 
@@ -41,7 +41,7 @@ def sample(device: str, baud: int, seconds: float) -> dict:
     if not 2 <= seconds <= 20:
         raise ValueError("Sample duration must be 2–20 seconds")
     actual = ensure_exclusive(device)
-    parser = mavutil.mavlink.MAVLink(None)
+    parser = mavlink_dialect.MAVLink(None)
     parser.robust_parsing = True
     ids: Counter[int] = Counter()
     sysids: Counter[int] = Counter()
@@ -60,7 +60,7 @@ def sample(device: str, baud: int, seconds: float) -> dict:
             for b in data:
                 try:
                     message = parser.parse_char(bytes((b,)))
-                except (ValueError, IndexError, TypeError, mavutil.mavlink.MAVError):
+                except (ValueError, IndexError, TypeError, mavlink_dialect.MAVError):
                     bad_data += 1
                     continue
                 if message is None:
