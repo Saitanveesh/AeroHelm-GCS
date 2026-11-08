@@ -9,6 +9,7 @@ User=vihanga
 Group=vihanga
 WorkingDirectory=/opt/vihanga/source
 EnvironmentFile=/etc/vihanga/relay.env
+EnvironmentFile=-/etc/vihanga/control.env
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/vihanga/venv/bin/python -m uvicorn services.vihanga_link.relay:create_app --factory --host 127.0.0.1 --port 8765 --workers 1
 Restart=on-failure
