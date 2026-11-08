@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from getpass import getpass
 import json
+import re
 import time
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -46,7 +47,7 @@ def main() -> None:
         parsed.password or parsed.path not in ("", "/") or
         parsed.query or parsed.fragment):
         raise SystemExit("Use only approved private Tailscale HTTPS origin")
-    if not args.vehicle or not args.vehicle.replace("_", "").replace("-", "").isalnum():
+    if not re.fullmatch(r"[A-Za-z0-9_-]{3,64}", args.vehicle):
         raise SystemExit("Invalid aircraft ID")
     origin = args.origin.rstrip("/")
     print("This requests ONLY preconfigured volatile FC telemetry intervals.")
@@ -63,6 +64,10 @@ def main() -> None:
     secret = None
     token = result["access_token"]
     before = request_json(origin + "/api/v1/mavlink/health")
+    if before.get("native_quick_data_ready"):
+        print("Fresh physical attitude and position/VFR_HUD already observed.")
+        print("No additional FC command requested.")
+        return
     old_ack = before.get("message_ids", {}).get("77", 0)
     old_att = before.get("real_attitude_frames", 0)
     path = (origin + "/api/v1/vehicles/" + args.vehicle +
