@@ -1,0 +1,38 @@
+name: Vihanga private physical-link contracts
+on:
+  pull_request:
+    paths:
+      - 'services/vihanga_link/**'
+      - 'docs/VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md'
+      - '.github/workflows/vihanga-private-link.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'services/vihanga_link/**'
+      - 'docs/VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md'
+      - '.github/workflows/vihanga-private-link.yml'
+permissions:
+  contents: read
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r services/vihanga_link/requirements-cloud.txt
+          python -m pip install -r services/vihanga_link/requirements-pi.txt
+          python -m pip install pytest httpx
+      - name: Syntax
+        run: |
+          python -m compileall -q services/vihanga_link
+      - name: Deployment shell syntax
+        run: bash -n services/vihanga_link/deploy/*.sh
+      - name: Offline relay and Pi tests, no flight hardware
+        run: |
+          python -m pytest -q services/vihanga_link/test_link.py services/vihanga_link/test_deploy_contracts.py services/vihanga_link/test_full_duplex.py

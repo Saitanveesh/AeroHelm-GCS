@@ -242,3 +242,108 @@ mode/parameter/mission readback, plus live SITL/HIL and propellers-off tests.
 Armed takeoff commands are not enabled by this deployment. Use the real
 telemetry and disarmed stream negotiation to establish the first physical
 round trip before authorizing motor actuation.
+
+
+## 7. Debian 13 physical Pi: production dual-direction acceptance
+
+The production directories on **both** computers are `/opt/vihanga/source`
+(sparse Git checkout) and `/opt/vihanga/venv` (private Python runtime).
+The service unit files are installed into `/etc/systemd/system/`.
+The VM uses `/etc/vihanga/relay.env`; the Pi uses
+`/etc/vihanga/pi.env`, with the token at
+`/var/lib/vihanga/device-token`. Never commit or copy those secrets.
+
+After enabling the physical UART but disabling the Linux serial login/console
+with raspi-config, reboot. On the Pi, inspect:
+
+```bash
+cat /proc/cmdline
+ls -l /dev/serial0 /dev/ttyAMA10
+sudo systemctl status serial-getty@ttyAMA10.service --no-pager || true
+sudo fuser -v /dev/ttyAMA10 || true
+```
+
+**The old password recovery option `systemd.debug_shell=1` must be
+removed before production deployment.** With sudo restored, use
+`/boot/firmware/cmdline.txt` only if it is confirmed to be the active boot
+file; preserve a backup, remove just that one temporary argument, and reboot.
+Never run a privileged debugging shell on a connected aircraft.
+
+After installing `vihanga-pi.service` but **before starting it**, execute
+the read-only preflight:
+
+```bash
+cd /opt/vihanga/source
+sudo bash services/vihanga_link/deploy/preflight_pi.sh /dev/ttyAMA10
+```
+
+The preflight fails if it sees a UART kernel console, active serial-getty,
+any UART owner, the recovery debug shell, or missing `vihanga` dialout
+membership. Identify the old service with `fuser` and systemd before
+stopping anything. Re-run the check before beginning the transfer.
+
+With both protected configurations prepared, the relay healthy and
+`tailscale serve status` confirming **:8443** (without resetting the
+existing **:443** mapping), start only the Pi service:
+
+```bash
+sudo systemctl enable --now vihanga-pi.service
+sudo journalctl -u vihanga-pi.service -n 60 --no-pager
+```
+
+On Oracle, obtain the full Compute OCID from OCI instance metadata, not
+from the VM display name:
+
+```bash
+curl -fsS -H 'Authorization: Bearer Oracle' \
+  http://169.254.169.254/opc/v2/instance/ |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])'
+```
+
+Use that OCID for the **private ping + authentic operator telemetry** check:
+
+```bash
+cd /opt/vihanga/source
+sudo /opt/vihanga/venv/bin/python \
+  -m services.vihanga_link.deploy.validate_full_duplex \
+  --origin https://aerohelm-vcn.tailf3ab6a.ts.net:8443 \
+  --vehicle AH-HW-001 \
+  --operator operator \
+  --oracle-ocid 'REPLACE_WITH_FULL_INSTANCE_OCID'
+```
+
+The validator refuses an unverified OCI instance/incorrect HTTPS port,
+logs in without printing the password, issues an authenticated
+`POST /api/v1/vehicles/{vehicle_id}/link/ping`, verifies the exact Pi
+`link_pong` identifier, and receives/CRC-checks original FC MAVLink frames
+from the operator WebSocket. It prints each physical message ID count.
+A verified Pi ping is **network round trip only**: it does not reach the FC.
+
+Only with a **propellers-removed, disarmed, supervised** FC, enable both
+independent flags by editing each protected environment file:
+
+- Oracle `/etc/vihanga/relay.env`:
+  `VIHANGA_ALLOW_DISARMED_STREAM_REQUEST=1`
+- Pi `/etc/vihanga/pi.env`:
+  `VIHANGA_DISARMED_STREAM_PROBE=1`
+
+Then explicitly restart the corresponding services separately, recheck
+fresh physical heartbeat, and execute the same validator with
+`--bench-fc-probe`. This uses the pre-existing fixed
+`MAV_CMD_SET_MESSAGE_INTERVAL` command 511, which ArduPilot treats as a
+link-local, volatile stream-rate configuration, **not** a flight command.
+The Pi requires a fresh disarmed ArduPilot heartbeat, and refuses if any
+armed FC heartbeat was observed in this process lifetime.
+
+This optional test distinguishes **three stages**:
+
+1. Authenticated cloud-to-Pi WebSocket request acknowledged by the Pi.
+2. Newly observed, valid physical Pixhawk `COMMAND_ACK` for 511 with
+   accepted result; an accepted ACK is not proof of telemetry arrival.
+3. Actual new ID30 ATTITUDE and ID33 position or ID74 VFR_HUD after the
+   request; missing messages are explicitly reported as a failed acceptance.
+
+This is the safe physical full-duplex *diagnostic* foundation. Cloud-guided
+arming, takeoff, mission upload, waypoint dispatch, parameter writes, and
+native outgoing MAVLink forwarding remain **disabled** pending separate
+authorization, lease/failsafe enforcement, RC override and hardware tests.

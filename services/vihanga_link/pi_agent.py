@@ -159,6 +159,33 @@ def valid_uart_owner_probe(port: str) -> None:
     # The new process also holds a cooperative flock to stop duplicate agents.
 
 
+def require_clean_physical_uart(device: str) -> None:
+    """Reject accidental MAVLink writes to the Linux login/debug console."""
+    physical = os.path.realpath(device)
+    serial0 = os.path.realpath("/dev/serial0")
+    try:
+        arguments = Path("/proc/cmdline").read_text(encoding="utf-8").split()
+    except OSError as ex:
+        raise RuntimeError("Cannot check Linux kernel serial console configuration") from ex
+    if "systemd.debug_shell=1" in arguments:
+        raise RuntimeError("Temporary passwordless systemd debug root shell still enabled")
+    for entry in arguments:
+        if not entry.startswith("console="):
+            continue
+        selected = entry.partition("=")[2].split(",", 1)[0]
+        if (selected == Path(physical).name or
+                selected == "serial0" and serial0 == physical):
+            raise RuntimeError("Configured Linux kernel console conflicts with FC UART")
+    systemctl = shutil.which("systemctl")
+    if systemctl is not None:
+        result = subprocess.run(
+            [systemctl, "is-active", "--quiet",
+             "serial-getty@" + Path(physical).name + ".service"],
+            check=False, timeout=4)
+        if result.returncode == 0:
+            raise RuntimeError("Linux serial-getty is active on selected FC UART")
+
+
 def is_disarmed_autopilot_heartbeat(message, sysid: int) -> bool:
     if message.get_type() != "HEARTBEAT":
         return False
@@ -254,8 +281,9 @@ class Publisher:
             elif self._seen_armed or self._last_disarmed_heartbeat < 0 or \
                     now - self._last_disarmed_heartbeat > 3.0:
                 status = "REFUSED_DISARM_REQUIRED"
-            elif self._attitude_seen and (self._position_seen or self._vfr_seen):
-                status = "REFUSED_ALREADY_STREAMING"
+            # An explicitly authorized disarmed bench probe may run even if
+            # the selected messages are already streaming. Only fixed rates,
+            # one active request and a small per-session quota are permitted.
             elif self._remote_probe_pending.is_set() or self._remote_probe_count >= 2 or (
                     self._remote_probe_requested_at >= 0 and
                     now - self._remote_probe_requested_at < 15.0):
@@ -268,6 +296,22 @@ class Publisher:
                 "status": status, "fc_stream_confirmed": False,
                 "flight_control_enabled": False}
 
+    def transport_ping_reply(self, message) -> dict | None:
+        """Reply to a matched private Pi diagnostic, with no UART activity."""
+        if not isinstance(message, dict) or message.get("type") != "link_ping":
+            return None
+        if message.get("vehicle_id") != self.cfg.vehicle_id:
+            return None
+        request_id = message.get("request_id")
+        if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{32}", request_id):
+            return None
+        return {
+            "type": "link_pong",
+            "vehicle_id": self.cfg.vehicle_id,
+            "request_id": request_id,
+            "flight_control_enabled": False,
+        }
+
     async def _receive_private_requests(self, ws) -> None:
         """Only fixed telemetry intent can be accepted from the private relay."""
         while not self.stop.is_set():
@@ -277,6 +321,10 @@ class Publisher:
             try:
                 message = json.loads(raw)
             except (ValueError, TypeError):
+                continue
+            pong = self.transport_ping_reply(message)
+            if pong is not None:
+                await ws.send(json.dumps(pong, separators=(",", ":")))
                 continue
             ack = self.queue_disarmed_telemetry_request(message)
             if ack is not None:
@@ -386,6 +434,7 @@ class Publisher:
                 return
 
     def open_uart(self) -> None:
+        require_clean_physical_uart(self.cfg.device)
         # Cooperative lock closes the fuser/open race between two instances.
         name = hashlib.sha256(os.path.realpath(self.cfg.device).encode()).hexdigest()[:20]
         lock_path = os.path.join(tempfile.gettempdir(), "vihanga-uart-" + name + ".lock")
