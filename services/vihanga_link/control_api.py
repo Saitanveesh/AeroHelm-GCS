@@ -182,6 +182,7 @@ class ControlContext:
             type(msg["reported_at_unix_ms"]) is not int or
             abs(int(time.time()*1000) - msg["reported_at_unix_ms"]) > 3000 or
             msg["physical_control_qualified"] is not False or
+            type(msg["local_hardware_interlock_active"]) is not bool or
             not isinstance(msg["missing_fc_messages"], list) or
             len(msg["missing_fc_messages"]) > 16 or
             any(not isinstance(x, str) or len(x) > 40
