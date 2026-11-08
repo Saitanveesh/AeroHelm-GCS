@@ -73,7 +73,11 @@ of its FC UART. A second MAVLink session must not steal the serial device.
   transport receipts distinct from matching FC ACK results, hash-linked
   in-memory audit entries.
 - `services/vihanga_link/control_api.py`: default-disabled private
-  `/api/v1/flight-control/` simulator-role API. The physical evidence
+  `/api/v1/flight-control/` simulator-role API. The safety approver first
+  authenticates independently and creates a one-time, 30-second consent
+  tied to the exact approved plan SHA-256 and FC restart epoch. The pilot
+  separately signs in and consumes that consent to acquire a short lease.
+  Reusing, mismatching or replaying the consent is rejected. The physical evidence
   provider explicitly fails closed on missing RC, EKF, battery and fences.
   This API **never sends** to the Pi.
 - `services/vihanga_link/pi_control_adapter.py`: disconnected physical
@@ -125,6 +129,29 @@ file **does not grant physical command authority**.
 
 No production telemetry service needs to be restarted just to inspect source.
 Do not add undocumented variables or bypass startup validation.
+
+## Simulator-only approval flow
+
+With separate simulator-only credentials and a real FC heartbeat, the
+approver signs in using the dedicated role-specific login and explicitly
+posts the approved mission revision to
+`POST /api/v1/vehicles/{vehicle}/control/approvals`.
+The API returns a **single-use** approval identifier valid for 30 seconds
+and bound to the specific FC restart epoch.
+
+The independently signed-in pilot then submits that identifier and exact
+revision to `POST /api/v1/vehicles/{vehicle}/control/lease`. The lease is
+exclusive and expires after 20 seconds. The command validation API is
+`POST /api/v1/vehicles/{vehicle}/control/commands`. Its real evidence
+provider currently denies submissions because the physical RC, EKF, geofence
+and battery interlocks are not connected. Even an internally accepted
+simulator command is returned as `AUTHORIZED_NOT_DISPATCHED` and **never
+transmitted** to the Pi. Separate `GET .../commands/{request_id}` receipts
+and `POST .../control/revoke` are also provided.
+
+A Pi WSS reconnect or real FC heartbeat restart increments the authority
+epoch, rendering previous leases and unconsumed approvals unusable. A GCS
+telemetry JWT cannot substitute for the pilot or approver credential.
 
 ## Onsite qualification gates before any aircraft actuation
 
