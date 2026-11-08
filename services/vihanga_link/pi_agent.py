@@ -29,6 +29,8 @@ from urllib.request import Request, urlopen
 from .oracle_identity import validate_instance_ocid
 from .control_transport_probe import pi_probe_reply
 from .typed_command_downlink import PiTypedCommandEngine
+from .fc_readiness import PhysicalFCObserver
+from .local_gpio_interlock import LocalGPIOInterlock
 
 # pymavlink auto-detects MAVLink2 on 0xFD frames, retaining the
 # correct protocol when issuing local stream requests on MAVLink1 ports.
@@ -38,7 +40,7 @@ import websockets
 LOG = logging.getLogger("vihanga.edge")
 MESSAGE_RATES_HZ = {30: 5, 33: 2, 74: 2, 1: 1, 24: 1, 147: 1}
 MAX_FRAME = 300
-MAX_CONTROL_TEXT = 1024
+MAX_CONTROL_TEXT = 4096
 MAX_QUEUE = 256
 OBSERVATION_IDS = (0, 30, 33, 74, 24, 1, 147)
 STREAM_PROBE_MAX_ATTEMPTS = 2
@@ -262,8 +264,45 @@ class Publisher:
         self._loop = None
         self._lock_fd: int | None = None
         self._control_replies: asyncio.Queue[dict] = asyncio.Queue(maxsize=32)
+        self._physical_monitor = PhysicalFCObserver(cfg.vehicle_id, cfg.system_id)
+        self._local_safety = LocalGPIOInterlock()
+        self._physical_epoch = 0
+        self._physical_seq = 0
+        self._last_safety_report_at = -1.0
         self._typed_control = PiTypedCommandEngine(
-            cfg.vehicle_id, cfg.system_id, deliver=self._queue_local_control_receipt)
+            cfg.vehicle_id, cfg.system_id,
+            hardware_gate=self._local_safety.safety,
+            fc_evidence=self._current_fc_evidence,
+            deliver=self._queue_local_control_receipt)
+
+    def _current_fc_evidence(self):
+        # Called only by the UART worker, never by the cloud receiver.
+        local = self._local_safety.safety()
+        return self._physical_monitor.evidence(
+            local, override_clear=self._local_safety.override_clear())
+
+    def _maybe_report_safety(self) -> None:
+        # Only genuine FC UART heartbeats can trigger this telemetry report.
+        now = time.monotonic()
+        if (self._physical_epoch < 1 or
+            self._last_safety_report_at >= 0 and
+            now - self._last_safety_report_at < 1.0):
+            return
+        self._last_safety_report_at = now
+        self._physical_seq += 1
+        health = self._physical_monitor.report(
+            self._local_safety.safety(),
+            override_clear=self._local_safety.override_clear())
+        self._queue_local_control_receipt({
+            "type": "fc_safety_evidence",
+            "vehicle_id": self.cfg.vehicle_id,
+            "control_epoch": self._physical_epoch,
+            "sequence": self._physical_seq,
+            "reported_at_unix_ms": int(time.time() * 1000),
+            "observation": health["fields"],
+            "missing_fc_messages": health["stale_or_missing"],
+            "physical_control_qualified": False,
+        })
 
     def _queue_local_control_receipt(self, message: dict) -> None:
         """Called only by the UART owner; never send from a serial thread."""
@@ -393,6 +432,20 @@ class Publisher:
             if shadow_ack is not None:
                 await ws.send(json.dumps(shadow_ack, separators=(",", ":")))
                 continue
+            if (isinstance(message, dict) and
+                set(message) == {"type", "vehicle_id", "control_epoch",
+                                 "physical_command_dispatch"} and
+                message.get("type") == "control_session_epoch" and
+                message.get("vehicle_id") == self.cfg.vehicle_id and
+                message.get("physical_command_dispatch") is False and
+                type(message.get("control_epoch")) is int and
+                1 <= message["control_epoch"] < 2**63):
+                self._typed_control.bind_session_epoch(message["control_epoch"])
+                with self._state_lock:
+                    self._physical_epoch = message["control_epoch"]
+                    self._physical_seq = 0
+                    self._last_safety_report_at = -1.0
+                continue
             # Only typed ARM/DISARM intents enter the sole-owner UART worker;
             # this WSS task never calls pymavlink or writes to the Pixhawk.
             queued = self._typed_control.accept(message)
@@ -476,6 +529,9 @@ class Publisher:
                     self.foreign_system_dropped += 1
                     continue
                 self.counts[mid] += 1
+                self._physical_monitor.observe(msg)
+                if msg.get_type() == "HEARTBEAT" and msg.get_srcComponent() == 1:
+                    self._maybe_report_safety()
                 if msg.get_type() == "COMMAND_ACK" and msg.get_srcComponent() == 1:
                     self._typed_control.observe_uart_ack(msg)
                 if (mid == 22 and msg.get_srcComponent() == 1 and
@@ -634,6 +690,8 @@ class Publisher:
                     self._remote_probe_pending.clear()
                     self._param_refresh_pending.clear()
                     self._typed_control.start_session()
+                    with self._state_lock:
+                        self._physical_epoch = 0
                     while not self._control_replies.empty():
                         self._control_replies.get_nowait()
                     async with websockets.connect(
@@ -653,6 +711,8 @@ class Publisher:
                             self._remote_probe_pending.clear()
                             self._param_refresh_pending.clear()
                             self._typed_control.end_session()
+                            with self._state_lock:
+                                self._physical_epoch = 0
                             request_reader.cancel()
                             receipt_writer.cancel()
                             await asyncio.gather(request_reader, receipt_writer, return_exceptions=True)
@@ -663,6 +723,8 @@ class Publisher:
                     backoff = min(15, backoff * 2)
         finally:
             self.stop.set()
+            self._typed_control.end_session()
+            self._local_safety.close()
             if self.port is not None:
                 self.port.close()
             if self._uart_thread is not None:
