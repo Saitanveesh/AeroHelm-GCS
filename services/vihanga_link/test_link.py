@@ -949,3 +949,40 @@ def test_position_status_needs_actual_3d_gps_fix_and_nonzero_position(credential
                     break
                 time.sleep(0.01)
             assert h["position_quality"]["map_position_valid"] is False
+
+
+def test_ardupilot_integer_parameters_decode_only_with_real_fc_autopilot(credentials):
+    cfg, token = credentials
+    hb = frame(0, struct.pack("<IBBBBB", 0, 2, 3, 0, 4, 3))
+    name = b"FS_GCS_ENABLE".ljust(16, b"\x00")
+    numeric = frame(22, struct.pack("<fHH", 5.0, 1, 0) + name + bytes((6,)))
+    with TestClient(create_app(cfg)) as client:
+        auth = client.post("/api/v1/auth/login", json={
+            "username": "operator", "password": "correct-bench-password"
+        }).json()["access_token"]
+        headers = {"Authorization": "Bearer " + auth}
+        with client.websocket_connect(
+                "/ws/mavlink/device/AH-HW-001",
+                headers={"Authorization": "Bearer " + token}) as device:
+            device.send_bytes(numeric)
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["parameter_snapshot"]["verified_complete"]:
+                    break
+                time.sleep(0.01)
+            before = client.get(
+                "/api/v1/vehicles/AH-HW-001/parameters/values",
+                headers=headers).json()["values"]["FS_GCS_ENABLE"]
+            assert before["float32"] is None
+            assert before["encoding"] == "UNINTERPRETED"
+            device.send_bytes(hb)
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["real_heartbeat_frames"]:
+                    break
+                time.sleep(0.01)
+            after = client.get(
+                "/api/v1/vehicles/AH-HW-001/parameters/values",
+                headers=headers).json()["values"]["FS_GCS_ENABLE"]
+            assert after["float32"] == 5.0
+            assert after["encoding"] == "ARDUPILOT_NUMERIC_FLOAT"
