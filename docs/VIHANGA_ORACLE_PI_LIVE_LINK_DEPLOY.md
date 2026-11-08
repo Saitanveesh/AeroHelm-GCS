@@ -347,3 +347,84 @@ This is the safe physical full-duplex *diagnostic* foundation. Cloud-guided
 arming, takeoff, mission upload, waypoint dispatch, parameter writes, and
 native outgoing MAVLink forwarding remain **disabled** pending separate
 authorization, lease/failsafe enforcement, RC override and hardware tests.
+
+
+## 8. Zero physical frames with a healthy cloud WebSocket — Raspberry Pi 5
+
+If the Pi journal repeatedly reports
+`10s physical UART IDs HB=0 ATT=0 POS=0 HUD=0`, while Oracle reports
+`device_online=true` and zero frames, **do not** enable cloud flight
+commands. This means the Pi agent has not parsed valid Pixhawk MAVLink
+frames. A correct systemd service and `fuser` owner prove only that
+Linux opened a serial device.
+
+**Pi 5 serial-port caveat:** Official Raspberry Pi documentation
+identifies `/dev/ttyAMA10` as the **dedicated debug UART**, exposed
+through the small UART debug header; the GPIO14/GPIO15 header UART is
+normally `/dev/ttyAMA0` when enabled. `/dev/serial0` may therefore
+point to `ttyAMA10` even when the Pixhawk wires run to GPIO14 and
+GPIO15. See https://www.raspberrypi.com/documentation/computers/configuration.html
+
+On the Pi, stop only the new Pi agent before any independent serial test:
+
+```bash
+sudo systemctl stop vihanga-pi.service
+tr -d '\\000' </proc/device-tree/model; echo
+ls -l /dev/serial0 /dev/ttyAMA0 /dev/ttyAMA10 2>&1
+pinctrl get 14 15
+sudo fuser -v /dev/ttyAMA0 /dev/ttyAMA10 || true
+```
+
+Determine **where the Pixhawk TX/RX/GND wires are physically
+connected**, with the vehicle disarmed and propellers removed:
+the Pi 5 debug header is not the 40-pin GPIO header. Don't move powered
+wires, guess baud, or alter ArduPilot `SERIALx_*` parameters blindly.
+
+Use the optional **receive-only** serial diagnostic after stopping the
+sole-owner Pi service:
+
+```bash
+cd /opt/vihanga/source
+sudo /opt/vihanga/venv/bin/python \
+  -m services.vihanga_link.deploy.probe_uart_readonly \
+  --device /dev/ttyAMA0 --baud 57600 --seconds 8
+```
+
+The script refuses to run while the agent or any competing reader owns
+that UART. It never issues `COMMAND_LONG`, sets stream rates, or
+writes serial bytes. Use the physical port and serial baud actually
+confirmed by its **valid parsed** MAVLink messages; do not interpret
+nonzero raw bytes alone as healthy telemetry. Recheck at a verified
+alternative baud only if the flight-controller serial settings support
+it.
+
+Only if physical wiring and observed MAVLink justify a different port,
+edit just `VIHANGA_PI_SERIAL` (and, if necessary,
+`VIHANGA_PI_BAUD`) in the already-created
+`/etc/vihanga/pi.env` with `sudoedit`, and run the preflight
+against that new device before restarting only `vihanga-pi.service`.
+Do **not** rerun `configure_pi` or regenerate credentials for a
+port correction.
+
+### Repeated private WSS disconnects with zero UART frames
+
+The old relay used `asyncio.wait_for(ws.receive(), timeout=12)`,
+unconditionally closing an otherwise authenticated idle device
+connection after 12 seconds without MAVLink application frames. The
+relay now accepts an idle device WebSocket indefinitely and relies on
+WebSocket protocol-level ping/pong and disconnect events to detect a
+dead peer. This is deliberately separate from the physical-UART fix.
+
+On Oracle, for a code-only update when the VM has a clean checkout
+and the existing relay configuration is already healthy:
+
+```bash
+sudo systemctl stop vihanga-relay.service
+sudo git -C /opt/vihanga/source pull --ff-only
+sudo systemctl start vihanga-relay.service
+sudo systemctl status vihanga-relay.service --no-pager
+```
+
+Keep Tailscale Serve `:8443` and the legacy `:443` mappings in
+place; this fix needs **no token/password rotation** and no change
+to the Pi's device token. The device will reconnect automatically.
