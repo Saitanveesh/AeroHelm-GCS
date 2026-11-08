@@ -19,7 +19,7 @@ from services.vihanga_link.relay import envelope
 
 IMPORTANT = {0: "HEARTBEAT", 1: "SYS_STATUS", 22: "PARAM_VALUE",
              24: "GPS_RAW_INT", 30: "ATTITUDE", 33: "POSITION",
-             74: "VFR_HUD", 147: "BATTERY_STATUS"}
+             74: "VFR_HUD", 77: "COMMAND_ACK", 147: "BATTERY_STATUS"}
 
 
 async def inspect(base: str, vehicle: str, operator: str, seconds: float) -> None:
