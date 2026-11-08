@@ -117,6 +117,10 @@ The private cloud request channel accepts only `link_ping` and a restricted `dis
 
 For the full acceptance matrix and release boundaries, see [Vihanga project status](../../docs/AEROHELM_STATUS.md).
 
+## Non-actuating pilot-to-Pi control transport test
+
+The separate [shadow transport probe](../../docs/VIHANGA_CONTROL_TRANSPORT_SHADOW.md) verifies a strictly bounded pilot-authenticated Oracle-to-Pi-to-Oracle receipt, with no UART action, flight-controller ACK or native GCS command tunnel. It is simulator-role-only and default-disabled; it does not enable cloud flight.
+
 ## Flight-control source development
 
 The separate [supervised flight-control design](../../docs/VIHANGA_SUPERVISED_FLIGHT_CONTROL.md)
