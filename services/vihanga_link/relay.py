@@ -186,6 +186,11 @@ class LinkState:
     parameter_expected: int = 0
     parameter_source: int = -1
     parameter_seen_at: float = -1.0
+    last_gps_raw_at: float = -1.0
+    gps_fix_type: int | None = None
+    gps_satellites_visible: int | None = None
+    last_valid_position_at: float = -1.0
+    last_valid_home_at: float = -1.0
 
     def clear_session(self) -> None:
         self.counters.clear()
@@ -212,6 +217,11 @@ class LinkState:
         self.parameter_expected = 0
         self.parameter_source = -1
         self.parameter_seen_at = -1.0
+        self.last_gps_raw_at = -1.0
+        self.gps_fix_type = None
+        self.gps_satellites_visible = None
+        self.last_valid_position_at = -1.0
+        self.last_valid_home_at = -1.0
         # No stale session packets may survive a device reconnection.
         for queue in self.viewers:
             while not queue.empty():
@@ -245,6 +255,37 @@ class LinkState:
         if msg_id == 30:
             self.last_attitude = now
             self.recent_attitudes.append(now)
+        # Report valid physical GPS and HOME_POSITION separately.
+        # A MAVLink zero-coordinate placeholder is not an aircraft fix.
+        if msg_id == 24:
+            header = 6 if packet[0] == 0xFE else 10
+            if packet[1] >= 30:
+                self.gps_fix_type = int(packet[header + 28])
+                self.gps_satellites_visible = int(packet[header + 29])
+                self.last_gps_raw_at = now
+            else:
+                self.gps_fix_type = None
+                self.last_gps_raw_at = -1.0
+        if msg_id == 33:
+            header = 6 if packet[0] == 0xFE else 10
+            if packet[1] >= 28:
+                lat, lon = struct.unpack_from("<ii", packet, header + 4)
+                valid = (-900000000 <= lat <= 900000000 and
+                         -1800000000 <= lon <= 1800000000 and
+                         not (lat == 0 and lon == 0))
+                self.last_valid_position_at = now if valid else -1.0
+            else:
+                self.last_valid_position_at = -1.0
+        if msg_id == 242:
+            header = 6 if packet[0] == 0xFE else 10
+            if packet[1] >= 12:
+                lat, lon = struct.unpack_from("<ii", packet, header)
+                valid = (-900000000 <= lat <= 900000000 and
+                         -1800000000 <= lon <= 1800000000 and
+                         not (lat == 0 and lon == 0))
+                self.last_valid_home_at = now if valid else -1.0
+            else:
+                self.last_valid_home_at = -1.0
         if msg_id == 77 and packet[1] >= 3:
             # A real FC-generated COMMAND_ACK for the volatile stream probe.
             # This is not interchangeable with the Pi diagnostic JSON ACK.
@@ -465,6 +506,22 @@ class LinkState:
             "gcs_viewers": len(self.viewers),
             "epoch": self.epoch,
             "parameter_snapshot": self.parameter_status(),
+            "position_quality": {
+                "gps_fix_type": self.gps_fix_type
+                    if self.fresh(self.last_gps_raw_at) else None,
+                "satellites_visible": self.gps_satellites_visible
+                    if self.fresh(self.last_gps_raw_at) else None,
+                "gps_3d_fix": (self.fresh(self.last_gps_raw_at) and
+                               self.gps_fix_type is not None and
+                               3 <= self.gps_fix_type <= 6),
+                "map_position_valid": (
+                    self.fresh(self.last_gps_raw_at) and
+                    self.gps_fix_type is not None and
+                    3 <= self.gps_fix_type <= 6 and
+                    self.fresh(self.last_valid_position_at)),
+                "home_position_verified": self.fresh(self.last_valid_home_at),
+                "position_source": "PHYSICAL_MAVLINK_ONLY",
+            },
             "flight_control_enabled": False,
             "transport_ping": {
                 "status": self.ping_status,
