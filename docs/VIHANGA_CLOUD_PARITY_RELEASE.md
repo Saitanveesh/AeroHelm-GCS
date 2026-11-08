@@ -51,7 +51,7 @@ To enable telemetry-only recovery without authorizing a parameter capture, set o
 ## Windows build / test
 
 ```powershell
-cd C:\Users\saita\AeroHelm-GCS
+cd C:\path\to\Vihanga-GCS
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-AeroHelmWindowsPages.ps1
 dotnet run --project .\Tools\AeroHelmMavlinkBridgeTests\AeroHelmMavlinkBridgeTests.csproj -c Release
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Repair-AeroHelmWindows.ps1 -Apply
