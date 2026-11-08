@@ -301,6 +301,7 @@ class Publisher:
             "reported_at_unix_ms": int(time.time() * 1000),
             "observation": health["fields"],
             "missing_fc_messages": health["stale_or_missing"],
+            "local_hardware_interlock_active": self._local_safety.status()["hardware_gate_active"],
             "physical_control_qualified": False,
         })
 
