@@ -13,6 +13,7 @@ from collections import Counter
 from dataclasses import dataclass
 import fcntl
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -128,8 +129,7 @@ def verify_remote_oracle_instance(cfg: Config, fetch=None) -> bool:
     if (not isinstance(binding, dict) or binding.get("configured") is not True or
         binding.get("verified") is not True or
         not isinstance(binding.get("instance_sha256"), str) or
-        not hashlib.sha256(binding["instance_sha256"].encode()).digest() ==
-            hashlib.sha256(expected.encode()).digest()):
+        not hmac.compare_digest(binding["instance_sha256"], expected)):
         raise RuntimeError("Private relay is not bound to the expected Oracle instance")
     return True
 
@@ -395,7 +395,7 @@ class Publisher:
         try:
             while not self.stop.is_set():
                 try:
-                    verify_remote_oracle_instance(self.cfg)
+                    await asyncio.to_thread(verify_remote_oracle_instance, self.cfg)
                     # After an outage, do not replay buffered old telemetry.
                     while not self.queue.empty():
                         self.queue.get_nowait()
