@@ -380,10 +380,29 @@ Require-Text $nativePreview 'SIMULATION_PREVIEW_ONLY' 'Preview UI must reject ha
 if ($nativePreview.Contains('MAV_CMD') -or $nativePreview.Contains('ws.SendAsync(')) {
     throw 'Native cloud autonomy preview may not forward MAVLink commands.'
 }
+# A private WSS receiver is necessary for the fixed link_ping and
+# disarmed_stream_probe diagnostics. Reject physical command paths rather than
+# blanket-banning ws.recv(), which falsely fails on the reviewed allowlist.
 if ($privateRelay.Contains('/ws/mavlink/control/') -or
-    $privatePi.Contains('ws.recv(') -or
-    $privatePi.Contains('ws.send_bytes(')) {
+    $privatePi.Contains('ws.send_bytes(') -or
+    $privatePi.Contains('self.port.write(') -or
+    $privatePi.Contains('self.port.mav.send(') -or
+    $privatePi.Contains('self.port.mav.set_mode_send(') -or
+    $privatePi.Contains('self.port.mav.mission_item_int_send(')) {
     throw 'Telemetry-only development service may not relay cloud flight commands.'
+}
+Require-Text $privatePi 'raw = await ws.recv()' 'Private diagnostic receiver must be explicit.'
+Require-Text $privatePi 'if not isinstance(raw, str) or len(raw) > 300:' 'Private diagnostic receiver must reject binary MAVLink and oversized requests.'
+Require-Text $privatePi 'message = json.loads(raw)' 'Private diagnostic receiver must accept typed JSON only.'
+Require-Text $privatePi 'pong = self.transport_ping_reply(message)' 'Only the fixed diagnostic ping may be answered without FC access.'
+Require-Text $privatePi 'ack = self.queue_disarmed_telemetry_request(message)' 'Private FC request must use the disarmed telemetry-only whitelist.'
+Require-Text $privatePi 'message.get("type") != "link_ping"' 'Private diagnostic ping must require an exact intent type.'
+Require-Text $privatePi 'message.get("type") != "disarmed_stream_probe"' 'Cloud may request only the fixed disarmed telemetry probe.'
+Require-Text $privatePi 'if not cfg.stream_probe or not is_disarmed_autopilot_heartbeat(' 'FC telemetry probe must have a physical disarmed heartbeat and explicit opt-in.'
+Require-Text $privatePi 'MAV_CMD_SET_MESSAGE_INTERVAL' 'Physical UART must use only the bounded volatile telemetry interval command.'
+if ([regex]::Matches($privatePi, '\.mav\.command_long_send\s*\(').Count -ne 1 -or
+    [regex]::Matches($privatePi, 'ws\.recv\s*\(').Count -ne 1) {
+    throw 'Private Pi UART or cloud receive command surface expanded; audit command whitelist before shipping.'
 }
 Require-Text $observedAttitude 'AeroHelmReceiveOnlyBridge.PrivateWebSocketUri()' 'Cloud attitude preview must use authenticated MAVLink WSS rather than an undeployed REST endpoint.'
 Require-Text $observedAttitude 'ws.Options.SetRequestHeader("Authorization"' 'Attitude WSS must use the existing operator session.'
