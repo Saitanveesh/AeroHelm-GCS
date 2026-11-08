@@ -286,7 +286,7 @@ class Publisher:
         now = time.monotonic()
         if (self._physical_epoch < 1 or
             self._last_safety_report_at >= 0 and
-            now - self._last_safety_report_at < 1.0):
+            now - self._last_safety_report_at < 0.25):
             return
         self._last_safety_report_at = now
         self._physical_seq += 1
