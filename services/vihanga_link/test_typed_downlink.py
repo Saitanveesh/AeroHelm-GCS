@@ -153,3 +153,57 @@ def test_authenticated_pi_safety_report_must_be_typed_current_monotonic_and_epoc
         {**msg, "sequence": 2, "reported_at_unix_ms": 0}))
     state.control_epoch = 5
     assert not control._physical_evidence().rc_link_healthy
+
+def test_oracle_physical_release_flag_blocks_arm_even_with_fake_fully_healthy_test_observation():
+    """Deliberate red-team injection: no release, no command on Pi transport."""
+    from dataclasses import replace
+    from fastapi.testclient import TestClient
+    from services.vihanga_link.relay import create_app
+    from services.vihanga_link.test_control_api import (
+        make_configs, authenticated_roles, heartbeat, wait_heartbeat,
+    )
+    relay_cfg, control_cfg, device_token = make_configs()
+    control_cfg = replace(control_cfg, typed_downlink=True,
+                          physical_release_accepted=False)
+    with TestClient(create_app(relay_cfg, control_cfg)) as client:
+        pilot, approver = authenticated_roles(client)
+        base = "/api/v1/vehicles/" + VEHICLE + "/control"
+        with client.websocket_connect(
+                "/ws/mavlink/device/" + VEHICLE,
+                headers={"Authorization": "Bearer " + device_token}) as pi:
+            welcome = pi.receive_json()
+            assert welcome["type"] == "control_session_epoch"
+            pi.send_bytes(heartbeat())
+            wait_heartbeat(client)
+            approval = client.post(
+                base + "/approvals",
+                headers={"Authorization": "Bearer " + approver},
+                json={"plan_sha256": PLAN},
+            ).json()
+            lease = client.post(
+                base + "/lease",
+                headers={"Authorization": "Bearer " + pilot},
+                json={"plan_sha256": PLAN, "approval_id": approval["approval_id"]},
+            ).json()
+            client.app.state.control.evidence_provider = valid_evidence
+            reply = client.post(
+                base + "/commands",
+                headers={"Authorization": "Bearer " + pilot,
+                         "X-Control-Lease": lease["lease_token"]},
+                json={"request_id": "e"*32, "sequence": 1, "action": "ARM",
+                      "params": {}, "plan_sha256": PLAN},
+            )
+            assert reply.status_code == 409
+            assert "release" in reply.json()["detail"].lower()
+            assert client.get("/api/v1/flight-control/status").json()[
+                "physical_command_dispatch"] is False
+            assert client.app.state.control.broker.audit[-1]["event"] == "LEASE_GRANTED"
+
+
+def test_release_config_cannot_enable_without_independent_roles_and_typed_path():
+    import pytest
+    from services.vihanga_link.control_api import ControlSettings
+    with pytest.raises(ValueError):
+        ControlSettings(physical_release_accepted=True).validate()
+    with pytest.raises(ValueError):
+        ControlSettings(enabled=True, physical_release_accepted=True).validate()
