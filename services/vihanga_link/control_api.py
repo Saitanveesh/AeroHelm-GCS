@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import hmac
 import os
 import re
+import secrets
 import time
 from typing import Any, Callable
 
@@ -66,6 +67,7 @@ class RoleLogin(BaseModel):
 
 class LeaseRequest(BaseModel):
     plan_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    approval_id: str = Field(pattern=r"^[a-f0-9]{32}$")
 
 
 class FlightRequest(BaseModel):
@@ -87,6 +89,9 @@ class ControlContext:
         self.broker = FlightControlBroker(clock=clock)
         self.password_hasher = PasswordHasher()
         self.login_attempts: deque[float] = deque(maxlen=20)
+        # Single-use, FC-epoch- and plan-revision-bound consent minted by a
+        # separately authenticated safety approver.
+        self.approvals: dict[str, tuple[str, str, int, float]] = {}
         self.evidence_provider: Callable[[], ObservedVehicle] = self._physical_evidence
 
     def _physical_evidence(self) -> ObservedVehicle:
@@ -188,17 +193,47 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
         return {"access_token": context.jwt_for(body.role), "token_type": "bearer",
                 "role": body.role, "expires_in": 120, "physical_dispatch": False}
 
+    @app.post("/api/v1/vehicles/{vehicle}/control/approvals")
+    async def approve_plan(
+        vehicle: str, body: LeaseRequest,
+        authorization: str = Header(default=""),
+    ) -> dict:
+        assert_vehicle(vehicle)
+        approver = context.identity(token_from_auth(authorization), "approver")
+        if not state.connected or not state.fresh(state.last_heartbeat):
+            raise HTTPException(status_code=409, detail="Fresh physical FC evidence required")
+        now = context.clock()
+        context.approvals = {
+            nonce: entry for nonce, entry in context.approvals.items()
+            if now < entry[3] and entry[2] == state.epoch
+        }
+        if len(context.approvals) >= 8:
+            raise HTTPException(status_code=429, detail="Outstanding approvals limit")
+        nonce = secrets.token_hex(16)
+        context.approvals[nonce] = (
+            approver, body.plan_sha256, state.epoch, now + 30.0)
+        return {"approval_id": nonce, "plan_sha256": body.plan_sha256,
+                "expires_in": 30, "vehicle_id": vehicle,
+                "control_epoch": state.epoch, "physical_dispatch": False}
+
     @app.post("/api/v1/vehicles/{vehicle}/control/lease")
     async def control_lease(
         vehicle: str, body: LeaseRequest,
         authorization: str = Header(default=""),
-        x_approver_authorization: str = Header(default=""),
     ) -> dict:
         assert_vehicle(vehicle)
         pilot = context.identity(token_from_auth(authorization), "pilot")
-        approver = context.identity(token_from_auth(x_approver_authorization), "approver")
         if not state.connected or not state.fresh(state.last_heartbeat):
             raise HTTPException(status_code=409, detail="Fresh physical FC evidence required")
+        record = context.approvals.get(body.approval_id)
+        if (not record or record[1] != body.plan_sha256 or
+            record[2] != state.epoch or context.clock() >= record[3]):
+            raise HTTPException(status_code=403, detail="Missing, stale or wrong-revision safety approval")
+        approver = record[0]
+        if pilot == approver:
+            raise HTTPException(status_code=403, detail="Independent approval required")
+        # Approval is single-use even if the lease attempt fails.
+        del context.approvals[body.approval_id]
         try:
             return context.broker.acquire(
                 vehicle_id=vehicle, system_id=state.fc_system_id,
@@ -243,6 +278,7 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
         assert_vehicle(vehicle)
         context.identity(token_from_auth(authorization), "pilot")
         context.broker.revoke("PILOT_RELEASE")
+        context.approvals.clear()
         return {"status": "REVOKED", "physical_command_dispatch": False}
 
     return context
