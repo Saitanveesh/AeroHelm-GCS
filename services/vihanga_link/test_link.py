@@ -989,3 +989,44 @@ def test_ardupilot_integer_parameters_decode_only_with_real_fc_autopilot(credent
                 headers=headers).json()["values"]["FS_GCS_ENABLE"]
             assert after["float32"] == 5.0
             assert after["encoding"] == "ARDUPILOT_NUMERIC_FLOAT"
+
+
+def test_flight_controller_restart_invalidates_old_parameter_and_gps_evidence(credentials):
+    cfg, token = credentials
+    codec = mavutil.mavlink.MAVLink(None, srcSystem=1, srcComponent=1)
+    position = mavutil.mavlink.MAVLink_global_position_int_message(
+        123, 125000000, 775000000, 180000, 5000, 1, 2, 3, 18000).pack(codec)
+    gps = mavutil.mavlink.MAVLink_gps_raw_int_message(
+        123456, 3, 125000000, 775000000, 180000,
+        100, 100, 10, 180, 10).pack(codec)
+    param = frame(22, struct.pack("<fHH", 3.5, 1, 0) +
+                  b"TEST_PARAM".ljust(16, b"\0") + bytes((9,)))
+    app = create_app(cfg)
+    with TestClient(app) as client:
+        with client.websocket_connect(
+                "/ws/mavlink/device/AH-HW-001",
+                headers={"Authorization": "Bearer " + token}) as pi:
+            pi.send_bytes(frame(0, bytes(9)))
+            pi.send_bytes(gps)
+            pi.send_bytes(position)
+            pi.send_bytes(param)
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["parameter_snapshot"]["verified_complete"] and h[
+                        "position_quality"]["map_position_valid"]:
+                    break
+                time.sleep(0.01)
+            assert h["parameter_snapshot"]["verified_complete"]
+            assert h["position_quality"]["map_position_valid"]
+            app.state.link.last_heartbeat = time.monotonic() - 5.0
+            pi.send_bytes(frame(0, bytes(9)))
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["fc_restarts_observed"]:
+                    break
+                time.sleep(0.01)
+            assert h["fc_restarts_observed"] == 1
+            assert h["parameter_snapshot"]["status"] == "UNAVAILABLE"
+            assert h["position_quality"]["gps_3d_fix"] is False
+            assert h["position_quality"]["map_position_valid"] is False
+            assert h["position_quality"]["home_position_verified"] is False
