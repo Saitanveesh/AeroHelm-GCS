@@ -250,6 +250,7 @@ class Publisher:
         self._remote_probe_pending = threading.Event()
         self.port = None
         self._uart_thread = None
+        self._uart_failure: str | None = None
         self._loop = None
         self._lock_fd: int | None = None
 
@@ -429,7 +430,11 @@ class Publisher:
                 if raw and len(raw) <= MAX_FRAME and raw[0] in (0xFE, 0xFD):
                     self._loop.call_soon_threadsafe(self._offer, raw)
             except Exception as ex:
-                LOG.error("UART reader stopped: %s", type(ex).__name__)
+                # Preserve the root cause for the systemd restart decision.
+                # An intentional SIGTERM must not be mistaken for UART failure.
+                if not self.stop.is_set():
+                    self._uart_failure = f"{type(ex).__name__}: {ex}"
+                    LOG.error("Physical UART reader failed: %s", self._uart_failure)
                 self.stop.set()
                 return
 
@@ -506,6 +511,8 @@ class Publisher:
                 "UART publisher stopped; observed %s; sent %s; queue drops %d; foreign SYSID drops %d",
                 dict(self.counts), dict(self.sent_counts), self.dropped,
                 self.foreign_system_dropped)
+        if self._uart_failure:
+            raise RuntimeError("Physical UART reader failed: " + self._uart_failure)
 
     async def _publish_over_ws(self, ws, request_reader) -> None:
         """Publish real frames; detect loss of the independent intent reader."""
@@ -516,8 +523,12 @@ class Publisher:
                 collected_at, frame = await asyncio.wait_for(
                     self.queue.get(), timeout=2.0)
             except asyncio.TimeoutError:
+                if self.stop.is_set():
+                    # SIGTERM/SIGINT closes the UART thread intentionally.
+                    # A genuine reader failure propagates after cleanup.
+                    return
                 if self._uart_thread and not self._uart_thread.is_alive():
-                    raise RuntimeError("UART reader terminated")
+                    raise RuntimeError("UART reader unexpectedly exited")
                 continue
             if time.monotonic() - collected_at <= 1.5:
                 await ws.send(frame)

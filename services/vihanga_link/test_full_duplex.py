@@ -135,3 +135,35 @@ def test_readonly_probe_rejects_active_vihanga_service(monkeypatch):
     monkeypatch.setattr(diag.subprocess, "run", fake_run)
     with pytest.raises(RuntimeError, match="Stop vihanga-pi"):
         diag.ensure_exclusive("/dev/null")
+
+
+def test_pi_stop_during_idle_uart_wait_exits_cleanly(monkeypatch, tmp_path):
+    """A deliberate systemd stop must not be reported as UART reader failure."""
+    import asyncio
+    from services.vihanga_link import pi_agent as module
+
+    cfg = module.Config(
+        "/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+        "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
+        tmp_path / "token", False, "pi-link.ts.net",
+    )
+    pub = module.Publisher(cfg)
+
+    class OldThread:
+        def is_alive(self):
+            return False
+
+    pub._uart_thread = OldThread()
+
+    class Reader:
+        def done(self):
+            return False
+
+    async def fake_timeout(awaitable, *, timeout):
+        awaitable.close()
+        pub.stop.set()
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr(module.asyncio, "wait_for", fake_timeout)
+    asyncio.run(pub._publish_over_ws(None, Reader()))
+    assert pub._uart_failure is None
