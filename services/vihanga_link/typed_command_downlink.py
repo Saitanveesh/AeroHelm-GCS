@@ -115,6 +115,22 @@ class PiTypedCommandEngine:
             self._needs_abort = True
             self._drain()
 
+    def bind_session_epoch(self, epoch: int) -> None:
+        """Pin the lease to an Oracle welcome from the authenticated WSS."""
+        if type(epoch) is not int or not 1 <= epoch < 2**63:
+            return
+        with self._lock:
+            if not self._session_active:
+                return
+            if self._epoch is not None and self._epoch != epoch:
+                # An FC reboot or unexpected epoch change invalidates the
+                # active session; require a fresh authenticated Pi WSS.
+                self._session_active = False
+                self._needs_abort = True
+                self._drain()
+                return
+            self._epoch = epoch
+
     def end_session(self) -> None:
         with self._lock:
             self._session_active = False
@@ -142,9 +158,7 @@ class PiTypedCommandEngine:
         with self._lock:
             if not self._session_active:
                 return None
-            if self._epoch is None:
-                self._epoch = epoch
-            if self._epoch != epoch or intent.request_id in self._seen:
+            if self._epoch is None or self._epoch != epoch or intent.request_id in self._seen:
                 return self._refusal(intent, epoch, "PI_REFUSED_REPLAY_OR_EPOCH")
             if self.commands.full() or (self._adapter is not None and self._adapter.pending):
                 return self._refusal(intent, epoch, "PI_REFUSED_BUSY")
