@@ -28,6 +28,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from .oracle_identity import validate_instance_ocid
 from .control_transport_probe import pi_probe_reply
+from .typed_command_downlink import PiTypedCommandEngine
 
 # pymavlink auto-detects MAVLink2 on 0xFD frames, retaining the
 # correct protocol when issuing local stream requests on MAVLink1 ports.
@@ -37,6 +38,7 @@ import websockets
 LOG = logging.getLogger("vihanga.edge")
 MESSAGE_RATES_HZ = {30: 5, 33: 2, 74: 2, 1: 1, 24: 1, 147: 1}
 MAX_FRAME = 300
+MAX_CONTROL_TEXT = 1024
 MAX_QUEUE = 256
 OBSERVATION_IDS = (0, 30, 33, 74, 24, 1, 147)
 STREAM_PROBE_MAX_ATTEMPTS = 2
@@ -259,6 +261,25 @@ class Publisher:
         self._uart_failure: str | None = None
         self._loop = None
         self._lock_fd: int | None = None
+        self._control_replies: asyncio.Queue[dict] = asyncio.Queue(maxsize=32)
+        self._typed_control = PiTypedCommandEngine(
+            cfg.vehicle_id, cfg.system_id, deliver=self._queue_local_control_receipt)
+
+    def _queue_local_control_receipt(self, message: dict) -> None:
+        """Called only by the UART owner; never send from a serial thread."""
+        if self._loop is None:
+            return
+        def add_reply() -> None:
+            if self._control_replies.full():
+                self._control_replies.get_nowait()
+            self._control_replies.put_nowait(message)
+        self._loop.call_soon_threadsafe(add_reply)
+
+    async def _publish_control_replies(self, ws) -> None:
+        """Separate bounded outbound Pi receipt pump, not a MAVLink sender."""
+        while not self.stop.is_set():
+            reply = await self._control_replies.get()
+            await ws.send(json.dumps(reply, separators=(",", ":")))
 
     def _offer(self, raw: bytes) -> None:
         if self.queue.full():
@@ -348,7 +369,7 @@ class Publisher:
         """Only fixed telemetry intent can be accepted from the private relay."""
         while not self.stop.is_set():
             raw = await ws.recv()
-            if not isinstance(raw, str) or len(raw) > 300:
+            if not isinstance(raw, str) or len(raw) > MAX_CONTROL_TEXT:
                 continue
             try:
                 message = json.loads(raw)
@@ -371,6 +392,12 @@ class Publisher:
             shadow_ack = pi_probe_reply(message, self.cfg.vehicle_id)
             if shadow_ack is not None:
                 await ws.send(json.dumps(shadow_ack, separators=(",", ":")))
+                continue
+            # Only typed ARM/DISARM intents enter the sole-owner UART worker;
+            # this WSS task never calls pymavlink or writes to the Pixhawk.
+            queued = self._typed_control.accept(message)
+            if queued is not None:
+                await ws.send(json.dumps(queued, separators=(",", ":")))
 
     def _read_uart(self) -> None:
         stream_probe_attempts = 0
@@ -409,6 +436,9 @@ class Publisher:
                     previous_uart = self.counts.copy()
                     previous_uplink = self.sent_counts.copy()
                     last_report = now
+                # The UART owner alone can service a pending typed command.
+                # Default local interlock and FC evidence providers deny it.
+                self._typed_control.service_uart(self.port)
                 # One bounded, read-only attempt for missing PARAM_VALUE
                 # indexes. Never retry without a recent disarmed FC heartbeat.
                 if (parameters_requested and parameter_expected > 0 and
@@ -446,6 +476,8 @@ class Publisher:
                     self.foreign_system_dropped += 1
                     continue
                 self.counts[mid] += 1
+                if msg.get_type() == "COMMAND_ACK" and msg.get_srcComponent() == 1:
+                    self._typed_control.observe_uart_ack(msg)
                 if (mid == 22 and msg.get_srcComponent() == 1 and
                         parameters_requested and self.cfg.parameter_snapshot):
                     count = int(msg.param_count)
@@ -601,23 +633,29 @@ class Publisher:
                         self.queue.get_nowait()
                     self._remote_probe_pending.clear()
                     self._param_refresh_pending.clear()
+                    self._typed_control.start_session()
+                    while not self._control_replies.empty():
+                        self._control_replies.get_nowait()
                     async with websockets.connect(
                         self.cfg.url, additional_headers={
                             "Authorization": "Bearer " + token
-                        }, max_size=MAX_FRAME, ping_interval=15,
+                        }, max_size=MAX_CONTROL_TEXT, ping_interval=15,
                         ping_timeout=10, open_timeout=12) as ws:
                         backoff = 1
                         LOG.info("Private device WSS connected; UART remains sole owned")
                         request_reader = asyncio.create_task(self._receive_private_requests(ws))
+                        receipt_writer = asyncio.create_task(self._publish_control_replies(ws))
                         try:
-                            await self._publish_over_ws(ws, request_reader)
+                            await self._publish_over_ws(ws, request_reader, receipt_writer)
                         finally:
                             # An interrupted WSS session must not leave an
                             # unexecuted cloud request pending on physical UART.
                             self._remote_probe_pending.clear()
                             self._param_refresh_pending.clear()
+                            self._typed_control.end_session()
                             request_reader.cancel()
-                            await asyncio.gather(request_reader, return_exceptions=True)
+                            receipt_writer.cancel()
+                            await asyncio.gather(request_reader, receipt_writer, return_exceptions=True)
                 except (OSError, websockets.WebSocketException, TimeoutError) as ex:
                     LOG.warning("Private WSS disconnected (%s); retrying", type(ex).__name__)
                 if not self.stop.is_set():
@@ -640,11 +678,11 @@ class Publisher:
         if self._uart_failure:
             raise RuntimeError("Physical UART reader failed: " + self._uart_failure)
 
-    async def _publish_over_ws(self, ws, request_reader) -> None:
+    async def _publish_over_ws(self, ws, request_reader, receipt_writer) -> None:
         """Publish real frames; detect loss of the independent intent reader."""
         while not self.stop.is_set():
-            if request_reader.done():
-                raise OSError("Private telemetry request channel disconnected")
+            if request_reader.done() or receipt_writer.done():
+                raise OSError("Private authenticated control/telemetry channel disconnected")
             try:
                 collected_at, frame = await asyncio.wait_for(
                     self.queue.get(), timeout=2.0)
