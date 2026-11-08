@@ -159,6 +159,33 @@ def valid_uart_owner_probe(port: str) -> None:
     # The new process also holds a cooperative flock to stop duplicate agents.
 
 
+def require_clean_physical_uart(device: str) -> None:
+    """Reject accidental MAVLink writes to the Linux login/debug console."""
+    physical = os.path.realpath(device)
+    serial0 = os.path.realpath("/dev/serial0")
+    try:
+        arguments = Path("/proc/cmdline").read_text(encoding="utf-8").split()
+    except OSError as ex:
+        raise RuntimeError("Cannot check Linux kernel serial console configuration") from ex
+    if "systemd.debug_shell=1" in arguments:
+        raise RuntimeError("Temporary passwordless systemd debug root shell still enabled")
+    for entry in arguments:
+        if not entry.startswith("console="):
+            continue
+        selected = entry.partition("=")[2].split(",", 1)[0]
+        if (selected == Path(physical).name or
+                selected == "serial0" and serial0 == physical):
+            raise RuntimeError("Configured Linux kernel console conflicts with FC UART")
+    systemctl = shutil.which("systemctl")
+    if systemctl is not None:
+        result = subprocess.run(
+            [systemctl, "is-active", "--quiet",
+             "serial-getty@" + Path(physical).name + ".service"],
+            check=False, timeout=4)
+        if result.returncode == 0:
+            raise RuntimeError("Linux serial-getty is active on selected FC UART")
+
+
 def is_disarmed_autopilot_heartbeat(message, sysid: int) -> bool:
     if message.get_type() != "HEARTBEAT":
         return False
@@ -407,6 +434,7 @@ class Publisher:
                 return
 
     def open_uart(self) -> None:
+        require_clean_physical_uart(self.cfg.device)
         # Cooperative lock closes the fuser/open race between two instances.
         name = hashlib.sha256(os.path.realpath(self.cfg.device).encode()).hexdigest()[:20]
         lock_path = os.path.join(tempfile.gettempdir(), "vihanga-uart-" + name + ".lock")
