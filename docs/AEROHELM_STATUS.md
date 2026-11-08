@@ -16,7 +16,7 @@ The tested configuration has one Pixhawk, a Raspberry Pi 5, an Oracle Cloud VM a
 | Private Pi–Oracle transport | Authenticated WebSocket over Tailscale HTTPS :8443 | Oracle reported connected device and valid real MAVLink frames | Longer outage, loss and reconnection soak tests |
 | Cloud-to-Pi diagnostic channel | Fixed `link_ping` / `link_pong` intent | 286 ms round trip observed in operator test | Long-run RTT/packet-loss distribution |
 | Physical stream-rate negotiation | Opt-in, disarmed-only `MAV_CMD_SET_MESSAGE_INTERVAL` | Six FC `COMMAND_ACK` responses with result 0; ATTITUDE ~5 Hz, position/VFR_HUD ~2 Hz | Reliable rates after FC reboot; policy for deployment |
-| Native Windows telemetry display | Verified GCS build and native MAVLink bridge, read-only | Operator screenshot showed altitude, mode, yaw, vertical speed and other Quick values | Live physical roll/pitch tilt, stale-display and map/GPS test |
+| Native Windows telemetry display | Native MAVLink viewer and Mission Planner integration source | Operator screenshot showed altitude, mode, yaw, vertical speed and other Quick values | Confirm current EXE/DLL manifest hashes, physical roll/pitch tilt, stale-display and map/GPS behavior |
 | Operator authentication | Dedicated relay login, per-device token, Oracle instance identity pinning | Oracle health and read-only validator passed | Rotation, privilege, expiry and recovery drills |
 | Independent local pilot backup | Mission Planner's USB/radio path is retained | Source exists; physical switchover not demonstrated here | Tested direct link after cloud disconnect |
 | Read-only parameter snapshot | Source path exists | No complete parameter snapshot shown | Controlled disarmed acquisition and completeness proof |
