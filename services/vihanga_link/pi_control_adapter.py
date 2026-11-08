@@ -40,6 +40,12 @@ class PiControlSafety:
     firmware_mapping_verified: bool = False
 
     def require(self) -> None:
+        # A string, integer or missing GPIO input cannot be promoted to True.
+        if not all(type(v) is bool for v in (
+                self.hardware_interlock_active, self.local_pilot_present,
+                self.independent_rc_available, self.adapter_authorized,
+                self.firmware_mapping_verified)):
+            raise ControlDenied("Invalid typed physical safety input")
         if not (self.hardware_interlock_active and self.local_pilot_present and
                 self.independent_rc_available and self.adapter_authorized):
             raise ControlDenied("Physical on-site interlock, independent RC and Pi authority required")
