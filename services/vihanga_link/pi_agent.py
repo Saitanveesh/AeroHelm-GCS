@@ -251,6 +251,8 @@ class Publisher:
         self._remote_probe_count = 0
         self._remote_probe_requested_at = -1.0
         self._remote_probe_pending = threading.Event()
+        self._param_refresh_pending = threading.Event()
+        self._param_refresh_count = 0
         self.port = None
         self._uart_thread = None
         self._uart_failure: str | None = None
@@ -300,6 +302,31 @@ class Publisher:
                 "status": status, "fc_stream_confirmed": False,
                 "flight_control_enabled": False}
 
+    def queue_disarmed_parameter_request(self, message) -> dict | None:
+        """Fixed read-only PARAM_REQUEST_LIST intent; no arbitrary FC writes."""
+        if not isinstance(message, dict) or message.get("type") != "disarmed_param_snapshot":
+            return None
+        if message.get("vehicle_id") != self.cfg.vehicle_id:
+            return None
+        request_id = message.get("request_id")
+        if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{32}", request_id):
+            return None
+        with self._state_lock:
+            if not self.cfg.parameter_snapshot:
+                status = "REFUSED_DISABLED"
+            elif (self._seen_armed or self._last_disarmed_heartbeat < 0 or
+                  time.monotonic() - self._last_disarmed_heartbeat > 3.0):
+                status = "REFUSED_DISARM_REQUIRED"
+            elif self._param_refresh_pending.is_set() or self._param_refresh_count >= 1:
+                status = "REFUSED_RATE_LIMIT"
+            else:
+                self._param_refresh_count += 1
+                self._param_refresh_pending.set()
+                status = "QUEUED"
+        return {"type": "disarmed_param_snapshot_ack", "request_id": request_id,
+                "status": status, "fc_parameters_complete": False,
+                "flight_control_enabled": False}
+
     def transport_ping_reply(self, message) -> dict | None:
         """Reply to a matched private Pi diagnostic, with no UART activity."""
         if not isinstance(message, dict) or message.get("type") != "link_ping":
@@ -333,6 +360,10 @@ class Publisher:
             ack = self.queue_disarmed_telemetry_request(message)
             if ack is not None:
                 await ws.send(json.dumps(ack, separators=(",", ":")))
+                continue
+            param_ack = self.queue_disarmed_parameter_request(message)
+            if param_ack is not None:
+                await ws.send(json.dumps(param_ack, separators=(",", ":")))
 
     def _read_uart(self) -> None:
         stream_probe_attempts = 0
@@ -442,7 +473,12 @@ class Publisher:
                                 last_probe_at = time.monotonic()
                                 LOG.info("Disarmed local stream probe attempt %d/%d",
                                          stream_probe_attempts, STREAM_PROBE_MAX_ATTEMPTS)
-                        if self.cfg.parameter_snapshot and not parameters_requested:
+                        if self._param_refresh_pending.is_set():
+                            # Revalidate disarm immediately before UART write.
+                            self._param_refresh_pending.clear()
+                            parameters_requested = request_parameter_snapshot_once(
+                                self.port, msg, self.cfg)
+                        elif self.cfg.parameter_snapshot and not parameters_requested:
                             parameters_requested = request_parameter_snapshot_once(
                                 self.port, msg, self.cfg)
                 raw = bytes(msg.get_msgbuf())
@@ -495,6 +531,7 @@ class Publisher:
                     while not self.queue.empty():
                         self.queue.get_nowait()
                     self._remote_probe_pending.clear()
+                    self._param_refresh_pending.clear()
                     async with websockets.connect(
                         self.cfg.url, additional_headers={
                             "Authorization": "Bearer " + token
@@ -509,6 +546,7 @@ class Publisher:
                             # An interrupted WSS session must not leave an
                             # unexecuted cloud request pending on physical UART.
                             self._remote_probe_pending.clear()
+                            self._param_refresh_pending.clear()
                             request_reader.cancel()
                             await asyncio.gather(request_reader, return_exceptions=True)
                 except (OSError, websockets.WebSocketException, TimeoutError) as ex:
