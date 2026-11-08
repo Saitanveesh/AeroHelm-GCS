@@ -24,7 +24,10 @@ def test_parallel_service_does_not_replace_legacy_or_publish_raw_mavlink():
     assert "User=vihanga" in oracle and "User=vihanga" in pi
     assert "PrivateTmp=no" in pi  # shared /tmp UART lock
     assert "Restart=on-failure" in oracle and "Restart=on-failure" in pi
-    assert "aerohelm-api.service" not in vm_install
+    for forbidden in ("systemctl stop aerohelm-api",
+                      "systemctl restart aerohelm-api",
+                      "systemctl disable aerohelm-api"):
+        assert forbidden not in vm_install
     assert "tailscale serve reset" not in vm_install
     assert "systemctl stop" not in pi_install
     assert "--https=8443 http://127.0.0.1:8765" in runbook
