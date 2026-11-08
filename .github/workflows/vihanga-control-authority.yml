@@ -60,3 +60,11 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/Test-AeroHelmWindowsPages.ps1
+      - name: Parse Windows pilot shadow diagnostic (never execute against aircraft)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("./scripts/Test-VihangaControlTransport.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          Write-Output "PASS: Windows shadow probe syntax parsed; no network or aircraft operations performed"
