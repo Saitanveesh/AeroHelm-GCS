@@ -172,6 +172,8 @@ class LinkState:
     last_frame: float = -1.0
     last_heartbeat: float = -1.0
     last_attitude: float = -1.0
+    last_stream_ack_at: float = -1.0
+    last_stream_ack_result: int | None = None
     parameter_frames: dict[int, tuple[float, bytes]] = field(default_factory=dict)
     parameter_expected: int = 0
     parameter_source: int = -1
@@ -189,6 +191,8 @@ class LinkState:
         self.probe_request_id = ""
         self.probe_status = "NOT_REQUESTED"
         self.last_frame = self.last_heartbeat = self.last_attitude = -1.0
+        self.last_stream_ack_at = -1.0
+        self.last_stream_ack_result = None
         self.parameter_frames.clear()
         self.parameter_expected = 0
         self.parameter_source = -1
@@ -226,6 +230,15 @@ class LinkState:
         if msg_id == 30:
             self.last_attitude = now
             self.recent_attitudes.append(now)
+        if msg_id == 77 and packet[1] >= 3:
+            # A real FC-generated COMMAND_ACK for the volatile stream probe.
+            # This is not interchangeable with the Pi diagnostic JSON ACK.
+            header = 6 if packet[0] == 0xFE else 10
+            component = packet[4] if packet[0] == 0xFE else packet[6]
+            command, result = struct.unpack_from("<HB", packet, header)
+            if component == 1 and command == 511:
+                self.last_stream_ack_at = now
+                self.last_stream_ack_result = result
         if msg_id == 22:
             header = 6 if packet[0] == 0xFE else 10
             source = packet[3] if packet[0] == 0xFE else packet[5]
@@ -382,6 +395,15 @@ class LinkState:
             "epoch": self.epoch,
             "parameter_snapshot": self.parameter_status(),
             "flight_control_enabled": False,
+            "physical_stream_rate_command_ack": {
+                "command_id": 511,
+                "observed": self.last_stream_ack_at >= 0,
+                "fresh": self.fresh(self.last_stream_ack_at),
+                "result": self.last_stream_ack_result,
+                "age_ms": age_ms(self.last_stream_ack_at),
+                "accepted": (self.fresh(self.last_stream_ack_at) and
+                             self.last_stream_ack_result == 0),
+            },
             "telemetry_probe": {"request_count": self.probe_request_count,
                                  "status": self.probe_status,
                                  "request_id": self.probe_request_id,
