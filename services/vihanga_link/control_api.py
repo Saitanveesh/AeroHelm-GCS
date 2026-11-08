@@ -26,6 +26,8 @@ from .control_policy import (
     ControlDenied, FlightControlBroker, FlightIntent, ObservedVehicle,
 )
 from .control_transport_probe import ControlTransportProbe, ProbeDenied
+from .typed_command_downlink import outbound_command, PHYSICAL_ACTIONS, PI_RECEIPT_FIELDS, FC_RECEIPT_FIELDS
+import json
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,7 @@ class ControlSettings:
     approver_name: str = ""
     approver_password_hash: str = ""
     jwt_key: str = ""
+    typed_downlink: bool = False
 
     @staticmethod
     def from_env() -> "ControlSettings":
@@ -46,9 +49,12 @@ class ControlSettings:
             approver_name=os.getenv("VIHANGA_CONTROL_APPROVER_NAME", ""),
             approver_password_hash=os.getenv("VIHANGA_CONTROL_APPROVER_PASSWORD_HASH", ""),
             jwt_key=os.getenv("VIHANGA_CONTROL_JWT_KEY", ""),
+            typed_downlink=os.getenv("VIHANGA_TYPED_COMMAND_DOWNLINK", "0") == "1",
         )
 
     def validate(self) -> None:
+        if self.typed_downlink and not self.enabled:
+            raise ValueError("Typed downlink requires independently authenticated control roles")
         if not self.enabled:
             return
         if (not re.fullmatch(r"[A-Za-z0-9_-]{3,64}", self.pilot_name) or
@@ -98,6 +104,52 @@ class ControlContext:
         # separately authenticated safety approver.
         self.approvals: dict[str, tuple[str, str, int, float]] = {}
         self.evidence_provider: Callable[[], ObservedVehicle] = self._physical_evidence
+
+    def observe_pi_command_receipt(self, raw: str) -> bool:
+        """Validate reports from the currently authenticated Pi WSS only.
+
+        A Pi receipt is never a substitute for a real matching FC COMMAND_ACK.
+        Caller must hold the LinkState session lock and confirm the sender.
+        """
+        if not self.settings.typed_downlink or not isinstance(raw, str) or len(raw) > 1024:
+            return False
+        try:
+            msg = json.loads(raw)
+        except (ValueError, TypeError):
+            return False
+        if not isinstance(msg, dict) or msg.get("vehicle_id") != self.vehicle_id:
+            return False
+        if type(msg.get("control_epoch")) is not int or msg["control_epoch"] != self.state.control_epoch:
+            return False
+        request_id = msg.get("request_id")
+        if not isinstance(request_id, str):
+            return False
+        try:
+            prior = self.broker.receipt(request_id)
+            if prior["status"] not in ("SENT_TO_PI", "PI_RECEIVED", "FC_IN_PROGRESS"):
+                return False
+            if msg.get("type") == "typed_control_pi_receipt" and set(msg) == PI_RECEIPT_FIELDS:
+                if msg.get("action") != prior["action"] or msg.get("fc_ack_received") is not False:
+                    return False
+                if msg.get("status") == "PI_UART_SENT_ACK_PENDING" and msg.get("interlock") is True:
+                    self.broker.pi_result(request_id, accepted=True, interlock=True)
+                    return True
+                if (msg.get("status") in ("PI_REFUSED_LOCAL_SAFETY",
+                        "PI_REFUSED_BUSY", "PI_REFUSED_REPLAY_OR_EPOCH") and
+                        msg.get("interlock") is False):
+                    self.broker.pi_result(request_id, accepted=False, interlock=False)
+                    return True
+            if msg.get("type") == "typed_control_fc_receipt" and set(msg) == FC_RECEIPT_FIELDS:
+                if msg.get("fc_ack_received") is not True:
+                    return False
+                self.broker.fc_result(request_id, result=msg.get("result"),
+                    fc_system_id=msg.get("fc_system_id"),
+                    fc_component_id=msg.get("fc_component_id"),
+                    command_id=msg.get("command_id"))
+                return True
+        except (ControlDenied, ValueError, TypeError):
+            return False
+        return False
 
     def _physical_evidence(self) -> ObservedVehicle:
         """Unknown safety inputs stay false, never operator-supplied.
@@ -168,6 +220,8 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
             "mode": "SIMULATOR_AUTHORITY_ONLY" if cfg.enabled else "DISABLED",
             "physical_command_dispatch": False,
             "native_mavlink_command_tunnel": False,
+            "typed_arm_disarm_downlink_configured": cfg.typed_downlink,
+            "hardware_actuation_qualified": False,
             "pilot_to_pi_shadow_probe": bool(cfg.enabled),
             "pilot_role_required": True,
             "independent_approver_required": True,
@@ -280,14 +334,35 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
     ) -> dict:
         assert_vehicle(vehicle)
         context.identity(token_from_auth(authorization), "pilot")
-        # This route has NO send-to-Pi implementation. It can only model
-        # decisions until the out-of-band hardware safety case is accepted.
+        # No raw MAVLink frame or arbitrary GCS command enters this route.
+        # The independent pilot/approver lease and FC-sourced evidence are
+        # required BEFORE even a typed ARM/DISARM downlink can be emitted.
         intent = FlightIntent(vehicle, body.request_id, body.sequence,
                               body.action, body.params, body.plan_sha256, body.ttl_ms)
         try:
-            return context.broker.submit(
-                intent, lease_token=x_control_lease,
-                evidence=context.evidence_provider(), epoch=state.control_epoch)
+            if not cfg.typed_downlink:
+                return context.broker.submit(
+                    intent, lease_token=x_control_lease,
+                    evidence=context.evidence_provider(), epoch=state.control_epoch)
+            if intent.action not in PHYSICAL_ACTIONS:
+                raise ControlDenied("Typed live downlink currently supports ARM/DISARM only")
+            async with state.lock:
+                if (not state.connected or state.device_socket is None or
+                        not state.fresh(state.last_heartbeat)):
+                    raise ControlDenied("Fresh authenticated Pi and FC required")
+                snapshot_epoch = state.control_epoch
+                receipt = context.broker.submit(
+                    intent, lease_token=x_control_lease,
+                    evidence=context.evidence_provider(), epoch=snapshot_epoch)
+                if receipt["status"] != "AUTHORIZED_NOT_DISPATCHED":
+                    return receipt  # Replay returns existing receipt, never re-sends.
+                try:
+                    await state.device_socket.send_json(
+                        outbound_command(intent, vehicle, snapshot_epoch))
+                except (OSError, RuntimeError):
+                    context.broker.revoke("DEVICE_TRANSPORT_FAILED")
+                    raise HTTPException(status_code=503, detail="Command downlink failed; never replay automatically")
+                return context.broker.transport_sent(intent.request_id)
         except ControlDenied as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
