@@ -795,3 +795,157 @@ def test_stream_requests_are_local_disarmed_and_nonpersistent(tmp_path):
     assert param_port.mav.commands == []
     assert request_parameter_snapshot_once(param_port, Heartbeat(), cfg_params)
     assert param_port.mav.commands == [("parameters", 1, 1)]
+
+
+def test_explicit_disarmed_recovery_is_bounded_and_cannot_command_armed_fc(tmp_path):
+    cfg = PiConfig(
+        "/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+        "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
+        tmp_path / "token", False, "pi-link.ts.net",
+        recover_streams=True,
+    )
+    assert stream_probe_due(cfg, seen_armed=False, attitude_seen=False,
+                            attempts=0, seconds_since_last_probe=0)
+    assert not stream_probe_due(cfg, seen_armed=True, attitude_seen=False,
+                                attempts=0, seconds_since_last_probe=0)
+    assert not stream_probe_due(cfg, seen_armed=False, attitude_seen=False,
+                                attempts=2, seconds_since_last_probe=100)
+    port = FakePort()
+    assert not request_streams_once(port, Heartbeat(True), cfg)
+    assert not request_streams_once(port, Heartbeat(sysid=2), cfg)
+    assert port.mav.commands == []
+    assert request_streams_once(port, Heartbeat(), cfg)
+    assert len(port.mav.commands) == 6
+    assert all(cmd[2] == mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL
+               for cmd in port.mav.commands)
+    assert not stream_probe_due(replace(cfg, recover_streams=False),
+                                seen_armed=False, attitude_seen=False,
+                                attempts=0, seconds_since_last_probe=0)
+
+
+def test_private_parameter_readback_is_disarmed_local_only(tmp_path):
+    cfg = PiConfig(
+        "/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+        "wss://pi-link.ts.net/ws/mavlink/device/AH-HW-001",
+        tmp_path / "token", False, "pi-link.ts.net", parameter_snapshot=True,
+    )
+    req = {"type": "disarmed_param_snapshot", "vehicle_id": "AH-HW-001",
+           "request_id": "b" * 32}
+    pub = PiPublisher(cfg)
+    assert pub.queue_disarmed_parameter_request(req)["status"] == "REFUSED_DISARM_REQUIRED"
+    assert pub.queue_disarmed_parameter_request({**req, "type": "PARAM_SET"}) is None
+    assert pub.queue_disarmed_parameter_request({**req, "vehicle_id": "OTHER"}) is None
+    pub._last_disarmed_heartbeat = time.monotonic()
+    assert pub.queue_disarmed_parameter_request(req)["status"] == "QUEUED"
+    assert pub._param_refresh_pending.is_set()
+    assert pub.queue_disarmed_parameter_request(req)["status"] == "REFUSED_RATE_LIMIT"
+    pub._param_refresh_pending.clear()
+    pub._seen_armed = True
+    assert pub.queue_disarmed_parameter_request(req)["status"] == "REFUSED_DISARM_REQUIRED"
+    disabled = PiPublisher(replace(cfg, parameter_snapshot=False))
+    disabled._last_disarmed_heartbeat = time.monotonic()
+    assert disabled.queue_disarmed_parameter_request(req)["status"] == "REFUSED_DISABLED"
+
+
+def test_authenticated_parameter_refresh_has_no_physical_write_surface(credentials):
+    cfg, token = credentials
+    enabled = replace(cfg, allow_disarmed_parameter_requests=True)
+    path = "/api/v1/vehicles/AH-HW-001/parameters/refresh"
+    with TestClient(create_app(enabled)) as client:
+        assert client.post(path).status_code == 401
+        auth = client.post("/api/v1/auth/login", json={
+            "username": "operator", "password": "correct-bench-password",
+        }).json()["access_token"]
+        headers = {"Authorization": "Bearer " + auth}
+        assert client.post(path, headers=headers).status_code == 409
+        assert client.post("/api/v1/vehicles/WRONG/parameters/refresh",
+                           headers=headers).status_code == 404
+        with client.websocket_connect(
+                "/ws/mavlink/device/AH-HW-001",
+                headers={"Authorization": "Bearer " + token}) as pi:
+            assert client.post(path, headers=headers).status_code == 409
+            pi.send_bytes(frame(0, bytes(9)))
+            for _ in range(100):
+                if client.get("/api/v1/mavlink/health").json()["native_hud_heartbeat_ready"]:
+                    break
+                time.sleep(0.01)
+            result = client.post(path, headers=headers)
+            assert result.status_code == 200
+            details = result.json()
+            assert details["status"] == "QUEUED_ON_PRIVATE_LINK"
+            assert details["fc_parameters_complete"] is False
+            assert details["flight_control_enabled"] is False
+            to_pi = pi.receive_json()
+            assert to_pi == {
+                "type": "disarmed_param_snapshot",
+                "vehicle_id": "AH-HW-001",
+                "request_id": details["request_id"],
+            }
+            assert client.post(path, headers=headers).status_code == 429
+            pi.send_json({
+                "type": "disarmed_param_snapshot_ack",
+                "request_id": details["request_id"],
+                "status": "QUEUED",
+                "fc_parameters_complete": False,
+                "flight_control_enabled": False,
+            })
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["parameter_capture"]["status"] == "QUEUED":
+                    break
+                time.sleep(0.01)
+            assert h["parameter_capture"]["status"] == "QUEUED"
+            assert h["parameter_snapshot"]["status"] == "UNAVAILABLE"
+            assert h["flight_control_enabled"] is False
+        assert client.get("/api/v1/mavlink/health").json()[
+            "parameter_capture"]["status"] == "NOT_REQUESTED"
+    with TestClient(create_app(cfg)) as client:
+        auth = client.post("/api/v1/auth/login", json={
+            "username": "operator", "password": "correct-bench-password",
+        }).json()["access_token"]
+        assert client.post(path, headers={
+            "Authorization": "Bearer " + auth}).status_code == 403
+
+
+def test_position_status_needs_actual_3d_gps_fix_and_nonzero_position(credentials):
+    cfg, token = credentials
+    codec = mavutil.mavlink.MAVLink(None, srcSystem=1, srcComponent=1)
+    def gps(fix):
+        return mavutil.mavlink.MAVLink_gps_raw_int_message(
+            123456, fix, 125000000, 775000000, 180000,
+            100, 100, 10, 180, 10).pack(codec)
+    def pos(lat, lon):
+        return mavutil.mavlink.MAVLink_global_position_int_message(
+            123, lat, lon, 180000, 5000, 1, 2, 3, 18000).pack(codec)
+    with TestClient(create_app(cfg)) as client:
+        with client.websocket_connect(
+                "/ws/mavlink/device/AH-HW-001",
+                headers={"Authorization": "Bearer " + token}) as pi:
+            pi.send_bytes(pos(125000000, 775000000))
+            pi.send_bytes(gps(2))
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["message_ids"].get("24"):
+                    break
+                time.sleep(0.01)
+            q = h["position_quality"]
+            assert q["gps_3d_fix"] is False
+            assert q["map_position_valid"] is False
+            assert q["home_position_verified"] is False
+            pi.send_bytes(gps(3))
+            pi.send_bytes(pos(125000000, 775000000))
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["message_ids"].get("33") == 2 and h["message_ids"].get("24") == 2:
+                    break
+                time.sleep(0.01)
+            assert h["position_quality"]["gps_3d_fix"] is True
+            assert h["position_quality"]["map_position_valid"] is True
+            assert h["position_quality"]["home_position_verified"] is False
+            pi.send_bytes(pos(0, 0))
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["message_ids"].get("33") == 3:
+                    break
+                time.sleep(0.01)
+            assert h["position_quality"]["map_position_valid"] is False
