@@ -422,7 +422,7 @@ class Publisher:
                          idx not in parameter_retry_indices), None)
                     if missing is not None:
                         self.port.mav.param_request_read_send(
-                            self.cfg.system_id, 1, b"\\0" * 16, missing)
+                            self.cfg.system_id, 1, b"\0" * 16, missing)
                         parameter_retry_indices.add(missing)
                         parameter_last_retry_at = now
                         LOG.info("Read-only missing parameter index request %d/%d",
