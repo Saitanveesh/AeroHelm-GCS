@@ -487,6 +487,11 @@ class Publisher:
                         parameter_capture_at = -1.0
                         parameter_last_packet_at = -1.0
                         parameter_last_retry_at = -1.0
+                        if not seen_armed and is_disarmed_autopilot_heartbeat(
+                                msg, self.cfg.system_id):
+                            with self._state_lock:
+                                self._param_refresh_count = 0
+                                self._param_refresh_pending.clear()
                         LOG.warning(
                             "FC heartbeat resumed after %.1fs; invalidated volatile "
                             "stream and parameter capture state",
