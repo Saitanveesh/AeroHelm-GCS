@@ -240,7 +240,7 @@ class ControlContext:
                     gps_age_ms=(None if snap.gps_age_ms is None else
                         max(snap.gps_age_ms + lag, age(self.state.last_gps_raw_at))),
                     home_verified=(snap.home_verified and
-                        self.state.fresh(self.state.last_valid_home_at)),
+                        self.state.last_valid_home_at >= 0),
                 )
             except (KeyError, ValueError, TypeError):
                 pass
