@@ -20,7 +20,9 @@ UMask=0077
 NoNewPrivileges=yes
 ProtectSystem=full
 ProtectHome=yes
-PrivateTmp=yes
+# Keep /tmp shared so the existing Pi owner's fcntl lock file is visible
+# across services. The actual UART device is separately checked with fuser.
+PrivateTmp=no
 
 [Install]
 WantedBy=multi-user.target
