@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pytest
+import hashlib
 
 from services.vihanga_link.oracle_identity import (
     METADATA_URL, validate_instance_ocid, verify_instance_binding,
@@ -19,7 +20,8 @@ def test_oracle_instance_identified_from_local_metadata_only():
         return {"id": EXPECTED, "displayName": "new-m1", "region": "ap-hyderabad-1"}
     result = verify_instance_binding(EXPECTED, fetch=fake_metadata)
     assert calls == [METADATA_URL]
-    assert result == {"configured": True, "verified": True}
+    assert result == {"configured": True, "verified": True,
+                      "instance_sha256": hashlib.sha256(EXPECTED.encode()).hexdigest()}
     assert EXPECTED not in str(result)
     assert verify_instance_binding("", fetch=lambda: pytest.fail("unexpected request")) == {
         "configured": False, "verified": False
