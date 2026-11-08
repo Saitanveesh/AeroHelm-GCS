@@ -5718,6 +5718,14 @@ namespace MissionPlanner.GCSViews
 
         private void updateMapPosition(PointLatLng currentloc)
         {
+            // Never pan the aircraft map to an invalid GNSS coordinate.
+            // 0,0 is the normal uninitialized position, not an observed fix.
+            if (double.IsNaN(currentloc.Lat) || double.IsInfinity(currentloc.Lat) ||
+                double.IsNaN(currentloc.Lng) || double.IsInfinity(currentloc.Lng) ||
+                currentloc.Lat < -90 || currentloc.Lat > 90 ||
+                currentloc.Lng < -180 || currentloc.Lng > 180 ||
+                (currentloc.Lat == 0 && currentloc.Lng == 0))
+                return;
             BeginInvoke((Action) delegate
             {
                 try
