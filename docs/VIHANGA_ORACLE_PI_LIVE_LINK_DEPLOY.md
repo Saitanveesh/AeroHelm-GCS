@@ -369,7 +369,7 @@ On the Pi, stop only the new Pi agent before any independent serial test:
 
 ```bash
 sudo systemctl stop vihanga-pi.service
-tr -d '\\000' </proc/device-tree/model; echo
+tr -d '\000' </proc/device-tree/model; echo
 ls -l /dev/serial0 /dev/ttyAMA0 /dev/ttyAMA10 2>&1
 pinctrl get 14 15
 sudo fuser -v /dev/ttyAMA0 /dev/ttyAMA10 || true
