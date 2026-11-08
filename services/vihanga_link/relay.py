@@ -174,6 +174,7 @@ class LinkState:
     last_attitude: float = -1.0
     last_stream_ack_at: float = -1.0
     last_stream_ack_result: int | None = None
+    stream_ack_frames: int = 0
     parameter_frames: dict[int, tuple[float, bytes]] = field(default_factory=dict)
     parameter_expected: int = 0
     parameter_source: int = -1
@@ -193,6 +194,7 @@ class LinkState:
         self.last_frame = self.last_heartbeat = self.last_attitude = -1.0
         self.last_stream_ack_at = -1.0
         self.last_stream_ack_result = None
+        self.stream_ack_frames = 0
         self.parameter_frames.clear()
         self.parameter_expected = 0
         self.parameter_source = -1
@@ -239,6 +241,7 @@ class LinkState:
             if component == 1 and command == 511:
                 self.last_stream_ack_at = now
                 self.last_stream_ack_result = result
+                self.stream_ack_frames += 1
         if msg_id == 22:
             header = 6 if packet[0] == 0xFE else 10
             source = packet[3] if packet[0] == 0xFE else packet[5]
@@ -397,6 +400,7 @@ class LinkState:
             "flight_control_enabled": False,
             "physical_stream_rate_command_ack": {
                 "command_id": 511,
+                "frames": self.stream_ack_frames,
                 "observed": self.last_stream_ack_at >= 0,
                 "fresh": self.fresh(self.last_stream_ack_at),
                 "result": self.last_stream_ack_result,
