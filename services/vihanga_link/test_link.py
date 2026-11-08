@@ -161,6 +161,7 @@ def test_pi_refuses_wrong_oracle_instance_before_device_auth(tmp_path):
     cfg.validate()
     expected = hashlib.sha256(ocid.encode()).hexdigest()
     assert verify_remote_oracle_instance(cfg, fetch=lambda: {
+        "service": "vihanga-private-relay",
         "oracle_instance": {
             "configured": True, "verified": True,
             "instance_sha256": expected
@@ -168,12 +169,13 @@ def test_pi_refuses_wrong_oracle_instance_before_device_auth(tmp_path):
     })
     with pytest.raises(RuntimeError, match="not bound"):
         verify_remote_oracle_instance(cfg, fetch=lambda: {
+            "service": "vihanga-private-relay",
             "oracle_instance": {
                 "configured": True, "verified": True,
                 "instance_sha256": hashlib.sha256(b"old-vm").hexdigest()
             }
         })
-    with pytest.raises(RuntimeError, match="not bound"):
+    with pytest.raises(RuntimeError, match="not the independently deployed"):
         verify_remote_oracle_instance(cfg, fetch=lambda: {"status": "ok"})
 
 
@@ -195,6 +197,7 @@ def test_pi_instance_binding_preserves_nonlegacy_8443_port(monkeypatch, tmp_path
         def __exit__(self, *args): return False
         def geturl(self): return url
         def read(self, limit): return json.dumps({
+            "service": "vihanga-private-relay",
             "oracle_instance": {
                 "configured": True, "verified": True,
                 "instance_sha256": expected,
@@ -223,7 +226,9 @@ def test_relay_validates_exact_oracle_identity_on_startup(monkeypatch, credentia
     app = create_app(actual)
     assert observed == [ocid]
     with TestClient(app) as client:
-        profile = client.get("/health").json()["oracle_instance"]
+        health = client.get("/health").json()
+        assert health["service"] == "vihanga-private-relay"
+        profile = health["oracle_instance"]
         assert profile["verified"] is True
         assert profile["instance_sha256"] == hashlib.sha256(ocid.encode()).hexdigest()
         assert ocid not in str(profile)
