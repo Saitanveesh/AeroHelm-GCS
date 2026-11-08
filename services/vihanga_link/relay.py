@@ -649,8 +649,12 @@ def create_app(config: Config | None = None) -> FastAPI:
             async with state.lock:
                 state.device_socket = ws
             while True:
+                # MAVLink may be temporarily silent while the physical UART
+                # is diagnosed. Never treat 12 seconds without application
+                # frames as a transport failure: the WebSocket stack uses
+                # protocol ping/pong for dead-peer detection.
                 # Device ACK messages are not MAVLink and never reach the HUD.
-                event = await asyncio.wait_for(ws.receive(), timeout=12)
+                event = await ws.receive()
                 if event.get("type") == "websocket.disconnect":
                     break
                 packet = event.get("bytes")

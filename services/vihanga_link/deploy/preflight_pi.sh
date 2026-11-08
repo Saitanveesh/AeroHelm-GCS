@@ -47,6 +47,12 @@ else
   echo "FAIL: fuser not installed; cannot verify sole ownership" >&2
   exit 2
 fi
+model="$(tr -d '\000' </proc/device-tree/model 2>/dev/null || true)"
+if [[ "$model" == *"Raspberry Pi 5"* && "$real" == "/dev/ttyAMA10" ]]; then
+  echo "WARNING: Pi 5 ttyAMA10 is the dedicated DEBUG UART, not GPIO14/15."
+  echo "If Pixhawk is wired to the 40-pin header, inspect /dev/ttyAMA0."
+  echo "This probe only verifies exclusivity, not correct physical wiring."
+fi
 echo "PASS: no kernel serial console/getty, no debug root shell, no existing UART reader"
 echo "PASS: dedicated vihanga account has dialout permissions"
 echo "NEXT: start only the dedicated vihanga-pi.service after Oracle is healthy"
