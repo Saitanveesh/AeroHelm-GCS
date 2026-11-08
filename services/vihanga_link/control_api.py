@@ -319,6 +319,48 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
             "flight_control_enabled": False,
         }
 
+    @app.get("/api/v1/vehicles/{vehicle}/control/safety")
+    async def flight_control_safety(
+        vehicle: str, authorization: str = Header(default=""),
+    ) -> dict:
+        """Operator-readable FC evidence diagnostic, never an arming bypass."""
+        assert_vehicle(vehicle)
+        context.identity(token_from_auth(authorization), "pilot")
+        snapshot = context._physical_evidence()
+        try:
+            snapshot.require_current(vehicle, state.fc_system_id, navigation=True)
+            candidate = bool(snapshot.on_ground and not snapshot.armed)
+        except ControlDenied:
+            candidate = False
+        report = state.fc_safety_report if isinstance(state.fc_safety_report, dict) else {}
+        age_ms = (int(max(0, context.clock() - state.fc_safety_report_at) * 1000)
+                  if state.fc_safety_report_at >= 0 else None)
+        return {
+            "vehicle_id": vehicle,
+            "device_online": state.connected,
+            "control_epoch": state.control_epoch,
+            "fc_evidence_age_ms": age_ms,
+            "missing_fc_messages": report.get("missing_fc_messages", []),
+            "fc_evidence": {
+                "heartbeat_age_ms": snapshot.heartbeat_age_ms,
+                "attitude_age_ms": snapshot.attitude_age_ms,
+                "gps_fix": snapshot.gps_fix,
+                "home_verified": snapshot.home_verified,
+                "battery_percent": snapshot.battery_percent,
+                "ekf_healthy": snapshot.ekf_healthy,
+                "geofence_healthy": snapshot.geofence_healthy,
+                "rc_link_healthy": snapshot.rc_link_healthy,
+                "rc_override_active": snapshot.rc_override_active,
+                "on_ground": snapshot.on_ground,
+                "armed": snapshot.armed,
+                "mode": snapshot.mode,
+                "failsafe_clear": snapshot.failsafe_clear,
+            },
+            "candidate_preflight_evidence_complete": candidate,
+            "independent_hardware_acceptance_passed": False,
+            "flight_control_enabled": False,
+        }
+
     @app.post("/api/v1/vehicles/{vehicle}/control/transport/probe")
     async def probe_control_transport(
         vehicle: str, authorization: str = Header(default=""),
