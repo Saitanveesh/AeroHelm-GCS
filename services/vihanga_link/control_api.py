@@ -171,7 +171,7 @@ class ControlContext:
         if not isinstance(msg, dict) or set(msg) != {
                 "type", "vehicle_id", "control_epoch", "sequence",
                 "reported_at_unix_ms", "observation", "missing_fc_messages",
-                "physical_control_qualified"}:
+                "physical_control_qualified", "local_hardware_interlock_active"}:
             return False
         if (msg["type"] != "fc_safety_evidence" or
             msg["vehicle_id"] != self.vehicle_id or
