@@ -99,24 +99,27 @@ class PiTypedCommandEngine:
         self.hardware_gate = hardware_gate or (lambda: PiControlSafety())
         self.fc_evidence = fc_evidence or (lambda: None)
         self.deliver = deliver or (lambda value: None)
-        self.commands: queue.Queue[tuple[FlightIntent, int]] = queue.Queue(maxsize=1)
+        self.commands: queue.Queue[tuple[FlightIntent, int, int]] = queue.Queue(maxsize=1)
         self._seen: set[str] = set()
         self._seen_order: deque[str] = deque(maxlen=256)
         self._lock = threading.Lock()
         self._epoch: int | None = None
         self._session_active = False
+        self._needs_abort = False
         self._adapter: PiCommandAdapter | None = None
 
     def start_session(self) -> None:
         with self._lock:
             self._session_active = True
             self._epoch = None
+            self._needs_abort = True
             self._drain()
 
     def end_session(self) -> None:
         with self._lock:
             self._session_active = False
             self._epoch = None
+            self._needs_abort = True
             self._drain()
         # Adapter is only touched on the UART thread, not here. In-flight
         # state must not cause automatic retries across reconnects.
@@ -135,6 +138,7 @@ class PiTypedCommandEngine:
         if parsed is None:
             return None
         intent, epoch = parsed
+        deadline = data["expires_at_unix_ms"]
         with self._lock:
             if not self._session_active:
                 return None
@@ -148,7 +152,7 @@ class PiTypedCommandEngine:
                 self._seen.discard(self._seen_order[0])
             self._seen.add(intent.request_id)
             self._seen_order.append(intent.request_id)
-            self.commands.put_nowait((intent, epoch))
+            self.commands.put_nowait((intent, epoch, deadline))
         return {
             "type": "typed_control_command_queued", "vehicle_id": self.vehicle_id,
             "request_id": intent.request_id, "control_epoch": epoch,
@@ -165,14 +169,21 @@ class PiTypedCommandEngine:
 
     def service_uart(self, port: Any) -> None:
         """Run only on the sole UART owner thread; no async GCS UART writers."""
+        with self._lock:
+            if self._needs_abort:
+                if self._adapter is not None:
+                    self._adapter.abort()
+                self._needs_abort = False
         try:
-            intent, epoch = self.commands.get_nowait()
+            intent, epoch, deadline = self.commands.get_nowait()
         except queue.Empty:
             return
         with self._lock:
             if not self._session_active or epoch != self._epoch:
                 return
         try:
+            if int(time.time() * 1000) >= deadline:
+                raise ControlDenied("Expired Pi command deadline")
             gate = self.hardware_gate()
             observation = self.fc_evidence()
             if not isinstance(gate, PiControlSafety) or not isinstance(observation, ObservedVehicle):
