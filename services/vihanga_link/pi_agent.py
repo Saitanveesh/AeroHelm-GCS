@@ -126,7 +126,9 @@ def verify_remote_oracle_instance(cfg: Config, fetch=None) -> bool:
         report = fetch()
     except Exception as ex:
         raise RuntimeError("Cannot verify Oracle-bound private relay") from ex
-    binding = report.get("oracle_instance", {}) if isinstance(report, dict) else {}
+    if not isinstance(report, dict) or report.get("service") != "vihanga-private-relay":
+        raise RuntimeError("Endpoint is not the independently deployed Vihanga relay")
+    binding = report.get("oracle_instance", {})
     if (not isinstance(binding, dict) or binding.get("configured") is not True or
         binding.get("verified") is not True or
         not isinstance(binding.get("instance_sha256"), str) or
