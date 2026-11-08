@@ -23,7 +23,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from .mission_preview import PreviewRequest, preview
-from .control_api import install_control_api
+from .control_api import ControlSettings, install_control_api
 from .oracle_identity import validate_instance_ocid, verify_instance_binding
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
@@ -640,7 +640,8 @@ class Login(BaseModel):
     password: str = Field(min_length=1, max_length=512)
 
 
-def create_app(config: Config | None = None) -> FastAPI:
+def create_app(config: Config | None = None,
+               control_settings: ControlSettings | None = None) -> FastAPI:
     cfg = config or Config.from_env()
     cfg.validate()
     binding = verify_instance_binding(cfg.oracle_instance_ocid)
@@ -651,7 +652,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.state.link = state
     # Separate role-scoped flight authorization endpoint. It never transmits
     # aircraft commands and is disabled without dedicated control credentials.
-    install_control_api(app, cfg.vehicle_id, state)
+    install_control_api(app, cfg.vehicle_id, state, settings=control_settings)
     ph = PasswordHasher()
 
     def issue_jwt() -> str:
