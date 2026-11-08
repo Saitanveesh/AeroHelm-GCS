@@ -254,8 +254,9 @@ class Publisher:
             elif self._seen_armed or self._last_disarmed_heartbeat < 0 or \
                     now - self._last_disarmed_heartbeat > 3.0:
                 status = "REFUSED_DISARM_REQUIRED"
-            elif self._attitude_seen and (self._position_seen or self._vfr_seen):
-                status = "REFUSED_ALREADY_STREAMING"
+            # An explicitly authorized disarmed bench probe may run even if
+            # the selected messages are already streaming. Only fixed rates,
+            # one active request and a small per-session quota are permitted.
             elif self._remote_probe_pending.is_set() or self._remote_probe_count >= 2 or (
                     self._remote_probe_requested_at >= 0 and
                     now - self._remote_probe_requested_at < 15.0):
