@@ -476,9 +476,9 @@ namespace AeroHelm.GcsCloud
                     return "PRIVATE READ-ONLY SNAPSHOT" + Environment.NewLine +
                         "Matched: " + matching + Environment.NewLine +
                         "Different: " + different + Environment.NewLine +
-                        "Missing/unsupported integer encodings: " + unavailable +
+                        "Missing/unverified parameter values: " + unavailable +
                         Environment.NewLine +
-                        "Only REAL32 values are interpreted; no FC write was sent.";
+                        "Integer values are decoded only for verified ArduPilot; no FC write was sent.";
                 }, "Private parameter drift");
                 return;
             }
