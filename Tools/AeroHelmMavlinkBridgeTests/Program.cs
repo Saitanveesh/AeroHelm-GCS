@@ -160,6 +160,25 @@ namespace AeroHelm.GcsCloud
                 Assert(!reset.HeartbeatFresh && !reset.AttitudeFresh &&
                        reset.AttitudeGapEvents==0 && reset.RejectedEvidence==0,
                        "new session cannot inherit previous live state");
+                // Verify the exact production identity parser under net8.
+                // It must not accept false, stringified booleans or a malformed digest.
+                string hash = new string('a', 64);
+                string validIdentity = "{\\"oracle_instance\\":{\\"configured\\":true,\\"verified\\":true,\\"instance_sha256\\":\\"" + hash + "\\"}}";
+                Assert(VihangaLinkSession.VerifiedOracleDigest(validIdentity) == hash,
+                       "private relay identity JSON is parsed by the real GCS session");
+                foreach (string invalidJson in new[] {
+                    "{}",
+                    "{\\"oracle_instance\\":{\\"configured\\":false,\\"verified\\":true,\\"instance_sha256\\":\\"" + hash + "\\"}}",
+                    "{\\"oracle_instance\\":{\\"configured\\":\\"true\\",\\"verified\\":true,\\"instance_sha256\\":\\"" + hash + "\\"}}",
+                    "{\\"oracle_instance\\":{\\"configured\\":true,\\"verified\\":false,\\"instance_sha256\\":\\"" + hash + "\\"}}",
+                    "{\\"oracle_instance\\":{\\"configured\\":true,\\"verified\\":true,\\"instance_sha256\\":\\"short\\"}}",
+                })
+                {
+                    bool refused = false;
+                    try { VihangaLinkSession.VerifiedOracleDigest(invalidJson); }
+                    catch (InvalidOperationException) { refused = true; }
+                    Assert(refused, "unverified/malformed Oracle VM identity rejected");
+                }
                 // A dedicated relay token must never replace the M1 JWT.
                 global::MissionPlanner.Program.AeroHelmOperatorToken = "m1-original-token";
                 global::MissionPlanner.Program.AeroHelmCloudOrigin = "https://m1-backend.ts.net";
