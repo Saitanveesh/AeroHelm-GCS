@@ -2,7 +2,7 @@
 # Native GCS connects to the read-only loopback bridge, never to the Pixhawk.
 # No cloud or FC commands; no automatic process termination.
 param(
-    [string]$CloudUrl = 'https://aerohelm-vcn.tailf3ab6a.ts.net',
+    [string]$CloudUrl = '',
     [string]$VehicleId = 'AH-HW-001',
     [string]$CameraUrl = 'https://saitanveesh.tailf3ab6a.ts.net/cam',
     [switch]$UseLegacyPythonBridge,
@@ -24,6 +24,12 @@ if ($StopVerifiedLegacyBridge -and ($UseLegacyPythonBridge -or $SkipBridge)) {
     throw '-StopVerifiedLegacyBridge is only for the integrated native bridge.'
 }
 
+if (-not $CloudUrl) {
+    $CloudUrl = $env:AEROHELM_CLOUD_URL
+}
+if (-not $CloudUrl) {
+    throw 'Set -CloudUrl to the explicitly verified cloud HTTPS origin; the retired Oracle M1 address is no longer assumed.'
+}
 $origin = $null
 if (-not [Uri]::TryCreate($CloudUrl, [UriKind]::Absolute, [ref]$origin) -or
     $origin.Scheme -ne 'https' -or $origin.Host -notlike '*.ts.net' -or
