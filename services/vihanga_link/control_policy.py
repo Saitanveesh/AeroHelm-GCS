@@ -72,6 +72,19 @@ class ObservedVehicle:
     failsafe_clear: bool
 
     def require_current(self, vehicle_id: str, system_id: int, *, navigation: bool) -> None:
+        # Untrusted strings, integers or nulls cannot impersonate a verified
+        # FC-owned boolean. Reject malformed evidence before any command.
+        flags = (self.home_verified, self.ekf_healthy,
+                 self.geofence_healthy, self.rc_link_healthy,
+                 self.rc_override_active, self.on_ground,
+                 self.armed, self.failsafe_clear)
+        if any(type(v) is not bool for v in flags):
+            raise ControlDenied("Invalid FC evidence boolean")
+        if any(type(v) is not int for v in (
+                self.heartbeat_age_ms, self.attitude_age_ms)) or (
+                self.gps_age_ms is not None and type(self.gps_age_ms) is not int) or (
+                self.gps_fix is not None and type(self.gps_fix) is not int):
+            raise ControlDenied("Invalid typed FC age/GPS evidence")
         # No caller-supplied health assertion is evidence of a physical sensor:
         # the production adapter must derive every field from FC packets.
         if (self.vehicle_id != vehicle_id or self.system_id != system_id or
