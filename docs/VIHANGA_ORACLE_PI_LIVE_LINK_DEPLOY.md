@@ -130,7 +130,11 @@ sudo journalctl -u vihanga-pi.service -n 60 --no-pager
 
 Observe genuine per-ID physical UART counts (0 HEARTBEAT, 30 ATTITUDE,
 33 GLOBAL_POSITION_INT, 74 VFR_HUD, 1 SYS_STATUS, 24 GPS_RAW_INT, 147
-BATTERY_STATUS). The Pi verifies both the pinned private HTTPS hostname
+BATTERY_STATUS, plus 77 COMMAND_ACK after a local stream request).
+The new relay's `/api/v1/mavlink/health` distinguishes the Pi's JSON
+request ACK from a real Pixhawk `MAV_CMD_SET_MESSAGE_INTERVAL` ACK
+(ID77, command=511). An ACK result of 0 means the FC accepted the command;
+it does **not** prove the requested telemetry frames subsequently arrived. The Pi verifies both the pinned private HTTPS hostname
 and **the exact :8443** Oracle instance identity before transmitting its
 bearer token. It does not accept arbitrary GCS MAVLink commands.
 
