@@ -160,6 +160,12 @@ class LinkState:
     probe_requested_at: float = -1.0
     probe_request_id: str = ""
     probe_status: str = "NOT_REQUESTED"
+    ping_request_id: str = ""
+    ping_sent_at: float = -1.0
+    ping_received_at: float = -1.0
+    ping_status: str = "NOT_REQUESTED"
+    ping_count: int = 0
+    ping_rtt_ms: int | None = None
     epoch: int = 0
     viewers: set[asyncio.Queue[tuple[float, bytes]]] = field(default_factory=set)
     counters: Counter[int] = field(default_factory=Counter)
@@ -191,6 +197,11 @@ class LinkState:
         self.probe_requested_at = -1.0
         self.probe_request_id = ""
         self.probe_status = "NOT_REQUESTED"
+        self.ping_request_id = ""
+        self.ping_sent_at = self.ping_received_at = -1.0
+        self.ping_status = "NOT_REQUESTED"
+        self.ping_count = 0
+        self.ping_rtt_ms = None
         self.last_frame = self.last_heartbeat = self.last_attitude = -1.0
         self.last_stream_ack_at = -1.0
         self.last_stream_ack_result = None
@@ -301,6 +312,57 @@ class LinkState:
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
 
+    async def request_transport_ping(self, vehicle_id: str) -> dict[str, Any]:
+        """Bounded cloud-to-Pi-to-cloud echo. Does NOT address the FC."""
+        async with self.lock:
+            if not self.connected or self.device_socket is None:
+                raise HTTPException(status_code=409, detail="Pi private WebSocket is not connected")
+            now = time.monotonic()
+            if self.ping_count >= 3 or (
+                    self.ping_sent_at >= 0 and now - self.ping_sent_at < 2.0):
+                raise HTTPException(status_code=429, detail="Pi ping rate limit")
+            request_id = uuid.uuid4().hex
+            self.ping_request_id = request_id
+            self.ping_sent_at = now
+            self.ping_received_at = -1.0
+            self.ping_rtt_ms = None
+            self.ping_status = "WAITING_FOR_PI"
+            try:
+                await self.device_socket.send_json({
+                    "type": "link_ping", "vehicle_id": vehicle_id,
+                    "request_id": request_id,
+                })
+            except (RuntimeError, OSError) as ex:
+                self.ping_status = "TRANSPORT_FAILED"
+                raise HTTPException(status_code=503, detail="Pi ping transport failed") from ex
+            self.ping_count += 1
+            return {
+                "status": self.ping_status, "request_id": request_id,
+                "flight_controller_contacted": False,
+                "flight_control_enabled": False,
+            }
+
+    def observe_device_text(self, text: str) -> None:
+        """Handle only the two authenticated, fixed diagnostic reply types."""
+        try:
+            message = json.loads(text)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return
+        if not isinstance(message, dict):
+            return
+        if message.get("type") == "link_pong":
+            if (self.connected and self.ping_status == "WAITING_FOR_PI" and
+                    self.ping_request_id and
+                    message.get("request_id") == self.ping_request_id and
+                    message.get("vehicle_id") and
+                    message.get("flight_control_enabled") is False):
+                self.ping_received_at = time.monotonic()
+                self.ping_rtt_ms = round(
+                    (self.ping_received_at - self.ping_sent_at) * 1000)
+                self.ping_status = "PONG_FROM_PI"
+        elif message.get("type") == "disarmed_stream_probe_ack":
+            self.observe_probe_ack(text)
+
     def fresh(self, timestamp: float) -> bool:
         return self.connected and timestamp >= 0 and (
             time.monotonic() - timestamp) <= FRESH_SECONDS
@@ -398,6 +460,15 @@ class LinkState:
             "epoch": self.epoch,
             "parameter_snapshot": self.parameter_status(),
             "flight_control_enabled": False,
+            "transport_ping": {
+                "status": self.ping_status,
+                "request_id": self.ping_request_id,
+                "count": self.ping_count,
+                "rtt_ms": self.ping_rtt_ms,
+                "round_trip_verified": self.connected and self.ping_status == "PONG_FROM_PI",
+                "age_ms": age_ms(self.ping_received_at),
+                "flight_controller_contacted": False,
+            },
             "physical_stream_rate_command_ack": {
                 "command_id": 511,
                 "frames": self.stream_ack_frames,
@@ -512,6 +583,17 @@ def create_app(config: Config | None = None) -> FastAPI:
         except ValueError as ex:
             raise HTTPException(status_code=409, detail=str(ex)) from ex
 
+    @app.post("/api/v1/vehicles/{vehicle_id}/link/ping")
+    async def private_pi_ping(
+            vehicle_id: str,
+            authorization: str = Header(default="")) -> dict[str, Any]:
+        token = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if not viewer_expiration(token):
+            raise HTTPException(status_code=401, detail="Private operator session required")
+        if vehicle_id != cfg.vehicle_id:
+            raise HTTPException(status_code=404, detail="Unknown aircraft")
+        return await state.request_transport_ping(vehicle_id)
+
     @app.post("/api/v1/vehicles/{vehicle_id}/telemetry/probe")
     async def telemetry_probe(
             vehicle_id: str,
@@ -569,7 +651,7 @@ def create_app(config: Config | None = None) -> FastAPI:
                 if isinstance(packet, bytes):
                     await state.publish(packet)
                 elif isinstance(event.get("text"), str):
-                    state.observe_probe_ack(event["text"])
+                    state.observe_device_text(event["text"])
         except (WebSocketDisconnect, asyncio.TimeoutError):
             pass
         finally:
