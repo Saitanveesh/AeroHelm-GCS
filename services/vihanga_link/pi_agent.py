@@ -110,7 +110,9 @@ def verify_remote_oracle_instance(cfg: Config, fetch=None) -> bool:
     cfg.validate()
     expected = hashlib.sha256(cfg.oracle_instance_ocid.encode("ascii")).hexdigest()
     base = urlsplit(cfg.url)
-    target = "https://" + base.hostname + "/health"
+    # Preserve the HTTPS port: the new Vihanga relay may run on :8443
+    # while the legacy AeroHelm API continues unchanged on :443.
+    target = "https://" + base.netloc + "/health"
     if fetch is None:
         def fetch():
             request = Request(target, headers={"Accept": "application/json"})
