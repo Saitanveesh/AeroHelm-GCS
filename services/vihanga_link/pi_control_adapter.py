@@ -87,6 +87,11 @@ class PiCommandAdapter:
             raise ControlDenied("Mission start requires armed AUTO mode")
         if intent.action == "RTL" and not evidence.armed:
             raise ControlDenied("RTL requires armed FC")
+        if (intent.action == "SET_MODE" and
+                intent.params["mode"] in ("AUTO", "GUIDED", "LOITER", "RTL") and
+                (not evidence.home_verified or evidence.gps_fix is None or
+                 evidence.gps_fix < 3)):
+            raise ControlDenied("Navigation mode requires verified GPS and home")
         if intent.action == "SET_MODE" and not gate.firmware_mapping_verified:
             raise ControlDenied("FC mode map not verified against installed firmware")
 
