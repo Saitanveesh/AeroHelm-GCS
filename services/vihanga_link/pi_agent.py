@@ -8,7 +8,6 @@ cloud flight-command bridge and never accepts command bytes from the relay.
 from __future__ import annotations
 
 import asyncio
-import json
 from collections import Counter
 from dataclasses import dataclass
 import fcntl
