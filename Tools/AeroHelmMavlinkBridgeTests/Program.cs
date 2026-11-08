@@ -163,15 +163,15 @@ namespace AeroHelm.GcsCloud
                 // Verify the exact production identity parser under net8.
                 // It must not accept false, stringified booleans or a malformed digest.
                 string hash = new string('a', 64);
-                string validIdentity = "{\\"oracle_instance\\":{\\"configured\\":true,\\"verified\\":true,\\"instance_sha256\\":\\"" + hash + "\\"}}";
+                string validIdentity = @"{""oracle_instance"":{""configured"":true,""verified"":true,""instance_sha256"":""" + hash + @"""}}";
                 Assert(VihangaLinkSession.VerifiedOracleDigest(validIdentity) == hash,
                        "private relay identity JSON is parsed by the real GCS session");
                 foreach (string invalidJson in new[] {
                     "{}",
-                    "{\\"oracle_instance\\":{\\"configured\\":false,\\"verified\\":true,\\"instance_sha256\\":\\"" + hash + "\\"}}",
-                    "{\\"oracle_instance\\":{\\"configured\\":\\"true\\",\\"verified\\":true,\\"instance_sha256\\":\\"" + hash + "\\"}}",
-                    "{\\"oracle_instance\\":{\\"configured\\":true,\\"verified\\":false,\\"instance_sha256\\":\\"" + hash + "\\"}}",
-                    "{\\"oracle_instance\\":{\\"configured\\":true,\\"verified\\":true,\\"instance_sha256\\":\\"short\\"}}",
+                    @"{""oracle_instance"":{""configured"":false,""verified"":true,""instance_sha256"":""" + hash + @"""}}",
+                    @"{""oracle_instance"":{""configured"":""true"",""verified"":true,""instance_sha256"":""" + hash + @"""}}",
+                    @"{""oracle_instance"":{""configured"":true,""verified"":false,""instance_sha256"":""" + hash + @"""}}",
+                    @"{""oracle_instance"":{""configured"":true,""verified"":true,""instance_sha256"":""short""}}",
                 })
                 {
                     bool refused = false;
