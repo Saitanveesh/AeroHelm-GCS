@@ -1,5 +1,12 @@
 # Vihanga private cloud MAVLink transport
 
+**Live deployment:** [parallel Oracle/Pi instructions](../../docs/VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md).
+The old AeroHelm API remains on Tailscale :443; the separate Vihanga service
+uses Tailscale :8443 to loopback :8765 and preserves the original service.
+Physical FC stream-rate `COMMAND_ACK` ID77 is distinct from the Pi WSS
+intent ACK. This service still does not enable armed flight commands.
+
+
 This is a new, independently deployable telemetry service. It is NOT the
 running Oracle M1 service or the existing Pi UART agent; writing this source
 does not deploy it or make the current aircraft cloud link functional.
