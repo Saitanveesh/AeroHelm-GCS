@@ -19,6 +19,7 @@ import pytest
 from starlette.websockets import WebSocketDisconnect
 
 from services.vihanga_link import relay as relay_module
+from services.vihanga_link import pi_agent as pi_module
 from services.vihanga_link.relay import (Config, create_app, envelope, valid_evidence,
                                         valid_frame_crc, valid_native_attitude)
 from services.vihanga_link.pi_agent import (
@@ -160,6 +161,7 @@ def test_pi_refuses_wrong_oracle_instance_before_device_auth(tmp_path):
     cfg.validate()
     expected = hashlib.sha256(ocid.encode()).hexdigest()
     assert verify_remote_oracle_instance(cfg, fetch=lambda: {
+        "service": "vihanga-private-relay",
         "oracle_instance": {
             "configured": True, "verified": True,
             "instance_sha256": expected
@@ -167,13 +169,48 @@ def test_pi_refuses_wrong_oracle_instance_before_device_auth(tmp_path):
     })
     with pytest.raises(RuntimeError, match="not bound"):
         verify_remote_oracle_instance(cfg, fetch=lambda: {
+            "service": "vihanga-private-relay",
             "oracle_instance": {
                 "configured": True, "verified": True,
                 "instance_sha256": hashlib.sha256(b"old-vm").hexdigest()
             }
         })
-    with pytest.raises(RuntimeError, match="not bound"):
+    with pytest.raises(RuntimeError, match="not the independently deployed"):
         verify_remote_oracle_instance(cfg, fetch=lambda: {"status": "ok"})
+
+
+def test_pi_instance_binding_preserves_nonlegacy_8443_port(monkeypatch, tmp_path):
+    """A separate :8443 relay cannot be checked against old API :443."""
+    ocid = "ocid1.instance.oc1.iad." + "a" * 48
+    cfg = PiConfig(
+        "/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+        "wss://aerohelm-vcn.tailf3ab6a.ts.net:8443/ws/mavlink/device/AH-HW-001",
+        tmp_path / "token", False, "aerohelm-vcn.tailf3ab6a.ts.net",
+        oracle_instance_ocid=ocid,
+    )
+    expected = hashlib.sha256(ocid.encode()).hexdigest()
+    checked = []
+    url = "https://aerohelm-vcn.tailf3ab6a.ts.net:8443/health"
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def geturl(self): return url
+        def read(self, limit): return json.dumps({
+            "service": "vihanga-private-relay",
+            "oracle_instance": {
+                "configured": True, "verified": True,
+                "instance_sha256": expected,
+            }
+        }).encode()
+
+    def fake_urlopen(request, timeout):
+        checked.append(request.full_url)
+        return Response()
+
+    monkeypatch.setattr(pi_module, "urlopen", fake_urlopen)
+    assert verify_remote_oracle_instance(cfg)
+    assert checked == [url]
 
 
 def test_relay_validates_exact_oracle_identity_on_startup(monkeypatch, credentials):
@@ -189,7 +226,9 @@ def test_relay_validates_exact_oracle_identity_on_startup(monkeypatch, credentia
     app = create_app(actual)
     assert observed == [ocid]
     with TestClient(app) as client:
-        profile = client.get("/health").json()["oracle_instance"]
+        health = client.get("/health").json()
+        assert health["service"] == "vihanga-private-relay"
+        profile = health["oracle_instance"]
         assert profile["verified"] is True
         assert profile["instance_sha256"] == hashlib.sha256(ocid.encode()).hexdigest()
         assert ocid not in str(profile)
@@ -399,6 +438,43 @@ def test_authenticated_read_only_parameter_snapshot_and_epoch(credentials):
             assert client.get("/api/v1/mavlink/health").json()[
                 "parameter_snapshot"]["status"] == "COMPLETE"
         assert client.get(route, headers=headers).json()["status"] == "UNAVAILABLE"
+
+
+def test_real_fc_stream_command_ack_is_separate_from_pi_request_ack(credentials):
+    cfg, token = credentials
+    app = create_app(cfg)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+              headers={"Authorization": "Bearer " + token}) as device:
+            # Valid CRC, FC SYSID 1, component 1, MAV_CMD 511, accepted result 0.
+            accepted = frame(77, struct.pack("<HB", 511, 0), mav2=True)
+            device.send_bytes(accepted)
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["physical_stream_rate_command_ack"]["observed"]:
+                    break
+                time.sleep(0.01)
+            ack = h["physical_stream_rate_command_ack"]
+            assert ack["command_id"] == 511
+            assert ack["frames"] == 1
+            assert ack["result"] == 0 and ack["accepted"] is True
+            assert ack["fresh"] is True
+            assert h["message_ids"]["77"] == 1
+            assert h["telemetry_probe"]["status"] == "NOT_REQUESTED"
+            assert h["real_attitude_frames"] == 0
+            # A reject code is also genuine, but must not be called accepted.
+            device.send_bytes(frame(77, struct.pack("<HB", 511, 2), mav2=True))
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["message_ids"].get("77") == 2:
+                    break
+                time.sleep(0.01)
+            assert h["physical_stream_rate_command_ack"]["frames"] == 2
+            assert h["physical_stream_rate_command_ack"]["result"] == 2
+            assert h["physical_stream_rate_command_ack"]["accepted"] is False
+        disconnected = client.get("/api/v1/mavlink/health").json()
+        assert not disconnected["physical_stream_rate_command_ack"]["observed"]
+        assert disconnected["physical_stream_rate_command_ack"]["age_ms"] is None
 
 
 def test_non_attitude_mavlink_is_forwarded_unchanged(credentials):

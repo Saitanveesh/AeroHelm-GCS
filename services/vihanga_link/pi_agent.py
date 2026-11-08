@@ -8,7 +8,6 @@ cloud flight-command bridge and never accepts command bytes from the relay.
 from __future__ import annotations
 
 import asyncio
-import json
 from collections import Counter
 from dataclasses import dataclass
 import fcntl
@@ -110,7 +109,9 @@ def verify_remote_oracle_instance(cfg: Config, fetch=None) -> bool:
     cfg.validate()
     expected = hashlib.sha256(cfg.oracle_instance_ocid.encode("ascii")).hexdigest()
     base = urlsplit(cfg.url)
-    target = "https://" + base.hostname + "/health"
+    # Preserve the HTTPS port: the new Vihanga relay may run on :8443
+    # while the legacy AeroHelm API continues unchanged on :443.
+    target = "https://" + base.netloc + "/health"
     if fetch is None:
         def fetch():
             request = Request(target, headers={"Accept": "application/json"})
@@ -125,7 +126,9 @@ def verify_remote_oracle_instance(cfg: Config, fetch=None) -> bool:
         report = fetch()
     except Exception as ex:
         raise RuntimeError("Cannot verify Oracle-bound private relay") from ex
-    binding = report.get("oracle_instance", {}) if isinstance(report, dict) else {}
+    if not isinstance(report, dict) or report.get("service") != "vihanga-private-relay":
+        raise RuntimeError("Endpoint is not the independently deployed Vihanga relay")
+    binding = report.get("oracle_instance", {})
     if (not isinstance(binding, dict) or binding.get("configured") is not True or
         binding.get("verified") is not True or
         not isinstance(binding.get("instance_sha256"), str) or
@@ -213,6 +216,8 @@ class Publisher:
         self._seen_armed = False
         self._last_disarmed_heartbeat = -1.0
         self._attitude_seen = False
+        self._position_seen = False
+        self._vfr_seen = False
         self._remote_probe_count = 0
         self._remote_probe_requested_at = -1.0
         self._remote_probe_pending = threading.Event()
@@ -249,7 +254,7 @@ class Publisher:
             elif self._seen_armed or self._last_disarmed_heartbeat < 0 or \
                     now - self._last_disarmed_heartbeat > 3.0:
                 status = "REFUSED_DISARM_REQUIRED"
-            elif self._attitude_seen:
+            elif self._attitude_seen and (self._position_seen or self._vfr_seen):
                 status = "REFUSED_ALREADY_STREAMING"
             elif self._remote_probe_pending.is_set() or self._remote_probe_count >= 2 or (
                     self._remote_probe_requested_at >= 0 and
@@ -281,6 +286,8 @@ class Publisher:
         stream_probe_attempts = 0
         last_probe_at = 0.0
         attitude_seen = False
+        position_seen = False
+        vfr_seen = False
         parameters_requested = False
         seen_armed = False
         last_report = time.monotonic()
@@ -317,10 +324,22 @@ class Publisher:
                     self.foreign_system_dropped += 1
                     continue
                 self.counts[mid] += 1
+                if mid == 77 and msg.get_srcComponent() == 1 and \
+                        int(msg.command) == mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL:
+                    LOG.info("REAL FC COMMAND_ACK for stream interval: MAV_RESULT=%d",
+                             int(msg.result))
                 if mid == 30:
                     attitude_seen = True
                     with self._state_lock:
                         self._attitude_seen = True
+                if mid == 33:
+                    position_seen = True
+                    with self._state_lock:
+                        self._position_seen = True
+                if mid == 74:
+                    vfr_seen = True
+                    with self._state_lock:
+                        self._vfr_seen = True
                 if msg.get_type() == "HEARTBEAT" and \
                         msg.get_srcSystem() == self.cfg.system_id and \
                         msg.get_srcComponent() == 1:
@@ -339,12 +358,15 @@ class Publisher:
                         remote_issued = False
                         if self._remote_probe_pending.is_set():
                             self._remote_probe_pending.clear()
-                            if not attitude_seen and self.cfg.stream_probe:
+                            if not (attitude_seen and (position_seen or vfr_seen)) and \
+                                    self.cfg.stream_probe:
                                 remote_issued = request_streams_once(
                                     self.port, msg, self.cfg)
                         if not remote_issued and stream_probe_due(
                                 self.cfg, seen_armed=seen_armed,
-                                attitude_seen=attitude_seen,
+                                # A native Quick feed requires genuine attitude
+                                # plus ID33 position or ID74 VFR_HUD.
+                                attitude_seen=(attitude_seen and (position_seen or vfr_seen)),
                                 attempts=stream_probe_attempts,
                                 seconds_since_last_probe=time.monotonic() - last_probe_at):
                             if request_streams_once(self.port, msg, self.cfg):

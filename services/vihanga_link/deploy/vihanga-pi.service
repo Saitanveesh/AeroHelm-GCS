@@ -1,0 +1,28 @@
+[Unit]
+Description=Vihanga sole-owner Raspberry Pi Pixhawk MAVLink publisher
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+# Do not start alongside the existing physical UART owner.
+
+[Service]
+Type=simple
+User=vihanga
+Group=vihanga
+SupplementaryGroups=dialout
+WorkingDirectory=/opt/vihanga/source
+EnvironmentFile=/etc/vihanga/pi.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/vihanga/venv/bin/python -m services.vihanga_link.pi_agent
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+# Keep /tmp shared so the existing Pi owner's fcntl lock file is visible
+# across services. The actual UART device is separately checked with fuser.
+PrivateTmp=no
+
+[Install]
+WantedBy=multi-user.target

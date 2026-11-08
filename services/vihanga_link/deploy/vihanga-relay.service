@@ -1,0 +1,25 @@
+[Unit]
+Description=Vihanga private MAVLink relay (separate from legacy AeroHelm API)
+Wants=network-online.target tailscaled.service
+After=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+User=vihanga
+Group=vihanga
+WorkingDirectory=/opt/vihanga/source
+EnvironmentFile=/etc/vihanga/relay.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/vihanga/venv/bin/python -m uvicorn services.vihanga_link.relay:create_app --factory --host 127.0.0.1 --port 8765 --workers 1
+Restart=on-failure
+RestartSec=4
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+MemoryMax=384M
+
+[Install]
+WantedBy=multi-user.target
