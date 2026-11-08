@@ -372,6 +372,12 @@ class Publisher:
         position_seen = False
         vfr_seen = False
         parameters_requested = False
+        parameter_expected = 0
+        parameter_indices: set[int] = set()
+        parameter_retry_indices: set[int] = set()
+        parameter_capture_at = -1.0
+        parameter_last_packet_at = -1.0
+        parameter_last_retry_at = -1.0
         seen_armed = False
         last_heartbeat_at = -1.0
         last_report = time.monotonic()
@@ -396,6 +402,31 @@ class Publisher:
                     previous_uart = self.counts.copy()
                     previous_uplink = self.sent_counts.copy()
                     last_report = now
+                # One bounded, read-only attempt for missing PARAM_VALUE
+                # indexes. Never retry without a recent disarmed FC heartbeat.
+                if (parameters_requested and parameter_expected > 0 and
+                        len(parameter_indices) < parameter_expected and
+                        len(parameter_retry_indices) < 32 and
+                        not seen_armed and self.cfg.parameter_snapshot and
+                        parameter_capture_at >= 0 and
+                        0 <= now - parameter_capture_at <= 180 and
+                        parameter_last_packet_at >= 0 and
+                        now - parameter_last_packet_at >= 2.0 and
+                        (parameter_last_retry_at < 0 or
+                         now - parameter_last_retry_at >= 0.75) and
+                        self._last_disarmed_heartbeat >= 0 and
+                        now - self._last_disarmed_heartbeat <= 3.0):
+                    missing = next(
+                        (idx for idx in range(parameter_expected)
+                         if idx not in parameter_indices and
+                         idx not in parameter_retry_indices), None)
+                    if missing is not None:
+                        self.port.mav.param_request_read_send(
+                            self.cfg.system_id, 1, b"\\0" * 16, missing)
+                        parameter_retry_indices.add(missing)
+                        parameter_last_retry_at = now
+                        LOG.info("Read-only missing parameter index request %d/%d",
+                                 missing, parameter_expected)
                 msg = self.port.recv_match(blocking=True, timeout=0.4)
                 if msg is None or msg.get_type() == "BAD_DATA":
                     continue
@@ -408,6 +439,17 @@ class Publisher:
                     self.foreign_system_dropped += 1
                     continue
                 self.counts[mid] += 1
+                if (mid == 22 and msg.get_srcComponent() == 1 and
+                        parameters_requested and self.cfg.parameter_snapshot):
+                    count = int(msg.param_count)
+                    index = int(msg.param_index)
+                    if 0 < count <= 5000 and 0 <= index < count:
+                        if parameter_expected != count:
+                            parameter_expected = count
+                            parameter_indices.clear()
+                            parameter_retry_indices.clear()
+                        parameter_indices.add(index)
+                        parameter_last_packet_at = time.monotonic()
                 if mid == 77 and msg.get_srcComponent() == 1 and \
                         int(msg.command) == mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL:
                     LOG.info("REAL FC COMMAND_ACK for stream interval: MAV_RESULT=%d",
@@ -439,6 +481,12 @@ class Publisher:
                         stream_probe_attempts = 0
                         last_probe_at = 0.0
                         parameters_requested = False
+                        parameter_expected = 0
+                        parameter_indices.clear()
+                        parameter_retry_indices.clear()
+                        parameter_capture_at = -1.0
+                        parameter_last_packet_at = -1.0
+                        parameter_last_retry_at = -1.0
                         LOG.warning(
                             "FC heartbeat resumed after %.1fs; invalidated volatile "
                             "stream and parameter capture state",
@@ -478,9 +526,18 @@ class Publisher:
                             self._param_refresh_pending.clear()
                             parameters_requested = request_parameter_snapshot_once(
                                 self.port, msg, self.cfg)
+                            if parameters_requested:
+                                parameter_capture_at = time.monotonic()
+                                parameter_expected = 0
+                                parameter_indices.clear()
+                                parameter_retry_indices.clear()
+                                parameter_last_packet_at = -1.0
+                                parameter_last_retry_at = -1.0
                         elif self.cfg.parameter_snapshot and not parameters_requested:
                             parameters_requested = request_parameter_snapshot_once(
                                 self.port, msg, self.cfg)
+                            if parameters_requested:
+                                parameter_capture_at = time.monotonic()
                 raw = bytes(msg.get_msgbuf())
                 if raw and len(raw) <= MAX_FRAME and raw[0] in (0xFE, 0xFD):
                     self._loop.call_soon_threadsafe(self._offer, raw)
