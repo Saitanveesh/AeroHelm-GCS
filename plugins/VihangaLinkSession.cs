@@ -271,6 +271,43 @@ namespace AeroHelm.GcsCloud
             }
         }
 
+        // An authenticated operator may request a single disarmed,
+        // read-only PARAM_REQUEST_LIST capture. It does not send PARAM_SET,
+        // calibration, mode changes or arbitrary MAVLink.
+        internal static string RequestParameterSnapshot(string vehicleId)
+        {
+            if (!UsesDedicatedRelay || !Authenticated)
+                throw new InvalidOperationException("Dedicated telemetry relay sign-in required.");
+            if (string.IsNullOrWhiteSpace(vehicleId) || vehicleId.Length > 64)
+                throw new ArgumentException("Invalid aircraft identifier.");
+            foreach (char ch in vehicleId)
+            {
+                if (!(ch <= 127 && char.IsLetterOrDigit(ch)) &&
+                    ch != '-' && ch != '_')
+                    throw new ArgumentException("Invalid aircraft identifier.");
+            }
+            Uri target = new Uri(new Uri(TargetOrigin + "/"),
+                "api/v1/vehicles/" + Uri.EscapeDataString(vehicleId) +
+                "/parameters/refresh");
+            var request = (HttpWebRequest)WebRequest.Create(target);
+            request.Method = "POST";
+            request.AllowAutoRedirect = false;
+            request.Timeout = 6000;
+            request.ReadWriteTimeout = 6000;
+            request.ContentLength = 0;
+            request.Accept = "application/json";
+            request.Headers[HttpRequestHeader.Authorization] =
+                "Bearer " + AccessToken;
+            using (var response = (HttpWebResponse)request.GetResponse())
+            using (var reader = new StreamReader(response.GetResponseStream()))
+            {
+                if (response.StatusCode != HttpStatusCode.OK)
+                    throw new IOException("Parameter capture request rejected.");
+                // QUEUED is not proof of complete FC parameter retrieval.
+                return reader.ReadToEnd();
+            }
+        }
+
         internal static void Clear()
         {
             lock (Sync)
