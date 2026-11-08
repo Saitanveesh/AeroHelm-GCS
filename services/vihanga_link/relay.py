@@ -23,6 +23,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from .mission_preview import PreviewRequest, preview
+from .control_api import ControlSettings, install_control_api
 from .oracle_identity import validate_instance_ocid, verify_instance_binding
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer
@@ -171,6 +172,7 @@ class LinkState:
     ping_count: int = 0
     ping_rtt_ms: int | None = None
     epoch: int = 0
+    control_epoch: int = 0
     viewers: set[asyncio.Queue[tuple[float, bytes]]] = field(default_factory=set)
     counters: Counter[int] = field(default_factory=Counter)
     last_message_by_id: dict[int, float] = field(default_factory=dict)
@@ -268,6 +270,9 @@ class LinkState:
             # parameter table as one complete FC snapshot.
             if self.last_heartbeat >= 0 and now - self.last_heartbeat > 4.0:
                 self.fc_restart_count += 1
+                # A physical FC reboot invalidates existing command leases
+                # even if the Pi-to-Oracle WSS stays connected.
+                self.control_epoch += 1
                 self.parameter_frames.clear()
                 self.parameter_expected = 0
                 self.parameter_source = -1
@@ -582,6 +587,7 @@ class LinkState:
             "message_ids": {str(k): v for k, v in sorted(self.counters.items())},
             "gcs_viewers": len(self.viewers),
             "epoch": self.epoch,
+            "control_epoch": self.control_epoch,
             "fc_restarts_observed": self.fc_restart_count,
             "parameter_snapshot": self.parameter_status(),
             "parameter_capture": {
@@ -639,7 +645,8 @@ class Login(BaseModel):
     password: str = Field(min_length=1, max_length=512)
 
 
-def create_app(config: Config | None = None) -> FastAPI:
+def create_app(config: Config | None = None,
+               control_settings: ControlSettings | None = None) -> FastAPI:
     cfg = config or Config.from_env()
     cfg.validate()
     binding = verify_instance_binding(cfg.oracle_instance_ocid)
@@ -648,6 +655,9 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(cfg.allowed_hosts))
     state = LinkState(fc_system_id=cfg.fc_system_id)
     app.state.link = state
+    # Separate role-scoped flight authorization endpoint. It never transmits
+    # aircraft commands and is disabled without dedicated control credentials.
+    install_control_api(app, cfg.vehicle_id, state, settings=control_settings)
     ph = PasswordHasher()
 
     def issue_jwt() -> str:
@@ -797,6 +807,7 @@ def create_app(config: Config | None = None) -> FastAPI:
                 return
             state.connected = True
             state.epoch += 1
+            state.control_epoch += 1
             state.clear_session()
         try:
             # A failed handshake must release the reserved publisher slot.
@@ -823,6 +834,8 @@ def create_app(config: Config | None = None) -> FastAPI:
             async with state.lock:
                 state.connected = False
                 state.device_socket = None
+                app.state.control.broker.revoke("DEVICE_DISCONNECTED")
+                app.state.control.approvals.clear()
                 state.clear_session()
 
     @app.websocket("/ws/mavlink/view/{vehicle_id}")

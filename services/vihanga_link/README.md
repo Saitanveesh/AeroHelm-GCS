@@ -117,6 +117,14 @@ The private cloud request channel accepts only `link_ping` and a restricted `dis
 
 For the full acceptance matrix and release boundaries, see [Vihanga project status](../../docs/AEROHELM_STATUS.md).
 
+## Flight-control source development
+
+The separate [supervised flight-control design](../../docs/VIHANGA_SUPERVISED_FLIGHT_CONTROL.md)
+includes pilot/approver leases and independently gated MAVLink command and
+mission/parameter transaction models. **None of these source modules is
+connected to the running Pi UART publisher or native receive-only Windows
+bridge.** Ordinary flight telemetry remains the supported production path.
+
 ## Security and constraints
 
 The relay binds only to the local VM loopback, behind private Tailscale HTTPS. Authentication uses a separate Pi credential and operator JWT. Access control and freshness limits do not replace flight-controller or pilot failsafes. The native cloud path is receive-only for aircraft flight control. No source file in this directory certifies a remote flight system for operational use.

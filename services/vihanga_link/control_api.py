@@ -1,0 +1,287 @@
+"""Private, role-separated cloud flight-control authority API.
+
+Simulator-oriented command approval only in this release. Never dispatches a
+physical flight command or raw MAVLink. Independent pilot and safety-approver
+credentials are REQUIRED; telemetry-viewer JWTs have no authority here.
+"""
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
+import hmac
+import os
+import re
+import secrets
+import time
+from typing import Any, Callable
+
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, VerificationError
+from fastapi import FastAPI, Header, HTTPException
+import jwt
+from jwt import InvalidTokenError
+from pydantic import BaseModel, Field
+
+from .control_policy import (
+    ControlDenied, FlightControlBroker, FlightIntent, ObservedVehicle,
+)
+
+
+@dataclass(frozen=True)
+class ControlSettings:
+    enabled: bool = False
+    pilot_name: str = ""
+    pilot_password_hash: str = ""
+    approver_name: str = ""
+    approver_password_hash: str = ""
+    jwt_key: str = ""
+
+    @staticmethod
+    def from_env() -> "ControlSettings":
+        return ControlSettings(
+            enabled=os.getenv("VIHANGA_CONTROL_SIMULATOR_ONLY", "0") == "1",
+            pilot_name=os.getenv("VIHANGA_CONTROL_PILOT_NAME", ""),
+            pilot_password_hash=os.getenv("VIHANGA_CONTROL_PILOT_PASSWORD_HASH", ""),
+            approver_name=os.getenv("VIHANGA_CONTROL_APPROVER_NAME", ""),
+            approver_password_hash=os.getenv("VIHANGA_CONTROL_APPROVER_PASSWORD_HASH", ""),
+            jwt_key=os.getenv("VIHANGA_CONTROL_JWT_KEY", ""),
+        )
+
+    def validate(self) -> None:
+        if not self.enabled:
+            return
+        if (not re.fullmatch(r"[A-Za-z0-9_-]{3,64}", self.pilot_name) or
+            not re.fullmatch(r"[A-Za-z0-9_-]{3,64}", self.approver_name) or
+            self.pilot_name == self.approver_name or
+            not self.pilot_password_hash.startswith("$argon2id$") or
+            not self.approver_password_hash.startswith("$argon2id$") or
+            len(self.jwt_key) < 48):
+            raise ValueError("Control requires independent Argon2id roles and an independent JWT key")
+
+
+class RoleLogin(BaseModel):
+    username: str = Field(min_length=3, max_length=64)
+    password: str = Field(min_length=16, max_length=512)
+    role: str = Field(pattern=r"^(pilot|approver)$")
+
+
+class ApprovalRequest(BaseModel):
+    plan_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class LeaseRequest(ApprovalRequest):
+    approval_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+
+
+class FlightRequest(BaseModel):
+    request_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    sequence: int = Field(ge=1)
+    action: str = Field(min_length=3, max_length=40)
+    params: dict[str, Any] = Field(default_factory=dict)
+    plan_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    ttl_ms: int = Field(default=3000, ge=500, le=5000)
+
+
+class ControlContext:
+    def __init__(self, settings: ControlSettings, vehicle_id: str, state: Any,
+                 clock: Callable[[], float] = time.monotonic):
+        self.settings = settings
+        self.vehicle_id = vehicle_id
+        self.state = state
+        self.clock = clock
+        self.broker = FlightControlBroker(clock=clock)
+        self.password_hasher = PasswordHasher()
+        self.login_attempts: deque[float] = deque(maxlen=20)
+        # Single-use, FC-epoch- and plan-revision-bound consent minted by a
+        # separately authenticated safety approver.
+        self.approvals: dict[str, tuple[str, str, int, float]] = {}
+        self.evidence_provider: Callable[[], ObservedVehicle] = self._physical_evidence
+
+    def _physical_evidence(self) -> ObservedVehicle:
+        """Unknown safety inputs stay false, never operator-supplied.
+
+        A dedicated Pi hardware switch, physical RC evidence, EKF/fence and
+        FC-owned command acknowledgments are NOT integrated yet.
+        """
+        now = self.clock()
+        def age(stamp: float) -> int:
+            return int((now - stamp) * 1000) if self.state.connected and stamp >= 0 else 999999
+        return ObservedVehicle(
+            vehicle_id=self.vehicle_id, system_id=self.state.fc_system_id,
+            source="PHYSICAL_FC",
+            heartbeat_age_ms=age(self.state.last_heartbeat),
+            attitude_age_ms=age(self.state.last_attitude),
+            gps_age_ms=age(self.state.last_gps_raw_at),
+            gps_fix=self.state.gps_fix_type,
+            home_verified=self.state.fresh(self.state.last_valid_home_at),
+            battery_percent=None, ekf_healthy=False, geofence_healthy=False,
+            rc_link_healthy=False, rc_override_active=False,
+            on_ground=False, armed=False, mode="", failsafe_clear=False,
+        )
+
+    def jwt_for(self, role: str) -> str:
+        user = self.settings.pilot_name if role == "pilot" else self.settings.approver_name
+        now = int(time.time())
+        return jwt.encode({
+            "sub": user, "role": role, "scope": "control:approve" if role == "approver"
+                else "control:pilot",
+            "iss": "vihanga-control", "aud": "vihanga-control-lease",
+            "iat": now, "nbf": now, "exp": now + 120,
+        }, self.settings.jwt_key, algorithm="HS256")
+
+    def identity(self, token: str, role: str) -> str:
+        if not token or not self.settings.enabled:
+            raise HTTPException(status_code=403, detail="Flight-control authority unavailable")
+        try:
+            payload = jwt.decode(
+                token, self.settings.jwt_key, algorithms=["HS256"],
+                issuer="vihanga-control", audience="vihanga-control-lease",
+                options={"require": ["sub", "role", "scope", "exp", "iat", "nbf"]})
+            expected = self.settings.pilot_name if role == "pilot" else self.settings.approver_name
+            if (payload["sub"] != expected or payload["role"] != role or
+                payload["scope"] != ("control:approve" if role == "approver" else "control:pilot")):
+                raise InvalidTokenError("Role mismatch")
+            return expected
+        except (InvalidTokenError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=401, detail="Invalid role-specific control token") from exc
+
+
+def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
+                        settings: ControlSettings | None = None) -> ControlContext:
+    cfg = settings or ControlSettings.from_env()
+    cfg.validate()
+    context = ControlContext(cfg, vehicle_id, state)
+    app.state.control = context
+
+    def token_from_auth(value: str) -> str:
+        return value[7:] if value.startswith("Bearer ") else ""
+
+    def assert_vehicle(value: str) -> None:
+        if value != context.vehicle_id:
+            raise HTTPException(status_code=404, detail="Unknown aircraft")
+
+    @app.get("/api/v1/flight-control/status")
+    async def flight_control_status() -> dict:
+        return {
+            "mode": "SIMULATOR_AUTHORITY_ONLY" if cfg.enabled else "DISABLED",
+            "physical_command_dispatch": False,
+            "native_mavlink_command_tunnel": False,
+            "pilot_role_required": True,
+            "independent_approver_required": True,
+            "pi_hardware_interlock_verified": False,
+            "vehicle_evidence_complete": False,
+            "flight_control_enabled": False,
+        }
+
+    @app.post("/api/v1/flight-control/auth/login")
+    async def control_login(body: RoleLogin) -> dict:
+        if not cfg.enabled:
+            raise HTTPException(status_code=403, detail="Control authority disabled")
+        now = context.clock()
+        while context.login_attempts and now - context.login_attempts[0] > 60:
+            context.login_attempts.popleft()
+        if len(context.login_attempts) >= 5:
+            raise HTTPException(status_code=429, detail="Control login throttled")
+        context.login_attempts.append(now)
+        user = cfg.pilot_name if body.role == "pilot" else cfg.approver_name
+        hashed = cfg.pilot_password_hash if body.role == "pilot" else cfg.approver_password_hash
+        matched = False
+        if hmac.compare_digest(body.username, user):
+            try:
+                matched = context.password_hasher.verify(hashed, body.password)
+            except (VerifyMismatchError, VerificationError):
+                pass
+        if not matched:
+            raise HTTPException(status_code=401, detail="Control authentication failed")
+        return {"access_token": context.jwt_for(body.role), "token_type": "bearer",
+                "role": body.role, "expires_in": 120, "physical_dispatch": False}
+
+    @app.post("/api/v1/vehicles/{vehicle}/control/approvals")
+    async def approve_plan(
+        vehicle: str, body: ApprovalRequest,
+        authorization: str = Header(default=""),
+    ) -> dict:
+        assert_vehicle(vehicle)
+        approver = context.identity(token_from_auth(authorization), "approver")
+        if not state.connected or not state.fresh(state.last_heartbeat):
+            raise HTTPException(status_code=409, detail="Fresh physical FC evidence required")
+        now = context.clock()
+        context.approvals = {
+            nonce: entry for nonce, entry in context.approvals.items()
+            if now < entry[3] and entry[2] == state.control_epoch
+        }
+        if len(context.approvals) >= 8:
+            raise HTTPException(status_code=429, detail="Outstanding approvals limit")
+        nonce = secrets.token_hex(16)
+        context.approvals[nonce] = (
+            approver, body.plan_sha256, state.control_epoch, now + 30.0)
+        return {"approval_id": nonce, "plan_sha256": body.plan_sha256,
+                "expires_in": 30, "vehicle_id": vehicle,
+                "control_epoch": state.control_epoch, "physical_dispatch": False}
+
+    @app.post("/api/v1/vehicles/{vehicle}/control/lease")
+    async def control_lease(
+        vehicle: str, body: LeaseRequest,
+        authorization: str = Header(default=""),
+    ) -> dict:
+        assert_vehicle(vehicle)
+        pilot = context.identity(token_from_auth(authorization), "pilot")
+        if not state.connected or not state.fresh(state.last_heartbeat):
+            raise HTTPException(status_code=409, detail="Fresh physical FC evidence required")
+        record = context.approvals.get(body.approval_id)
+        if (not record or record[1] != body.plan_sha256 or
+            record[2] != state.control_epoch or context.clock() >= record[3]):
+            raise HTTPException(status_code=403, detail="Missing, stale or wrong-revision safety approval")
+        approver = record[0]
+        if pilot == approver:
+            raise HTTPException(status_code=403, detail="Independent approval required")
+        # Approval is single-use even if the lease attempt fails.
+        del context.approvals[body.approval_id]
+        try:
+            return context.broker.acquire(
+                vehicle_id=vehicle, system_id=state.fc_system_id,
+                pilot=pilot, approver=approver,
+                plan_sha256=body.plan_sha256, control_epoch=state.control_epoch)
+        except ControlDenied as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/v1/vehicles/{vehicle}/control/commands")
+    async def control_commands(
+        vehicle: str, body: FlightRequest,
+        authorization: str = Header(default=""),
+        x_control_lease: str = Header(default=""),
+    ) -> dict:
+        assert_vehicle(vehicle)
+        context.identity(token_from_auth(authorization), "pilot")
+        # This route has NO send-to-Pi implementation. It can only model
+        # decisions until the out-of-band hardware safety case is accepted.
+        intent = FlightIntent(vehicle, body.request_id, body.sequence,
+                              body.action, body.params, body.plan_sha256, body.ttl_ms)
+        try:
+            return context.broker.submit(
+                intent, lease_token=x_control_lease,
+                evidence=context.evidence_provider(), epoch=state.control_epoch)
+        except ControlDenied as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/v1/vehicles/{vehicle}/control/commands/{request_id}")
+    async def control_receipt(vehicle: str, request_id: str,
+                              authorization: str = Header(default="")) -> dict:
+        assert_vehicle(vehicle)
+        context.identity(token_from_auth(authorization), "pilot")
+        context.broker.expire()
+        try:
+            return context.broker.receipt(request_id)
+        except ControlDenied as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/v1/vehicles/{vehicle}/control/revoke")
+    async def control_revoke(vehicle: str,
+                             authorization: str = Header(default="")) -> dict:
+        assert_vehicle(vehicle)
+        context.identity(token_from_auth(authorization), "pilot")
+        context.broker.revoke("PILOT_RELEASE")
+        context.approvals.clear()
+        return {"status": "REVOKED", "physical_command_dispatch": False}
+
+    return context

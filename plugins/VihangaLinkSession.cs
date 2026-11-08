@@ -308,6 +308,29 @@ namespace AeroHelm.GcsCloud
             }
         }
 
+        // Exposes the independently configured control authority status.
+        // No aircraft command, lease acquisition or privilege escalation.
+        internal static string ReadFlightControlStatus()
+        {
+            if (!UsesDedicatedRelay || !Authenticated)
+                throw new InvalidOperationException("Private relay sign-in required.");
+            Uri target = new Uri(new Uri(TargetOrigin + "/"),
+                "api/v1/flight-control/status");
+            var request = (HttpWebRequest)WebRequest.Create(target);
+            request.Method = "GET";
+            request.AllowAutoRedirect = false;
+            request.Timeout = 6000;
+            request.ReadWriteTimeout = 6000;
+            request.Accept = "application/json";
+            using (var response = (HttpWebResponse)request.GetResponse())
+            using (var reader = new StreamReader(response.GetResponseStream()))
+            {
+                if (response.StatusCode != HttpStatusCode.OK)
+                    throw new IOException("Flight-control status unavailable.");
+                return reader.ReadToEnd();
+            }
+        }
+
         internal static void Clear()
         {
             lock (Sync)

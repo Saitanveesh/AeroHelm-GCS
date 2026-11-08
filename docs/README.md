@@ -17,6 +17,10 @@ Start with the [repository README](../README.md). Use this page to choose the co
 | Review repository setup rules | [Contributor instructions](../CONTRIBUTING.md) |
 | Copyright and inherited source | [Provenance](AEROHELM_PROVENANCE.md) |
 
+## Supervised cloud flight-control development
+
+- [Flight-control architecture, roles, interlocks and release gates](VIHANGA_SUPERVISED_FLIGHT_CONTROL.md) — separate development branch, **not enabled on the aircraft**
+
 ## Planned or simulator-only work
 
 Some directories describe future or independently tested features. They are **not** evidence of working remote flight commands or autonomous aircraft operation.
