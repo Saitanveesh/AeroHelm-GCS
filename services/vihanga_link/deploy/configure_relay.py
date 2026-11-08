@@ -75,6 +75,7 @@ def main() -> None:
         "VIHANGA_JWT_KEY": key,
         "VIHANGA_DEVICE_TOKEN_SHA256": digest,
         "VIHANGA_ALLOW_DISARMED_STREAM_REQUEST": "0",
+        "VIHANGA_ALLOW_DISARMED_PARAM_REQUEST": "0",
     }
     content = "".join(k + "=" + v + "\n" for k, v in pairs.items())
     DEST.parent.mkdir(mode=0o700, parents=True, exist_ok=True)

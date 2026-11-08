@@ -50,6 +50,7 @@ class Config:
     fc_system_id: int = 1
     allow_disarmed_telemetry_requests: bool = False
     oracle_instance_ocid: str = ""
+    allow_disarmed_parameter_requests: bool = False
 
     @staticmethod
     def from_env() -> "Config":
@@ -65,6 +66,8 @@ class Config:
             allow_disarmed_telemetry_requests=(
                 os.getenv("VIHANGA_ALLOW_DISARMED_STREAM_REQUEST", "0") == "1"),
             oracle_instance_ocid=os.getenv("VIHANGA_ORACLE_INSTANCE_OCID", ""),
+            allow_disarmed_parameter_requests=(
+                os.getenv("VIHANGA_ALLOW_DISARMED_PARAM_REQUEST", "0") == "1"),
         )
         cfg.validate()
         return cfg
@@ -186,6 +189,16 @@ class LinkState:
     parameter_expected: int = 0
     parameter_source: int = -1
     parameter_seen_at: float = -1.0
+    param_request_count: int = 0
+    param_request_id: str = ""
+    param_request_status: str = "NOT_REQUESTED"
+    last_gps_raw_at: float = -1.0
+    gps_fix_type: int | None = None
+    gps_satellites_visible: int | None = None
+    last_valid_position_at: float = -1.0
+    last_valid_home_at: float = -1.0
+    fc_autopilot: int | None = None
+    fc_restart_count: int = 0
 
     def clear_session(self) -> None:
         self.counters.clear()
@@ -212,6 +225,16 @@ class LinkState:
         self.parameter_expected = 0
         self.parameter_source = -1
         self.parameter_seen_at = -1.0
+        self.param_request_count = 0
+        self.param_request_id = ""
+        self.param_request_status = "NOT_REQUESTED"
+        self.last_gps_raw_at = -1.0
+        self.gps_fix_type = None
+        self.gps_satellites_visible = None
+        self.last_valid_position_at = -1.0
+        self.last_valid_home_at = -1.0
+        self.fc_autopilot = None
+        self.fc_restart_count = 0
         # No stale session packets may survive a device reconnection.
         for queue in self.viewers:
             while not queue.empty():
@@ -240,11 +263,62 @@ class LinkState:
         self.last_frame = now
         self.recent_frames.append(now)
         if msg_id == 0:
+            # A device WSS session can outlive a Pixhawk power cycle.
+            # Never publish old Home/GPS or a mixed pre/post-reboot
+            # parameter table as one complete FC snapshot.
+            if self.last_heartbeat >= 0 and now - self.last_heartbeat > 4.0:
+                self.fc_restart_count += 1
+                self.parameter_frames.clear()
+                self.parameter_expected = 0
+                self.parameter_source = -1
+                self.parameter_seen_at = -1.0
+                self.last_valid_home_at = -1.0
+                self.last_valid_position_at = -1.0
+                self.last_gps_raw_at = -1.0
+                self.gps_fix_type = None
+                self.gps_satellites_visible = None
+                self.last_attitude = -1.0
+                self.param_request_count = 0
+                self.param_request_id = ""
+                self.param_request_status = "RESET_ON_FC_RESTART"
+            header = 6 if packet[0] == 0xFE else 10
+            self.fc_autopilot = int(packet[header + 5])
             self.last_heartbeat = now
             self.recent_heartbeats.append(now)
         if msg_id == 30:
             self.last_attitude = now
             self.recent_attitudes.append(now)
+        # Report valid physical GPS and HOME_POSITION separately.
+        # A MAVLink zero-coordinate placeholder is not an aircraft fix.
+        if msg_id == 24:
+            header = 6 if packet[0] == 0xFE else 10
+            if packet[1] >= 30:
+                self.gps_fix_type = int(packet[header + 28])
+                self.gps_satellites_visible = int(packet[header + 29])
+                self.last_gps_raw_at = now
+            else:
+                self.gps_fix_type = None
+                self.last_gps_raw_at = -1.0
+        if msg_id == 33:
+            header = 6 if packet[0] == 0xFE else 10
+            if packet[1] >= 28:
+                lat, lon = struct.unpack_from("<ii", packet, header + 4)
+                valid = (-900000000 <= lat <= 900000000 and
+                         -1800000000 <= lon <= 1800000000 and
+                         not (lat == 0 and lon == 0))
+                self.last_valid_position_at = now if valid else -1.0
+            else:
+                self.last_valid_position_at = -1.0
+        if msg_id == 242:
+            header = 6 if packet[0] == 0xFE else 10
+            if packet[1] >= 12:
+                lat, lon = struct.unpack_from("<ii", packet, header)
+                valid = (-900000000 <= lat <= 900000000 and
+                         -1800000000 <= lon <= 1800000000 and
+                         not (lat == 0 and lon == 0))
+                self.last_valid_home_at = now if valid else -1.0
+            else:
+                self.last_valid_home_at = -1.0
         if msg_id == 77 and packet[1] >= 3:
             # A real FC-generated COMMAND_ACK for the volatile stream probe.
             # This is not interchangeable with the Pi diagnostic JSON ACK.
@@ -271,6 +345,33 @@ class LinkState:
             if queue.full():
                 queue.get_nowait()  # Drop stale frames, never stall Pi uplink.
             queue.put_nowait((now, packet))
+
+    async def request_parameter_snapshot(self, vehicle_id: str) -> dict[str, Any]:
+        """One authenticated fixed, read-only FC parameter acquisition."""
+        async with self.lock:
+            if not self.connected or not self.fresh(self.last_heartbeat) or self.device_socket is None:
+                raise HTTPException(status_code=409, detail="Fresh physical FC HEARTBEAT and Pi required")
+            if self.param_request_count >= 1:
+                raise HTTPException(status_code=429, detail="Parameter snapshot already requested this session")
+            request_id = uuid.uuid4().hex
+            self.param_request_count += 1
+            self.param_request_id = request_id
+            self.param_request_status = "QUEUED_ON_PRIVATE_LINK"
+            # A new request invalidates the earlier result immediately.
+            self.parameter_frames.clear()
+            self.parameter_expected = 0
+            self.parameter_source = -1
+            self.parameter_seen_at = -1.0
+            try:
+                await self.device_socket.send_json({
+                    "type": "disarmed_param_snapshot", "vehicle_id": vehicle_id,
+                    "request_id": request_id,
+                })
+            except (RuntimeError, OSError) as ex:
+                self.param_request_status = "TRANSPORT_FAILED"
+                raise HTTPException(status_code=503, detail="Pi parameter diagnostic unavailable") from ex
+            return {"status": self.param_request_status, "request_id": request_id,
+                    "fc_parameters_complete": False, "flight_control_enabled": False}
 
     async def request_stream_probe(self, vehicle_id: str) -> dict[str, Any]:
         """Authenticated, bounded diagnostic intent, NEVER arbitrary MAVLink."""
@@ -368,6 +469,16 @@ class LinkState:
                 self.ping_status = "PONG_FROM_PI"
         elif message.get("type") == "disarmed_stream_probe_ack":
             self.observe_probe_ack(text)
+        elif message.get("type") == "disarmed_param_snapshot_ack":
+            if (self.connected and self.param_request_id and
+                    self.param_request_status == "QUEUED_ON_PRIVATE_LINK" and
+                    message.get("request_id") == self.param_request_id and
+                    message.get("status") in (
+                        "QUEUED", "REFUSED_DISABLED", "REFUSED_DISARM_REQUIRED",
+                        "REFUSED_RATE_LIMIT") and
+                    message.get("fc_parameters_complete") is False and
+                    message.get("flight_control_enabled") is False):
+                self.param_request_status = message["status"]
 
     def fresh(self, timestamp: float) -> bool:
         return self.connected and timestamp >= 0 and (
@@ -379,7 +490,8 @@ class LinkState:
         oldest = min((stamp for stamp, _ in self.parameter_frames.values()),
                      default=-1.0)
         age_seconds = time.monotonic() - oldest if oldest >= 0 else None
-        complete = (self.connected and self.parameter_expected > 0 and
+        complete = (self.connected and self.fresh(self.last_heartbeat) and
+                    self.parameter_expected > 0 and
                     len(self.parameter_frames) == self.parameter_expected and
                     age_seconds is not None and 0 <= age_seconds <= 300)
         return {
@@ -409,14 +521,20 @@ class LinkState:
                 raise ValueError("Duplicate or blank FC parameter identifier")
             ptype = packet[header + 24]
             value_bytes = packet[header:header + 4]
-            # Avoid false drift conclusions from integer bytewise encoding.
-            # Only REAL32 is safe to display as an ordinary float.
+            # ArduPilot uses C-style numeric floats for PARAM_VALUE even
+            # when param_type describes an integer. Other autopilots may
+            # bytewise-encode integer types: never reinterpret them blindly.
             displayed = None
-            if ptype == 9:
+            if ptype == 9 or (
+                    self.fc_autopilot == mavlink_dialect.MAV_AUTOPILOT_ARDUPILOTMEGA
+                    and ptype in (1, 2, 3, 4, 5, 6)):
                 val = struct.unpack("<f", value_bytes)[0]
                 if val == val and abs(val) != float("inf"):
                     displayed = val
             values[name] = {"index": index, "type": ptype,
+                            "encoding": "ARDUPILOT_NUMERIC_FLOAT"
+                                if ptype != 9 and displayed is not None
+                                else "REAL32" if ptype == 9 else "UNINTERPRETED",
                             "float32": displayed,
                             "raw_value_hex": value_bytes.hex()}
         return {"snapshot": status, "values": values,
@@ -464,7 +582,31 @@ class LinkState:
             "message_ids": {str(k): v for k, v in sorted(self.counters.items())},
             "gcs_viewers": len(self.viewers),
             "epoch": self.epoch,
+            "fc_restarts_observed": self.fc_restart_count,
             "parameter_snapshot": self.parameter_status(),
+            "parameter_capture": {
+                "status": self.param_request_status,
+                "request_count": self.param_request_count,
+                "request_id": self.param_request_id,
+                "fc_parameters_complete": self.parameter_status()["verified_complete"],
+                "read_only": True,
+            },
+            "position_quality": {
+                "gps_fix_type": self.gps_fix_type
+                    if self.fresh(self.last_gps_raw_at) else None,
+                "satellites_visible": self.gps_satellites_visible
+                    if self.fresh(self.last_gps_raw_at) else None,
+                "gps_3d_fix": (self.fresh(self.last_gps_raw_at) and
+                               self.gps_fix_type is not None and
+                               3 <= self.gps_fix_type <= 6),
+                "map_position_valid": (
+                    self.fresh(self.last_gps_raw_at) and
+                    self.gps_fix_type is not None and
+                    3 <= self.gps_fix_type <= 6 and
+                    self.fresh(self.last_valid_position_at)),
+                "home_position_verified": self.fresh(self.last_valid_home_at),
+                "position_source": "PHYSICAL_MAVLINK_ONLY",
+            },
             "flight_control_enabled": False,
             "transport_ping": {
                 "status": self.ping_status,
@@ -588,6 +730,19 @@ def create_app(config: Config | None = None) -> FastAPI:
             return state.parameter_values()
         except ValueError as ex:
             raise HTTPException(status_code=409, detail=str(ex)) from ex
+
+    @app.post("/api/v1/vehicles/{vehicle_id}/parameters/refresh")
+    async def refresh_parameters(
+            vehicle_id: str,
+            authorization: str = Header(default="")) -> dict[str, Any]:
+        token = authorization[7:] if authorization.startswith("Bearer ") else ""
+        if not viewer_expiration(token):
+            raise HTTPException(status_code=401, detail="Private operator session required")
+        if vehicle_id != cfg.vehicle_id:
+            raise HTTPException(status_code=404, detail="Unknown aircraft")
+        if not cfg.allow_disarmed_parameter_requests:
+            raise HTTPException(status_code=403, detail="Read-only parameter request disabled")
+        return await state.request_parameter_snapshot(vehicle_id)
 
     @app.post("/api/v1/vehicles/{vehicle_id}/link/ping")
     async def private_pi_ping(

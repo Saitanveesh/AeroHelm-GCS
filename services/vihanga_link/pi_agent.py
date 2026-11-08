@@ -59,6 +59,7 @@ class Config:
     pinned_relay_host: str
     parameter_snapshot: bool = False
     oracle_instance_ocid: str = ""
+    recover_streams: bool = False
 
     @staticmethod
     def from_env() -> "Config":
@@ -73,6 +74,7 @@ class Config:
             pinned_relay_host=os.getenv("VIHANGA_PINNED_RELAY_HOST", ""),
             parameter_snapshot=os.getenv("VIHANGA_DISARMED_PARAM_SNAPSHOT", "0") == "1",
             oracle_instance_ocid=os.getenv("VIHANGA_ORACLE_INSTANCE_OCID", ""),
+            recover_streams=os.getenv("VIHANGA_DISARMED_STREAM_RECOVERY", "0") == "1",
         )
         cfg.validate()
         return cfg
@@ -198,7 +200,7 @@ def is_disarmed_autopilot_heartbeat(message, sysid: int) -> bool:
 
 def request_streams_once(port, heartbeat, cfg: Config) -> bool:
     """Request volatile message intervals on the local Pi UART, never via cloud."""
-    if not cfg.stream_probe or not is_disarmed_autopilot_heartbeat(
+    if not (cfg.stream_probe or cfg.recover_streams) or not is_disarmed_autopilot_heartbeat(
             heartbeat, cfg.system_id):
         return False
     for msg_id, rate in MESSAGE_RATES_HZ.items():
@@ -216,7 +218,8 @@ def request_streams_once(port, heartbeat, cfg: Config) -> bool:
 def stream_probe_due(cfg: Config, *, seen_armed: bool, attitude_seen: bool,
                      attempts: int, seconds_since_last_probe: float) -> bool:
     """Permit at most one disarmed/local retry when ID30 never arrives."""
-    return (cfg.stream_probe and not seen_armed and not attitude_seen and
+    return ((cfg.stream_probe or cfg.recover_streams) and
+            not seen_armed and not attitude_seen and
             attempts < STREAM_PROBE_MAX_ATTEMPTS and
             (attempts == 0 or seconds_since_last_probe >= STREAM_PROBE_RETRY_SECONDS))
 
@@ -248,6 +251,8 @@ class Publisher:
         self._remote_probe_count = 0
         self._remote_probe_requested_at = -1.0
         self._remote_probe_pending = threading.Event()
+        self._param_refresh_pending = threading.Event()
+        self._param_refresh_count = 0
         self.port = None
         self._uart_thread = None
         self._uart_failure: str | None = None
@@ -297,6 +302,31 @@ class Publisher:
                 "status": status, "fc_stream_confirmed": False,
                 "flight_control_enabled": False}
 
+    def queue_disarmed_parameter_request(self, message) -> dict | None:
+        """Fixed read-only PARAM_REQUEST_LIST intent; no arbitrary FC writes."""
+        if not isinstance(message, dict) or message.get("type") != "disarmed_param_snapshot":
+            return None
+        if message.get("vehicle_id") != self.cfg.vehicle_id:
+            return None
+        request_id = message.get("request_id")
+        if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{32}", request_id):
+            return None
+        with self._state_lock:
+            if not self.cfg.parameter_snapshot:
+                status = "REFUSED_DISABLED"
+            elif (self._seen_armed or self._last_disarmed_heartbeat < 0 or
+                  time.monotonic() - self._last_disarmed_heartbeat > 3.0):
+                status = "REFUSED_DISARM_REQUIRED"
+            elif self._param_refresh_pending.is_set() or self._param_refresh_count >= 1:
+                status = "REFUSED_RATE_LIMIT"
+            else:
+                self._param_refresh_count += 1
+                self._param_refresh_pending.set()
+                status = "QUEUED"
+        return {"type": "disarmed_param_snapshot_ack", "request_id": request_id,
+                "status": status, "fc_parameters_complete": False,
+                "flight_control_enabled": False}
+
     def transport_ping_reply(self, message) -> dict | None:
         """Reply to a matched private Pi diagnostic, with no UART activity."""
         if not isinstance(message, dict) or message.get("type") != "link_ping":
@@ -330,6 +360,10 @@ class Publisher:
             ack = self.queue_disarmed_telemetry_request(message)
             if ack is not None:
                 await ws.send(json.dumps(ack, separators=(",", ":")))
+                continue
+            param_ack = self.queue_disarmed_parameter_request(message)
+            if param_ack is not None:
+                await ws.send(json.dumps(param_ack, separators=(",", ":")))
 
     def _read_uart(self) -> None:
         stream_probe_attempts = 0
@@ -338,7 +372,14 @@ class Publisher:
         position_seen = False
         vfr_seen = False
         parameters_requested = False
+        parameter_expected = 0
+        parameter_indices: set[int] = set()
+        parameter_retry_indices: set[int] = set()
+        parameter_capture_at = -1.0
+        parameter_last_packet_at = -1.0
+        parameter_last_retry_at = -1.0
         seen_armed = False
+        last_heartbeat_at = -1.0
         last_report = time.monotonic()
         previous_uart: Counter[int] = Counter()
         previous_uplink: Counter[int] = Counter()
@@ -361,6 +402,31 @@ class Publisher:
                     previous_uart = self.counts.copy()
                     previous_uplink = self.sent_counts.copy()
                     last_report = now
+                # One bounded, read-only attempt for missing PARAM_VALUE
+                # indexes. Never retry without a recent disarmed FC heartbeat.
+                if (parameters_requested and parameter_expected > 0 and
+                        len(parameter_indices) < parameter_expected and
+                        len(parameter_retry_indices) < 32 and
+                        not seen_armed and self.cfg.parameter_snapshot and
+                        parameter_capture_at >= 0 and
+                        0 <= now - parameter_capture_at <= 180 and
+                        parameter_last_packet_at >= 0 and
+                        now - parameter_last_packet_at >= 2.0 and
+                        (parameter_last_retry_at < 0 or
+                         now - parameter_last_retry_at >= 0.75) and
+                        self._last_disarmed_heartbeat >= 0 and
+                        now - self._last_disarmed_heartbeat <= 3.0):
+                    missing = next(
+                        (idx for idx in range(parameter_expected)
+                         if idx not in parameter_indices and
+                         idx not in parameter_retry_indices), None)
+                    if missing is not None:
+                        self.port.mav.param_request_read_send(
+                            self.cfg.system_id, 1, b"\0" * 16, missing)
+                        parameter_retry_indices.add(missing)
+                        parameter_last_retry_at = now
+                        LOG.info("Read-only missing parameter index request %d/%d",
+                                 missing, parameter_expected)
                 msg = self.port.recv_match(blocking=True, timeout=0.4)
                 if msg is None or msg.get_type() == "BAD_DATA":
                     continue
@@ -373,6 +439,17 @@ class Publisher:
                     self.foreign_system_dropped += 1
                     continue
                 self.counts[mid] += 1
+                if (mid == 22 and msg.get_srcComponent() == 1 and
+                        parameters_requested and self.cfg.parameter_snapshot):
+                    count = int(msg.param_count)
+                    index = int(msg.param_index)
+                    if 0 < count <= 5000 and 0 <= index < count:
+                        if parameter_expected != count:
+                            parameter_expected = count
+                            parameter_indices.clear()
+                            parameter_retry_indices.clear()
+                        parameter_indices.add(index)
+                        parameter_last_packet_at = time.monotonic()
                 if mid == 77 and msg.get_srcComponent() == 1 and \
                         int(msg.command) == mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL:
                     LOG.info("REAL FC COMMAND_ACK for stream interval: MAV_RESULT=%d",
@@ -394,6 +471,32 @@ class Publisher:
                         msg.get_srcComponent() == 1:
                     armed = bool(msg.base_mode &
                         mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+                    # A Pixhawk restart loses nonpersistent message rates.
+                    # Reset only observed stream state after a real FC
+                    # heartbeat gap. Never clear the lifetime armed latch.
+                    heartbeat_at = time.monotonic()
+                    if (last_heartbeat_at >= 0 and
+                            heartbeat_at - last_heartbeat_at > 4.0):
+                        attitude_seen = position_seen = vfr_seen = False
+                        stream_probe_attempts = 0
+                        last_probe_at = 0.0
+                        parameters_requested = False
+                        parameter_expected = 0
+                        parameter_indices.clear()
+                        parameter_retry_indices.clear()
+                        parameter_capture_at = -1.0
+                        parameter_last_packet_at = -1.0
+                        parameter_last_retry_at = -1.0
+                        if not seen_armed and is_disarmed_autopilot_heartbeat(
+                                msg, self.cfg.system_id):
+                            with self._state_lock:
+                                self._param_refresh_count = 0
+                                self._param_refresh_pending.clear()
+                        LOG.warning(
+                            "FC heartbeat resumed after %.1fs; invalidated volatile "
+                            "stream and parameter capture state",
+                            heartbeat_at - last_heartbeat_at)
+                    last_heartbeat_at = heartbeat_at
                     seen_armed = seen_armed or armed
                     with self._state_lock:
                         self._seen_armed = self._seen_armed or armed
@@ -423,9 +526,23 @@ class Publisher:
                                 last_probe_at = time.monotonic()
                                 LOG.info("Disarmed local stream probe attempt %d/%d",
                                          stream_probe_attempts, STREAM_PROBE_MAX_ATTEMPTS)
-                        if self.cfg.parameter_snapshot and not parameters_requested:
+                        if self._param_refresh_pending.is_set():
+                            # Revalidate disarm immediately before UART write.
+                            self._param_refresh_pending.clear()
                             parameters_requested = request_parameter_snapshot_once(
                                 self.port, msg, self.cfg)
+                            if parameters_requested:
+                                parameter_capture_at = time.monotonic()
+                                parameter_expected = 0
+                                parameter_indices.clear()
+                                parameter_retry_indices.clear()
+                                parameter_last_packet_at = -1.0
+                                parameter_last_retry_at = -1.0
+                        elif self.cfg.parameter_snapshot and not parameters_requested:
+                            parameters_requested = request_parameter_snapshot_once(
+                                self.port, msg, self.cfg)
+                            if parameters_requested:
+                                parameter_capture_at = time.monotonic()
                 raw = bytes(msg.get_msgbuf())
                 if raw and len(raw) <= MAX_FRAME and raw[0] in (0xFE, 0xFD):
                     self._loop.call_soon_threadsafe(self._offer, raw)
@@ -476,6 +593,7 @@ class Publisher:
                     while not self.queue.empty():
                         self.queue.get_nowait()
                     self._remote_probe_pending.clear()
+                    self._param_refresh_pending.clear()
                     async with websockets.connect(
                         self.cfg.url, additional_headers={
                             "Authorization": "Bearer " + token
@@ -490,6 +608,7 @@ class Publisher:
                             # An interrupted WSS session must not leave an
                             # unexecuted cloud request pending on physical UART.
                             self._remote_probe_pending.clear()
+                            self._param_refresh_pending.clear()
                             request_reader.cancel()
                             await asyncio.gather(request_reader, return_exceptions=True)
                 except (OSError, websockets.WebSocketException, TimeoutError) as ex:

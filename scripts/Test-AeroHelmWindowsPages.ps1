@@ -373,7 +373,7 @@ Require-Text $simWorkflow 'lease_digest' 'Virtual mission steps require an expir
 Require-Text $simWorkflow 'EXPIRED_SIM' 'Timed-out simulation leases must fail closed.'
 Require-Text $project 'VihangaMissionPreviewWindow.cs' 'Native plugin must compile the cloud mission preview window.'
 Require-Text (Read-Source 'plugins/AeroHelmPlatformV2.cs') 'VihangaLinkSession.ReadParameters' 'Existing PARAMETERS tab must inspect dedicated relay snapshot.'
-Require-Text (Read-Source 'plugins/AeroHelmPlatformV2.cs') 'refreshFromPi.Visible = !VihangaLinkSession.UsesDedicatedRelay;' 'Private viewer must not expose unsupported remote refresh commands.'
+Require-Text (Read-Source 'plugins/AeroHelmPlatformV2.cs') 'VihangaLinkSession.RequestParameterSnapshot(Id())' 'Dedicated relay parameter refresh must use fixed authenticated read-only API.'
 Require-Text $cloud 'new VihangaMissionPreviewWindow()' 'TOOLS must open dedicated cloud simulation preview.'
 Require-Text $nativePreview 'api/v1/sim/mission/preview' 'Preview UI must target only the simulation API.'
 Require-Text $nativePreview 'SIMULATION_PREVIEW_ONLY' 'Preview UI must reject hardware-authorizing responses.'
@@ -388,7 +388,9 @@ if ($privateRelay.Contains('/ws/mavlink/control/') -or
     $privatePi.Contains('self.port.write(') -or
     $privatePi.Contains('self.port.mav.send(') -or
     $privatePi.Contains('self.port.mav.set_mode_send(') -or
-    $privatePi.Contains('self.port.mav.mission_item_int_send(')) {
+    $privatePi.Contains('self.port.mav.mission_item_int_send(') -or
+    $privatePi.Contains('.mav.param_set_send(') -or
+    $privatePi.Contains('.mav.command_int_send(')) {
     throw 'Telemetry-only development service may not relay cloud flight commands.'
 }
 Require-Text $privatePi 'raw = await ws.recv()' 'Private diagnostic receiver must be explicit.'
@@ -398,8 +400,13 @@ Require-Text $privatePi 'pong = self.transport_ping_reply(message)' 'Only the fi
 Require-Text $privatePi 'ack = self.queue_disarmed_telemetry_request(message)' 'Private FC request must use the disarmed telemetry-only whitelist.'
 Require-Text $privatePi 'message.get("type") != "link_ping"' 'Private diagnostic ping must require an exact intent type.'
 Require-Text $privatePi 'message.get("type") != "disarmed_stream_probe"' 'Cloud may request only the fixed disarmed telemetry probe.'
-Require-Text $privatePi 'if not cfg.stream_probe or not is_disarmed_autopilot_heartbeat(' 'FC telemetry probe must have a physical disarmed heartbeat and explicit opt-in.'
-Require-Text $privatePi 'MAV_CMD_SET_MESSAGE_INTERVAL' 'Physical UART must use only the bounded volatile telemetry interval command.'
+Require-Text $privatePi 'if not (cfg.stream_probe or cfg.recover_streams) or not is_disarmed_autopilot_heartbeat(' 'Automatic stream recovery still requires disarmed FC and explicit opt-in.'
+Require-Text $privatePi 'MAV_CMD_SET_MESSAGE_INTERVAL' 'Physical UART stream reconfiguration must use bounded volatile telemetry intervals.'
+Require-Text $privatePi 'queue_disarmed_parameter_request' 'Read-only parameter intent must be explicitly authorized on Pi.'
+Require-Text $privatePi 'param_request_list_send' 'Physical parameter acquisition must use read-only PARAM_REQUEST_LIST.'
+Require-Text $privateRelay 'allow_disarmed_parameter_requests' 'Relay parameter request must default to disabled.'
+Require-Text $privateRelay '@app.post("/api/v1/vehicles/{vehicle_id}/parameters/refresh")' 'Private parameter readback must have a fixed authenticated endpoint.'
+Require-Text $relaySession 'internal static string RequestParameterSnapshot' 'Windows parameter capture must use separate relay token.'
 if ([regex]::Matches($privatePi, '\.mav\.command_long_send\s*\(').Count -ne 1 -or
     [regex]::Matches($privatePi, 'ws\.recv\s*\(').Count -ne 1) {
     throw 'Private Pi UART or cloud receive command surface expanded; audit command whitelist before shipping.'

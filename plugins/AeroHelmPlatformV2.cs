@@ -141,12 +141,16 @@ namespace AeroHelm.GcsCloud
                 ()=>SortParameterTargets()));
             paramPanel.Controls.Add(ActionButton("Compare parameter snapshot",
                 async()=>await CompareParameters()));
-            var refreshFromPi = ActionButton("Request read-only parameter refresh from Pi",
-                async()=>await Run(()=>OperationsApi.Request("POST",
-                    "api/v1/vehicles/"+Id()+"/parameters/refresh"),"Read-only parameter capture"));
-            // Private telemetry relay has a Pi-local disarmed snapshot option,
-            // not an operator-accessible remote stream/parameter command route.
-            refreshFromPi.Visible = !VihangaLinkSession.UsesDedicatedRelay;
+            var refreshFromPi = ActionButton("Request disarmed read-only parameter capture",
+                async()=>await Run(()=>
+                    VihangaLinkSession.UsesDedicatedRelay ?
+                        VihangaLinkSession.RequestParameterSnapshot(Id()) :
+                        OperationsApi.Request("POST",
+                            "api/v1/vehicles/"+Id()+"/parameters/refresh"),
+                    "Read-only parameter capture request"));
+            // Relay and Pi have independent opt-ins; a QUEUED response is
+            // not evidence that the complete parameter list was received.
+            refreshFromPi.Visible = true;
             paramPanel.Controls.Add(refreshFromPi);
             paramPanel.Controls.Add(ActionButton("Inspect parameter snapshot completeness",
                 async()=>await ParameterSnapshotStatus()));
@@ -472,9 +476,9 @@ namespace AeroHelm.GcsCloud
                     return "PRIVATE READ-ONLY SNAPSHOT" + Environment.NewLine +
                         "Matched: " + matching + Environment.NewLine +
                         "Different: " + different + Environment.NewLine +
-                        "Missing/unsupported integer encodings: " + unavailable +
+                        "Missing/unverified parameter values: " + unavailable +
                         Environment.NewLine +
-                        "Only REAL32 values are interpreted; no FC write was sent.";
+                        "Integer values are decoded only for verified ArduPilot; no FC write was sent.";
                 }, "Private parameter drift");
                 return;
             }
