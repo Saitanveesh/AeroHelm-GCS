@@ -16,7 +16,7 @@ import urllib.parse
 from services.vihanga_link.oracle_identity import validate_instance_ocid
 
 ENV = Path("/etc/vihanga/pi.env")
-TOKEN = Path("/etc/vihanga/device-token")
+TOKEN = Path("/var/lib/vihanga/device-token")
 
 
 def prompt(name: str, pattern: str) -> str:
