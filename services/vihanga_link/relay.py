@@ -456,6 +456,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     @app.get("/health")
     async def health() -> dict[str, Any]:
         return {"status": "ok", "mode": APP_MODE,
+                "service": "vihanga-private-relay",
                 "oracle_instance": app.state.oracle_binding}
 
     @app.post("/api/v1/auth/login")
