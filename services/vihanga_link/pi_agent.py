@@ -268,6 +268,22 @@ class Publisher:
                 "status": status, "fc_stream_confirmed": False,
                 "flight_control_enabled": False}
 
+    def transport_ping_reply(self, message) -> dict | None:
+        """Reply to a matched private Pi diagnostic, with no UART activity."""
+        if not isinstance(message, dict) or message.get("type") != "link_ping":
+            return None
+        if message.get("vehicle_id") != self.cfg.vehicle_id:
+            return None
+        request_id = message.get("request_id")
+        if not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{32}", request_id):
+            return None
+        return {
+            "type": "link_pong",
+            "vehicle_id": self.cfg.vehicle_id,
+            "request_id": request_id,
+            "flight_control_enabled": False,
+        }
+
     async def _receive_private_requests(self, ws) -> None:
         """Only fixed telemetry intent can be accepted from the private relay."""
         while not self.stop.is_set():
@@ -277,6 +293,10 @@ class Publisher:
             try:
                 message = json.loads(raw)
             except (ValueError, TypeError):
+                continue
+            pong = self.transport_ping_reply(message)
+            if pong is not None:
+                await ws.send(json.dumps(pong, separators=(",", ":")))
                 continue
             ack = self.queue_disarmed_telemetry_request(message)
             if ack is not None:
