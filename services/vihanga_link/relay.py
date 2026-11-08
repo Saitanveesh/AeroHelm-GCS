@@ -831,8 +831,12 @@ def create_app(config: Config | None = None,
                     # Shadow replies may only prove this device WSS round-trip;
                     # they can never be promoted to a MAVLink/FC command ACK.
                     raw = event["text"]
-                    if not app.state.control.shadow_transport.observe_ack(
-                            raw, epoch=state.control_epoch):
+                    async with state.lock:
+                        if app.state.control.shadow_transport.observe_ack(
+                                raw, epoch=state.control_epoch):
+                            continue
+                        if app.state.control.observe_pi_command_receipt(raw):
+                            continue
                         state.observe_device_text(raw)
         except (WebSocketDisconnect, asyncio.TimeoutError):
             pass
