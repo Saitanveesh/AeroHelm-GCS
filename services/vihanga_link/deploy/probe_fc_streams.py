@@ -68,7 +68,7 @@ def main() -> None:
         print("Fresh physical attitude and position/VFR_HUD already observed.")
         print("No additional FC command requested.")
         return
-    old_ack = before.get("message_ids", {}).get("77", 0)
+    old_ack = before.get("physical_stream_rate_command_ack", {}).get("frames", 0)
     old_att = before.get("real_attitude_frames", 0)
     path = (origin + "/api/v1/vehicles/" + args.vehicle +
             "/telemetry/probe")
@@ -81,7 +81,7 @@ def main() -> None:
         time.sleep(0.5)
         h = request_json(origin + "/api/v1/mavlink/health")
         physical = h.get("physical_stream_rate_command_ack", {})
-        ack_new = h.get("message_ids", {}).get("77", 0) > old_ack
+        ack_new = physical.get("frames", 0) > old_ack
         attitude_new = h.get("real_attitude_frames", 0) > old_att
         if ack_new or attitude_new:
             print("Physical FC ID77 ACK observed:", ack_new)
