@@ -435,6 +435,41 @@ def test_authenticated_read_only_parameter_snapshot_and_epoch(credentials):
         assert client.get(route, headers=headers).json()["status"] == "UNAVAILABLE"
 
 
+def test_real_fc_stream_command_ack_is_separate_from_pi_request_ack(credentials):
+    cfg, token = credentials
+    app = create_app(cfg)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
+              headers={"Authorization": "Bearer " + token}) as device:
+            # Valid CRC, FC SYSID 1, component 1, MAV_CMD 511, accepted result 0.
+            accepted = frame(77, struct.pack("<HB", 511, 0), mav2=True)
+            device.send_bytes(accepted)
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["physical_stream_rate_command_ack"]["observed"]:
+                    break
+                time.sleep(0.01)
+            ack = h["physical_stream_rate_command_ack"]
+            assert ack["command_id"] == 511
+            assert ack["result"] == 0 and ack["accepted"] is True
+            assert ack["fresh"] is True
+            assert h["message_ids"]["77"] == 1
+            assert h["telemetry_probe"]["status"] == "NOT_REQUESTED"
+            assert h["real_attitude_frames"] == 0
+            # A reject code is also genuine, but must not be called accepted.
+            device.send_bytes(frame(77, struct.pack("<HB", 511, 2), mav2=True))
+            for _ in range(100):
+                h = client.get("/api/v1/mavlink/health").json()
+                if h["message_ids"].get("77") == 2:
+                    break
+                time.sleep(0.01)
+            assert h["physical_stream_rate_command_ack"]["result"] == 2
+            assert h["physical_stream_rate_command_ack"]["accepted"] is False
+        disconnected = client.get("/api/v1/mavlink/health").json()
+        assert not disconnected["physical_stream_rate_command_ack"]["observed"]
+        assert disconnected["physical_stream_rate_command_ack"]["age_ms"] is None
+
+
 def test_non_attitude_mavlink_is_forwarded_unchanged(credentials):
     cfg, token = credentials
     codec = mavutil.mavlink.MAVLink(None, srcSystem=1, srcComponent=1)
