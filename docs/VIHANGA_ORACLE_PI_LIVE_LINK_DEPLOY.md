@@ -182,6 +182,38 @@ status, set `VIHANGA_DISARMED_STREAM_PROBE=1` in the protected
 `/etc/vihanga/pi.env`, restart **only** `vihanga-pi.service` and recheck
 the observed counters. This does not enable arm, takeoff or mission upload.
 
+For a **real Oracle-to-Pixhawk disarmed command round trip** (not a
+simulator), after the physically supervised setup and a functioning private
+relay/Pi connection, enable both opt-ins in their respective protected
+systemd EnvironmentFiles:
+
+* Oracle `/etc/vihanga/relay.env`:
+  `VIHANGA_ALLOW_DISARMED_STREAM_REQUEST=1`
+* Pi `/etc/vihanga/pi.env`:
+  `VIHANGA_DISARMED_STREAM_PROBE=1`
+
+Use `sudoedit` to change only those two keys and restart **only** the
+matching `vihanga-relay.service` and `vihanga-pi.service`, respectively.
+The site operator must re-verify **disarmed, propellers removed** before
+restarting; the Pi immediately may issue bounded volatile stream requests
+after its own disarmed FC heartbeat. Never turn on an arbitrary command
+tunnel or bypass a vehicle's onboard failsafes.
+
+Then on the Oracle VM:
+
+```bash
+cd /opt/vihanga/source
+/opt/vihanga/venv/bin/python -m services.vihanga_link.deploy.probe_fc_streams \
+ --origin https://aerohelm-vcn.tailf3ab6a.ts.net:8443 \
+ --vehicle AH-HW-001 --operator operator
+```
+
+This prompts for explicit on-site consent and a protected operator password,
+asks the cloud to request preset stream rates, and looks for a **new physical
+Pixhawk COMMAND_ACK (ID77, command 511)** and genuine rising ATTITUDE
+frames. A Pi WebSocket JSON acknowledgment, a `MAV_RESULT=0` acceptance,
+and actual ID30/33/74 output are three *different* pieces of evidence.
+
 If ID30 remains zero, inspect the FC's actual SERIALx/MAVLink stream
 configuration. `SRx_EXTRA1` / `MAVx_EXTRA1` group names depend on firmware
 and MAVLink channel mapping; do not blindly modify `SERIALx_PROTOCOL`,
