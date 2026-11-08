@@ -413,6 +413,7 @@ def test_authenticated_read_only_parameter_snapshot_and_epoch(credentials):
         assert client.get(route + "/values", headers=headers).status_code == 409
         with client.websocket_connect("/ws/mavlink/device/AH-HW-001",
               headers={"Authorization": "Bearer " + device_token}) as device:
+            device.send_bytes(frame(0, bytes(9)))
             for index in range(3):
                 name = ("TEST_%d" % index).encode().ljust(16, b"\0")
                 payload = struct.pack("<fHH", float(index), 3, index) + name + b"\x09"
@@ -954,6 +955,7 @@ def test_position_status_needs_actual_3d_gps_fix_and_nonzero_position(credential
 def test_ardupilot_integer_parameters_decode_only_with_real_fc_autopilot(credentials):
     cfg, token = credentials
     hb = frame(0, struct.pack("<IBBBBB", 0, 2, 3, 0, 4, 3))
+    unknown_hb = frame(0, struct.pack("<IBBBBB", 0, 2, 0, 0, 4, 3))
     name = b"FS_GCS_ENABLE".ljust(16, b"\x00")
     numeric = frame(22, struct.pack("<fHH", 5.0, 1, 0) + name + bytes((6,)))
     with TestClient(create_app(cfg)) as client:
@@ -964,6 +966,7 @@ def test_ardupilot_integer_parameters_decode_only_with_real_fc_autopilot(credent
         with client.websocket_connect(
                 "/ws/mavlink/device/AH-HW-001",
                 headers={"Authorization": "Bearer " + token}) as device:
+            device.send_bytes(unknown_hb)
             device.send_bytes(numeric)
             for _ in range(100):
                 h = client.get("/api/v1/mavlink/health").json()
