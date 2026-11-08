@@ -7,6 +7,7 @@ is read only from the fixed link-local Oracle IMDSv2 endpoint.
 from __future__ import annotations
 
 import hmac
+import hashlib
 import json
 import re
 from urllib.request import Request, urlopen
@@ -47,4 +48,5 @@ def verify_instance_binding(expected: str, fetch=None) -> dict:
     actual = metadata.get("id") if isinstance(metadata, dict) else None
     if not isinstance(actual, str) or not hmac.compare_digest(actual, expected):
         raise RuntimeError("OCI compute instance identity does not match deployment")
-    return {"configured": True, "verified": True}
+    return {"configured": True, "verified": True,
+            "instance_sha256": hashlib.sha256(expected.encode("ascii")).hexdigest()}
