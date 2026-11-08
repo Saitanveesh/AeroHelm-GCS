@@ -24,7 +24,7 @@ from services.vihanga_link.pi_agent import (
     Config as PiConfig, MESSAGE_RATES_HZ,
     is_disarmed_autopilot_heartbeat, request_streams_once,
     request_parameter_snapshot_once, observation_delta, stream_probe_due,
-    Publisher as PiPublisher
+    Publisher as PiPublisher, verify_remote_oracle_instance
 )
 from pymavlink import mavutil
 
@@ -146,6 +146,33 @@ def test_foreign_sysid_is_rejected_even_with_valid_crc(credentials):
                 time.sleep(0.01)
             assert health["real_heartbeat_frames"] == 1
             assert health["foreign_system_frames_rejected"] == 0
+
+
+def test_pi_refuses_wrong_oracle_instance_before_device_auth(tmp_path):
+    ocid = "ocid1.instance.oc1.ap-hyderabad-1." + "a" * 48
+    cfg = PiConfig(
+        "/dev/ttyAMA0", 57600, "AH-HW-001", 1,
+        "wss://new-relay.ts.net/ws/mavlink/device/AH-HW-001",
+        tmp_path / "token", True, "new-relay.ts.net",
+        oracle_instance_ocid=ocid,
+    )
+    cfg.validate()
+    expected = hashlib.sha256(ocid.encode()).hexdigest()
+    assert verify_remote_oracle_instance(cfg, fetch=lambda: {
+        "oracle_instance": {
+            "configured": True, "verified": True,
+            "instance_sha256": expected
+        }
+    })
+    with pytest.raises(RuntimeError, match="not bound"):
+        verify_remote_oracle_instance(cfg, fetch=lambda: {
+            "oracle_instance": {
+                "configured": True, "verified": True,
+                "instance_sha256": hashlib.sha256(b"old-vm").hexdigest()
+            }
+        })
+    with pytest.raises(RuntimeError, match="not bound"):
+        verify_remote_oracle_instance(cfg, fetch=lambda: {"status": "ok"})
 
 
 def test_no_implicit_or_default_credentials():
