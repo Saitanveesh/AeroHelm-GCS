@@ -27,6 +27,7 @@ import time
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from .oracle_identity import validate_instance_ocid
+from .control_transport_probe import pi_probe_reply
 
 # pymavlink auto-detects MAVLink2 on 0xFD frames, retaining the
 # correct protocol when issuing local stream requests on MAVLink1 ports.
@@ -364,6 +365,12 @@ class Publisher:
             param_ack = self.queue_disarmed_parameter_request(message)
             if param_ack is not None:
                 await ws.send(json.dumps(param_ack, separators=(",", ":")))
+                continue
+            # Explicitly non-actuating: only echo a fixed challenge, never
+            # pass an action or MAVLink payload to the UART reader.
+            shadow_ack = pi_probe_reply(message, self.cfg.vehicle_id)
+            if shadow_ack is not None:
+                await ws.send(json.dumps(shadow_ack, separators=(",", ":")))
 
     def _read_uart(self) -> None:
         stream_probe_attempts = 0

@@ -66,6 +66,10 @@ authenticated pilot gets typed commands validated by both the Oracle authority
 and Pi-local firmware-specific allowlist. The Pi must be the only writer/reader
 of its FC UART. A second MAVLink session must not steal the serial device.
 
+## Control-plane transport verification (next development slice)
+
+The new pilot-scoped, simulator-only shadow path verifies a fixed HTTPS-to-Pi-WSS round trip with exact nonce, epoch, expiry and duplicate checks. The Pi explicitly returns NO UART / NO FC ACK, and the Windows test script polls that receipt. This is an authenticated **control-plane connectivity test**, not physical command dispatch or USB parity. Details: [Vihanga shadow transport acceptance](VIHANGA_CONTROL_TRANSPORT_SHADOW.md).
+
 ## Current source
 
 - `services/vihanga_link/control_policy.py`: exclusive two-person leases,

@@ -37,6 +37,7 @@ jobs:
           python -m pytest -q \
             services/vihanga_link/test_control_policy.py \
             services/vihanga_link/test_control_api.py \
+            services/vihanga_link/test_control_transport_probe.py \
             services/vihanga_link/test_pi_control_adapter.py \
             services/vihanga_link/test_mission_transaction.py \
             services/vihanga_link/test_parameter_transaction.py
@@ -59,3 +60,11 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/Test-AeroHelmWindowsPages.ps1
+      - name: Parse Windows pilot shadow diagnostic (never execute against aircraft)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("./scripts/Test-VihangaControlTransport.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          Write-Output "PASS: Windows shadow probe syntax parsed; no network or aircraft operations performed"
