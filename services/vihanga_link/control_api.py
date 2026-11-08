@@ -131,7 +131,7 @@ class ControlContext:
                 options={"require": ["sub", "role", "scope", "exp", "iat", "nbf"]})
             expected = self.settings.pilot_name if role == "pilot" else self.settings.approver_name
             if (payload["sub"] != expected or payload["role"] != role or
-                payload["scope"] != "control:" + role):
+                payload["scope"] != ("control:approve" if role == "approver" else "control:pilot")):
                 raise InvalidTokenError("Role mismatch")
             return expected
         except (InvalidTokenError, ValueError, TypeError) as exc:
