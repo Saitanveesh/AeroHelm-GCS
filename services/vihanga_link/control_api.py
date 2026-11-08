@@ -39,6 +39,7 @@ class ControlSettings:
     approver_password_hash: str = ""
     jwt_key: str = ""
     typed_downlink: bool = False
+    physical_release_accepted: bool = False
 
     @staticmethod
     def from_env() -> "ControlSettings":
@@ -50,11 +51,15 @@ class ControlSettings:
             approver_password_hash=os.getenv("VIHANGA_CONTROL_APPROVER_PASSWORD_HASH", ""),
             jwt_key=os.getenv("VIHANGA_CONTROL_JWT_KEY", ""),
             typed_downlink=os.getenv("VIHANGA_TYPED_COMMAND_DOWNLINK", "0") == "1",
+            physical_release_accepted=os.getenv(
+                "VIHANGA_PHYSICAL_RELEASE_ACCEPTED", "0") == "1",
         )
 
     def validate(self) -> None:
         if self.typed_downlink and not self.enabled:
             raise ValueError("Typed downlink requires independently authenticated control roles")
+        if self.physical_release_accepted and (not self.enabled or not self.typed_downlink):
+            raise ValueError("Physical flight acceptance requires typed control and independent roles")
         if not self.enabled:
             return
         if (not re.fullmatch(r"[A-Za-z0-9_-]{3,64}", self.pilot_name) or
@@ -305,13 +310,14 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
             "physical_command_dispatch": False,
             "native_mavlink_command_tunnel": False,
             "typed_arm_disarm_downlink_configured": cfg.typed_downlink,
+            "physical_release_flag_configured": cfg.physical_release_accepted,
             "hardware_actuation_qualified": False,
             "pilot_to_pi_shadow_probe": bool(cfg.enabled),
             "fc_safety_report_received": bool(state.fc_safety_report),
             "fc_safety_report_age_ms": (int(max(0, context.clock() -
                 state.fc_safety_report_at)*1000)
                 if state.fc_safety_report_at >= 0 else None),
-            "physical_release_accepted": False,
+            "physical_release_accepted": cfg.physical_release_accepted,
             "pilot_role_required": True,
             "independent_approver_required": True,
             "pi_hardware_interlock_verified": False,
@@ -477,6 +483,8 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
                     evidence=context.evidence_provider(), epoch=state.control_epoch)
             if intent.action not in PHYSICAL_ACTIONS:
                 raise ControlDenied("Typed live downlink currently supports ARM/DISARM only")
+            if not cfg.physical_release_accepted:
+                raise ControlDenied("Physical flight release has not passed on-site acceptance")
             async with state.lock:
                 if (not state.connected or state.device_socket is None or
                         not state.fresh(state.last_heartbeat)):
