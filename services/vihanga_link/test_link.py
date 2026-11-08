@@ -456,6 +456,7 @@ def test_real_fc_stream_command_ack_is_separate_from_pi_request_ack(credentials)
                 time.sleep(0.01)
             ack = h["physical_stream_rate_command_ack"]
             assert ack["command_id"] == 511
+            assert ack["frames"] == 1
             assert ack["result"] == 0 and ack["accepted"] is True
             assert ack["fresh"] is True
             assert h["message_ids"]["77"] == 1
@@ -468,6 +469,7 @@ def test_real_fc_stream_command_ack_is_separate_from_pi_request_ack(credentials)
                 if h["message_ids"].get("77") == 2:
                     break
                 time.sleep(0.01)
+            assert h["physical_stream_rate_command_ack"]["frames"] == 2
             assert h["physical_stream_rate_command_ack"]["result"] == 2
             assert h["physical_stream_rate_command_ack"]["accepted"] is False
         disconnected = client.get("/api/v1/mavlink/health").json()
