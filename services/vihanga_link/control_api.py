@@ -208,16 +208,16 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
         now = context.clock()
         context.approvals = {
             nonce: entry for nonce, entry in context.approvals.items()
-            if now < entry[3] and entry[2] == state.epoch
+            if now < entry[3] and entry[2] == state.control_epoch
         }
         if len(context.approvals) >= 8:
             raise HTTPException(status_code=429, detail="Outstanding approvals limit")
         nonce = secrets.token_hex(16)
         context.approvals[nonce] = (
-            approver, body.plan_sha256, state.epoch, now + 30.0)
+            approver, body.plan_sha256, state.control_epoch, now + 30.0)
         return {"approval_id": nonce, "plan_sha256": body.plan_sha256,
                 "expires_in": 30, "vehicle_id": vehicle,
-                "control_epoch": state.epoch, "physical_dispatch": False}
+                "control_epoch": state.control_epoch, "physical_dispatch": False}
 
     @app.post("/api/v1/vehicles/{vehicle}/control/lease")
     async def control_lease(
@@ -230,7 +230,7 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
             raise HTTPException(status_code=409, detail="Fresh physical FC evidence required")
         record = context.approvals.get(body.approval_id)
         if (not record or record[1] != body.plan_sha256 or
-            record[2] != state.epoch or context.clock() >= record[3]):
+            record[2] != state.control_epoch or context.clock() >= record[3]):
             raise HTTPException(status_code=403, detail="Missing, stale or wrong-revision safety approval")
         approver = record[0]
         if pilot == approver:
@@ -241,7 +241,7 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
             return context.broker.acquire(
                 vehicle_id=vehicle, system_id=state.fc_system_id,
                 pilot=pilot, approver=approver,
-                plan_sha256=body.plan_sha256, control_epoch=state.epoch)
+                plan_sha256=body.plan_sha256, control_epoch=state.control_epoch)
         except ControlDenied as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -260,7 +260,7 @@ def install_control_api(app: FastAPI, vehicle_id: str, state: Any,
         try:
             return context.broker.submit(
                 intent, lease_token=x_control_lease,
-                evidence=context.evidence_provider(), epoch=state.epoch)
+                evidence=context.evidence_provider(), epoch=state.control_epoch)
         except ControlDenied as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
