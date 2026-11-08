@@ -59,6 +59,7 @@ class Config:
     pinned_relay_host: str
     parameter_snapshot: bool = False
     oracle_instance_ocid: str = ""
+    recover_streams: bool = False
 
     @staticmethod
     def from_env() -> "Config":
@@ -73,6 +74,7 @@ class Config:
             pinned_relay_host=os.getenv("VIHANGA_PINNED_RELAY_HOST", ""),
             parameter_snapshot=os.getenv("VIHANGA_DISARMED_PARAM_SNAPSHOT", "0") == "1",
             oracle_instance_ocid=os.getenv("VIHANGA_ORACLE_INSTANCE_OCID", ""),
+            recover_streams=os.getenv("VIHANGA_DISARMED_STREAM_RECOVERY", "0") == "1",
         )
         cfg.validate()
         return cfg
@@ -198,7 +200,7 @@ def is_disarmed_autopilot_heartbeat(message, sysid: int) -> bool:
 
 def request_streams_once(port, heartbeat, cfg: Config) -> bool:
     """Request volatile message intervals on the local Pi UART, never via cloud."""
-    if not cfg.stream_probe or not is_disarmed_autopilot_heartbeat(
+    if not (cfg.stream_probe or cfg.recover_streams) or not is_disarmed_autopilot_heartbeat(
             heartbeat, cfg.system_id):
         return False
     for msg_id, rate in MESSAGE_RATES_HZ.items():
@@ -216,7 +218,8 @@ def request_streams_once(port, heartbeat, cfg: Config) -> bool:
 def stream_probe_due(cfg: Config, *, seen_armed: bool, attitude_seen: bool,
                      attempts: int, seconds_since_last_probe: float) -> bool:
     """Permit at most one disarmed/local retry when ID30 never arrives."""
-    return (cfg.stream_probe and not seen_armed and not attitude_seen and
+    return ((cfg.stream_probe or cfg.recover_streams) and
+            not seen_armed and not attitude_seen and
             attempts < STREAM_PROBE_MAX_ATTEMPTS and
             (attempts == 0 or seconds_since_last_probe >= STREAM_PROBE_RETRY_SECONDS))
 
@@ -339,6 +342,7 @@ class Publisher:
         vfr_seen = False
         parameters_requested = False
         seen_armed = False
+        last_heartbeat_at = -1.0
         last_report = time.monotonic()
         previous_uart: Counter[int] = Counter()
         previous_uplink: Counter[int] = Counter()
@@ -394,6 +398,21 @@ class Publisher:
                         msg.get_srcComponent() == 1:
                     armed = bool(msg.base_mode &
                         mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+                    # A Pixhawk restart loses nonpersistent message rates.
+                    # Reset only observed stream state after a real FC
+                    # heartbeat gap. Never clear the lifetime armed latch.
+                    heartbeat_at = time.monotonic()
+                    if (last_heartbeat_at >= 0 and
+                            heartbeat_at - last_heartbeat_at > 4.0):
+                        attitude_seen = position_seen = vfr_seen = False
+                        stream_probe_attempts = 0
+                        last_probe_at = 0.0
+                        parameters_requested = False
+                        LOG.warning(
+                            "FC heartbeat resumed after %.1fs; invalidated volatile "
+                            "stream and parameter capture state",
+                            heartbeat_at - last_heartbeat_at)
+                    last_heartbeat_at = heartbeat_at
                     seen_armed = seen_armed or armed
                     with self._state_lock:
                         self._seen_armed = self._seen_armed or armed
