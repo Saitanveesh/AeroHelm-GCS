@@ -1,5 +1,13 @@
 # Vihanga — new Oracle M1 instance cutover and control authority gates
 
+**Operational update:** Deploy alongside the existing Oracle API using the
+[verified live-link runbook](VIHANGA_ORACLE_PI_LIVE_LINK_DEPLOY.md).
+The VM can retain the SAME private Tailscale hostname: the legacy AeroHelm
+service remains on HTTPS :443, and the new Vihanga relay uses HTTPS :8443
+to localhost :8765. Always preserve the explicit :8443 port when checking
+the Pi's Oracle-instance binding. The old application cannot be assumed
+to implement Vihanga's dedicated routes.
+
 The old M1 service is a separate deployment. Changing Windows source does not
 install the new relay or Pi agent. Do not reuse old operator passwords or Pi
 device tokens across instances.
