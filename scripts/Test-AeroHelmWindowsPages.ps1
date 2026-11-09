@@ -139,6 +139,14 @@ Require-Text $settingsCore 'File.Move(temp, filename);' 'New settings file must 
 if ($settingsCore.Contains('new XmlTextWriter(filename, Encoding.UTF8)')) {
     throw 'Settings writer still truncates the active profile before serialization succeeds.'
 }
+$engineeringEntry = Read-Source 'scripts/Start-VihangaEngineeringDataLink.ps1'
+Require-Text $engineeringEntry 'Install-AeroHelmBranding.ps1' 'Engineering build must activate the Vihanga branded LocalAppData profile.'
+Require-Text $engineeringEntry 'Test-VihangaSettingsStorage.ps1' 'Engineering build and launch must check Vihanga profile writability.'
+Require-Text $engineeringEntry "Join-Path (Split-Path -Parent `$exe) 'logo.txt'" 'Engineering viewer must locate the runtime logo.txt.'
+Require-Text $engineeringEntry 'Get-Content -LiteralPath $brandFile -TotalCount 1' 'Engineering launch must inspect the title read by native Program.cs.'
+Require-Text $engineeringEntry 'Re-run -Build to activate the LocalAppData profile.' 'Unbranded viewers must be blocked before legacy profile writes.'
+$programMain = Read-Source 'Program.cs'
+Require-Text $programMain 'Settings.FileName = RemoveInvalidChars(name) + ".xml";' 'Native profile name must derive from runtime branding.'
 $brandingStorage = Read-Source 'scripts/Install-AeroHelmBranding.ps1'
 Require-Text $brandingStorage "GetFolderPath('LocalApplicationData')" 'Branding profile migration must not write into protected Documents.'
 Require-Text $brandingStorage '$legacySettingsDir' 'Branding must preserve the legacy profile location for copy-only migration.'
