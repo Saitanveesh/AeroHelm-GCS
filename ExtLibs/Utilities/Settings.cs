@@ -124,15 +124,35 @@ namespace MissionPlanner.Utilities
             set { this[ComPort + "_BAUD"] = value; }
         }
 
+        // An engineering cloud viewer must not inherit a stale logdirectory
+        // from an imported Documents/Mission Planner configuration.
+        // Keep native USB/radio profiles and their chosen directories unchanged.
+        private static bool UseVihangaEngineeringLogs =>
+            string.Equals(FileName, "Vihanga GCS.xml",
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(Environment.GetEnvironmentVariable(
+                "VIHANGA_ENGINEERING_LOCAL_LOGS"), "1", StringComparison.Ordinal);
+
+        public static string GetVihangaEngineeringLogDirectory()
+        {
+            var local = Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(local))
+                throw new IOException("Current user LocalApplicationData is unavailable.");
+            var directory = Path.Combine(local, "Vihanga GCS", "logs");
+            Directory.CreateDirectory(directory);
+            return directory;
+        }
+
         public string LogDir
         {
             get
             {
+                if (UseVihangaEngineeringLogs)
+                    return GetVihangaEngineeringLogDirectory();
                 string dir = this["logdirectory"];
                 if (string.IsNullOrEmpty(dir))
-                {
                     dir = GetDefaultLogDir();
-                }
                 return dir;
             }
             set
