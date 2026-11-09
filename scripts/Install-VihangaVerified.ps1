@@ -7,7 +7,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$expectedBranch = 'feat/vihanga-phase3-native-toolbar'
+$allowedBranches = @('feat/vihanga-phase3-native-toolbar', 'restore/vihanga-known-good-20261107-1438')
 
 if (-not $Apply) {
     throw 'Installation changes runtime files. Re-run with -Apply after reviewing the current source branch.'
@@ -19,8 +19,8 @@ if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close Mission Planner before building or verifying the installation.'
 }
 $branch = (& git -C $root branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne $expectedBranch) {
-    throw "Expected $expectedBranch; currently on '$branch'. Update manually using git pull --ff-only."
+if ($LASTEXITCODE -ne 0 -or $branch -notin $allowedBranches) {
+    throw "Expected a reviewed Vihanga release branch; currently on '$branch'. Update manually using git pull --ff-only."
 }
 $trackedChanges = @(& git -C $root status --porcelain --untracked-files=no)
 if ($LASTEXITCODE -ne 0 -or $trackedChanges.Count -gt 0) {
