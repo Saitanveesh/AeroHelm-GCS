@@ -28,6 +28,8 @@ namespace AeroHelm.GcsCloud
         private bool _helpWasVisible;
         private readonly System.Windows.Forms.Timer _cloudLinkWatchdog =
             new System.Windows.Forms.Timer();
+        private readonly System.Windows.Forms.Timer _engineeringStartup =
+            new System.Windows.Forms.Timer();
         private bool _cloudProbeBusy;
 
         public override string Name { get { return "Vihanga Ground Station"; } }
@@ -176,7 +178,30 @@ namespace AeroHelm.GcsCloud
                     "AEROHELM_INTERNAL_TCP_BRIDGE"), "1", StringComparison.Ordinal))
             {
                 ActiveNativeBridge = new AeroHelmReceiveOnlyBridge();
-                ActiveNativeBridge.Start(); // Fail closed if login/port unavailable.
+                ActiveNativeBridge.Start(); // No token yet: PATHS starts it after login.
+            }
+
+            // The engineering viewer is not silently a connected aircraft.
+            // Prompt once, on the UI thread after startup, for the separate
+            // relay login; then attach native Flight Data to loopback TCP.
+            // No raw GCS traffic reaches Pi/FC and a connected radio is never
+            // disconnected automatically. Cancel leaves PATHS available.
+            if (VihangaLinkSession.UsesDedicatedRelay &&
+                string.Equals(Environment.GetEnvironmentVariable(
+                    "VIHANGA_ENGINEERING_AUTO_CONNECT"), "1",
+                    StringComparison.Ordinal))
+            {
+                _engineeringStartup.Interval = 1800;
+                _engineeringStartup.Tick += (sender, e) =>
+                {
+                    _engineeringStartup.Stop();
+                    if (main.IsDisposed || MainV2.comPort.BaseStream.IsOpen)
+                        return;
+                    AeroHelmLinkNavigation.Open(main,
+                        AeroHelmLinkPath.CloudReadOnly, null);
+                    _ = CheckCloudLinkAsync();
+                };
+                _engineeringStartup.Start();
             }
 
             // Mission Planner remains the operator's primary workspace.
@@ -197,16 +222,20 @@ namespace AeroHelm.GcsCloud
                     bool hbLive = active != null && active.NativeHeartbeatFresh;
                     bool attLive = active != null && active.NativeAttitudeFresh;
                     bool posLive = active != null && active.NativePositionFresh;
-                    _paths.Text = "PATHS";
+                    _paths.Text = hbLive && attLive ?
+                        "PATHS: HUD LIVE" :
+                        hbLive ? "PATHS: NO ATT" :
+                        "PATHS: OFFLINE";
                     _paths.ForeColor = hbLive && attLive ?
                         FrameworkDrawing::System.Drawing.Color.FromArgb(195,228,195) :
                         FrameworkDrawing::System.Drawing.Color.FromArgb(242,198,139);
                     _paths.ToolTipText = hbLive && attLive && posLive ?
-                        "Private relay: live FC heartbeat, attitude, GPS position; HUD and map fed by genuine MAVLink." :
+                        "Cloud verified: physical FC HEARTBEAT + ATTITUDE + GPS position." :
                         hbLive && attLive ?
-                        "Private relay: HUD attitude live; GLOBAL_POSITION_INT ID33 missing or stale, map location unavailable." :
-                        hbLive ? "Private relay: heartbeat live; attitude missing." :
-                        "Private relay: not receiving verified native MAVLink.";
+                        "Cloud HUD live; GPS position ID33 missing/stale; map cannot be confirmed." :
+                        hbLive ? "Cloud real HEARTBEAT live, ATTITUDE ID30 missing/stale." :
+                        active == null ? "Native viewer bridge missing. Open PATHS for diagnosis." :
+                        active.CompactSummary + " | Click PATHS to connect or inspect.";
                     return;
                 }
                 // Local USB/telemetry-radio recovery is usable without
@@ -303,6 +332,8 @@ namespace AeroHelm.GcsCloud
 
         public override bool Exit()
         {
+            _engineeringStartup.Stop();
+            _engineeringStartup.Dispose();
             _cloudLinkWatchdog.Stop();
             _cloudLinkWatchdog.Dispose();
             if (ActiveNativeBridge != null)
