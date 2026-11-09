@@ -15,7 +15,7 @@ $plugins=Join-Path $runtime 'plugins'
 $plugin=Join-Path $plugins 'AeroHelm.Cloud.Plugin.Validation.dll'
 $logRoot=Join-Path $root 'build-logs'
 $manifestPath=Join-Path $logRoot 'aerohelm-consolidated-release.json'
-$allowedBranches=@('feat/vihanga-phase3-native-toolbar','restore/vihanga-known-good-20261107-1438')
+$allowedBranches=@('feat/vihanga-phase3-native-toolbar','restore/vihanga-known-good-20261107-1438','restore/vihanga-known-good-20261108-1700')
 $expectedBranch=(& git -C $root branch --show-current).Trim()
 if($LASTEXITCODE -ne 0 -or $expectedBranch -notin $allowedBranches){
     throw "Unreviewed Vihanga release branch: $expectedBranch"
