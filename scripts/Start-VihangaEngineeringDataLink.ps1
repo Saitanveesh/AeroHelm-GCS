@@ -117,6 +117,18 @@ if ($Build) {
     if ($LASTEXITCODE -ne 0) {
         throw 'Native cloud plugin install failed.'
     }
+    # A clean engineering worktree has no logo.txt. Without branding, Program.cs
+    # falls back to the legacy Documents/Mission Planner/config.xml profile and
+    # skips Vihanga's protected LocalAppData atomic-write path. Import legacy
+    # preferences by COPY (never move), then select Vihanga GCS.xml at startup.
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\Test-VihangaSettingsStorage.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Vihanga LocalAppData profile write/read preflight failed.'
+    }
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\Install-AeroHelmBranding.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Vihanga profile and branding activation failed; refusing legacy Mission Planner profile.'
+    }
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf) -or
         -not (Test-Path -LiteralPath $dll -PathType Leaf)) {
         throw 'Mission Planner EXE or compiled cloud plugin DLL missing.'
@@ -151,6 +163,18 @@ if ($Launch) {
         $manifest.exe_sha256 -cne (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() -or
         $manifest.plugin_sha256 -cne (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()) {
         throw 'Installed EXE/plugin hashes or source revision do not match the verified build.'
+    }
+    # Program.cs chooses the settings filename from logo.txt. Enforce it
+    # BEFORE starting any process; a missing/stale title can redirect writes to
+    # the protected legacy Documents profile, causing a runtime SaveConfig crash.
+    $brandFile = Join-Path (Split-Path -Parent $exe) 'logo.txt'
+    if (-not (Test-Path -LiteralPath $brandFile -PathType Leaf) -or
+        (Get-Content -LiteralPath $brandFile -TotalCount 1).Trim() -cne 'Vihanga GCS') {
+        throw 'Runtime logo.txt is missing or not Vihanga GCS. Re-run -Build to activate the LocalAppData profile.'
+    }
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\Test-VihangaSettingsStorage.ps1')
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Vihanga LocalAppData profile is not writable. Refusing a legacy profile fallback.'
     }
     $portUsers = @(Get-NetTCPConnection -LocalPort 5760 -State Listen -ErrorAction SilentlyContinue)
     if ($portUsers.Count -gt 0) {
