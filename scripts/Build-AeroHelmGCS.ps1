@@ -14,6 +14,25 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
+# The solution contains three projects in the Git-pinned ExtLibs/mono submodule.
+# A freshly-created worktree does not automatically initialize submodules.
+# Fail with a deterministic checkout repair before NuGet emits MSB3202.
+if ($Target -eq "Solution") {
+    $monoProjects = @(
+        'ExtLibs/mono/mcs/class/System.Windows.Forms/System.Windows.Forms-net_4_x.csproj',
+        'ExtLibs/mono/mcs/class/Accessibility/Accessibility-net_4_x.csproj',
+        'ExtLibs/mono/mcs/class/System.Runtime.Serialization.Formatters.Soap/System.Runtime.Serialization.Formatters.Soap-net_4_x.csproj'
+    )
+    $missingMono = @($monoProjects | Where-Object {
+        -not (Test-Path -LiteralPath (Join-Path $repoRoot $_) -PathType Leaf)
+    })
+    if ($missingMono.Count -gt 0) {
+        throw ("Mission Planner solution requires the pinned ExtLibs/mono Git submodule. " +
+            "Missing: " + ($missingMono -join ', ') +
+            ". From the Vihanga worktree run: git submodule update --init --depth 1 -- ExtLibs/mono")
+    }
+}
+
 function Find-FrameworkMSBuild {
     param([string] $ExplicitPath)
     if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
