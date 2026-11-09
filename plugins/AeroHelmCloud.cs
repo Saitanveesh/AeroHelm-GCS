@@ -96,6 +96,14 @@ namespace AeroHelm.GcsCloud
             _workspaces.DropDownItems.Add(nativeData);
             _workspaces.DropDownItems.Add("Survey planner", null,
                 (sender,e) => ShowWorkspace(new AeroHelmSurveyWindow()));
+            var fcParams = new ToolStripMenuItem("FC parameters (cloud read-only)");
+            fcParams.Visible = VihangaLinkSession.UsesDedicatedRelay;
+            fcParams.Click += (sender,e) =>
+            {
+                if (VihangaLinkLoginWindow.EnsureSignedIn(MainV2.instance))
+                    ShowWorkspace(new AeroHelmIntelWindow("PARAMETERS"));
+            };
+            _workspaces.DropDownItems.Add(fcParams);
             var planPreview = new ToolStripMenuItem("Autonomy preview");
             planPreview.Visible = VihangaLinkSession.UsesDedicatedRelay;
             planPreview.Click += (sender,e) =>
