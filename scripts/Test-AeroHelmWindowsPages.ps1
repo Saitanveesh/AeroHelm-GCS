@@ -47,6 +47,16 @@ if (-not $engineeringLauncher.Contains("AEROHELM_CLOUD_READONLY = '1'") -or
     -not $engineeringLauncher.Contains("AEROHELM_AUTO_NATIVE_TCP = '0'")) {
     throw 'Engineering viewer must preserve the receive-only cloud and explicit-connection gates.'
 }
+# A clean engineering worktree requires Git's pinned Mono submodule to
+# satisfy all three project entries in MissionPlanner.sln. This guard checks
+# source-only behavior; it does not download dependencies in CI.
+$nativeBuilder = [IO.File]::ReadAllText(
+    (Join-Path $root 'scripts/Build-AeroHelmGCS.ps1'))
+if (-not $engineeringLauncher.Contains('git -C $root submodule update --init --depth 1 -- ExtLibs/mono') -or
+    -not $engineeringLauncher.Contains('rev-parse ''HEAD:ExtLibs/mono''') -or
+    -not $nativeBuilder.Contains('git submodule update --init --depth 1 -- ExtLibs/mono')) {
+    throw 'Native engineering build must provision or diagnose the pinned Mono Git submodule.'
+}
 # Structural guard against accidentally pasting a second launcher block into
 # the middle of a quoted string. ParseFile alone cannot catch every validly
 # quoted but semantically duplicated source.
