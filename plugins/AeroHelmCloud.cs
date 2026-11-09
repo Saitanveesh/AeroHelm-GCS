@@ -84,6 +84,16 @@ namespace AeroHelm.GcsCloud
             };
             _workspaces.DropDownItems.Add("Link diagnostics", null,
                 (sender,e) => ShowWorkspace(new AeroHelmLinkWindow()));
+            // Reuse the native Flight Data/Quick map and HUD; no duplicate
+            // dashboard or new telemetry socket source is introduced.
+            // The operator selects this intentionally; radio links are
+            // never switched automatically.
+            var nativeData = new ToolStripMenuItem("Open cloud Flight Data (HUD + GPS map)");
+            nativeData.Visible = VihangaLinkSession.UsesDedicatedRelay;
+            nativeData.Click += (sender,e) =>
+                AeroHelmLinkNavigation.Open(MainV2.instance,
+                    AeroHelmLinkPath.CloudReadOnly, null);
+            _workspaces.DropDownItems.Add(nativeData);
             _workspaces.DropDownItems.Add("Survey planner", null,
                 (sender,e) => ShowWorkspace(new AeroHelmSurveyWindow()));
             var planPreview = new ToolStripMenuItem("Autonomy preview");
@@ -178,12 +188,15 @@ namespace AeroHelm.GcsCloud
                     var active = ActiveNativeBridge;
                     bool hbLive = active != null && active.NativeHeartbeatFresh;
                     bool attLive = active != null && active.NativeAttitudeFresh;
+                    bool posLive = active != null && active.NativePositionFresh;
                     _paths.Text = "PATHS";
                     _paths.ForeColor = hbLive && attLive ?
                         FrameworkDrawing::System.Drawing.Color.FromArgb(195,228,195) :
                         FrameworkDrawing::System.Drawing.Color.FromArgb(242,198,139);
-                    _paths.ToolTipText = hbLive && attLive ?
-                        "Private relay: live Pixhawk heartbeat and attitude." :
+                    _paths.ToolTipText = hbLive && attLive && posLive ?
+                        "Private relay: live FC heartbeat, attitude, GPS position; HUD and map fed by genuine MAVLink." :
+                        hbLive && attLive ?
+                        "Private relay: HUD attitude live; GLOBAL_POSITION_INT ID33 missing or stale, map location unavailable." :
                         hbLive ? "Private relay: heartbeat live; attitude missing." :
                         "Private relay: not receiving verified native MAVLink.";
                     return;
