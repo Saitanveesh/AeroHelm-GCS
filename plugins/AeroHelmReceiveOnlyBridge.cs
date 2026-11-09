@@ -4,6 +4,7 @@
 // TCP 127.0.0.1:5760. ALL GCS->TCP data is discarded, never forwarded to cloud.
 // No remote arming, calibration, mission upload or parameter mutation.
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -23,6 +24,8 @@ namespace AeroHelm.GcsCloud
         private long frames;
         private long heartbeats;
         private long attitudes;
+        private long positions;
+        private long lastPositionTick;
         private long lastRollCentideg;
         private long lastPitchCentideg;
         private long validAttitudeSamples;
@@ -37,12 +40,14 @@ namespace AeroHelm.GcsCloud
                 long count = Interlocked.Read(ref frames);
                 long hb = Interlocked.Read(ref heartbeats);
                 long att = Interlocked.Read(ref attitudes);
+                long pos = Interlocked.Read(ref positions);
                 var metrics = quality.Snapshot();
                 string age = metrics.FrameAgeMs < 0 ? "never" :
                     (metrics.FrameAgeMs / 1000.0).ToString("F1",
                         System.Globalization.CultureInfo.InvariantCulture) + "s ago";
                 bool liveHb = cloudStreamOpen && metrics.HeartbeatFresh;
                 bool liveAtt = cloudStreamOpen && metrics.AttitudeFresh;
+                bool livePos = NativePositionFresh;
                 long decoded = Interlocked.Read(ref validAttitudeSamples);
                 string angles = !liveAtt || decoded == 0 ?
                     "roll/pitch STALE OR UNKNOWN" :
@@ -53,13 +58,14 @@ namespace AeroHelm.GcsCloud
                 return "LOCAL TCP / " + status + " | frames " + count +
                     " | HB " + hb + (liveHb ? " LIVE" : " STALE/MISSING") +
                     " | ATT " + att + (liveAtt ? " LIVE" : " STALE/MISSING") +
+                    " | GPS POS " + pos + (livePos ? " LIVE" : " STALE/MISSING") +
                     " | " + angles + " | last frame " + age +
                     " | local 5s HB " + metrics.HeartbeatHz.ToString("F1",
                         System.Globalization.CultureInfo.InvariantCulture) + "/s" +
                     " ATT " + metrics.AttitudeHz.ToString("F1",
                         System.Globalization.CultureInfo.InvariantCulture) + "/s" +
                     " | ATT gaps >2.5s " + metrics.AttitudeGapEvents +
-                    " | invalid HB/ATT CRC " + metrics.RejectedEvidence;
+                    " | invalid HB/ATT/POS evidence " + metrics.RejectedEvidence;
             }
         }
 
@@ -80,11 +86,15 @@ namespace AeroHelm.GcsCloud
                 var metrics = quality.Snapshot();
                 bool hbLive = cloudStreamOpen && metrics.HeartbeatFresh;
                 bool attLive = cloudStreamOpen && metrics.AttitudeFresh;
+                bool posLive = NativePositionFresh;
+                if (hbLive && attLive && posLive)
+                    return "LOCAL TCP / REAL HEARTBEAT + ATTITUDE + GPS POSITION RECEIVED";
                 if (hbLive && attLive)
-                    return "LOCAL TCP / REAL HEARTBEAT + ATTITUDE RECEIVED";
+                    return "LOCAL TCP / HUD LIVE / GPS POSITION MISSING";
                 return "LOCAL TCP / " + state +
                     " | HB " + (hbLive ? "LIVE" : "MISSING") +
-                    " | ATT " + (attLive ? "LIVE" : "MISSING");
+                    " | ATT " + (attLive ? "LIVE" : "MISSING") +
+                    " | POS " + (posLive ? "LIVE" : "MISSING");
             }
         }
 
@@ -97,6 +107,17 @@ namespace AeroHelm.GcsCloud
         internal bool NativeAttitudeFresh
         {
             get { return cloudStreamOpen && quality.Snapshot().AttitudeFresh; }
+        }
+        internal bool NativePositionFresh
+        {
+            get
+            {
+                if (!cloudStreamOpen) return false;
+                long last = Interlocked.Read(ref lastPositionTick);
+                long elapsed = Stopwatch.GetTimestamp() - last;
+                return last > 0 && elapsed >= 0 &&
+                    elapsed <= Stopwatch.Frequency * 5L;
+            }
         }
         internal string AttitudeTroubleshooting
         {
@@ -221,6 +242,7 @@ namespace AeroHelm.GcsCloud
                 cloudStreamOpen = false;
                 quality.Reset();
                 Interlocked.Exchange(ref validAttitudeSamples, 0);
+                Interlocked.Exchange(ref lastPositionTick, 0);
                 ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
                 ws.Options.SetRequestHeader("Authorization",
                     "Bearer " + VihangaLinkSession.AccessToken);
@@ -259,8 +281,13 @@ namespace AeroHelm.GcsCloud
                         // The Pi checks all frame CRCs upstream. Independently
                         // verify HB/ATT CRC before asserting HUD readiness:
                         // a structurally valid or corrupted packet is NOT evidence.
-                        if ((messageId == 0 || messageId == 30) &&
+                        if ((messageId == 0 || messageId == 30 || messageId == 33) &&
                             !HasValidTelemetryChecksum(packet, length, messageId))
+                        {
+                            quality.RejectEvidence();
+                            continue;
+                        }
+                        if (messageId == 33 && !HasValidGlobalPositionFrame(packet, length))
                         {
                             quality.RejectEvidence();
                             continue;
@@ -271,6 +298,11 @@ namespace AeroHelm.GcsCloud
                         if (messageId == 0)
                         {
                             Interlocked.Increment(ref heartbeats);
+                        }
+                        if (messageId == 33)
+                        {
+                            Interlocked.Increment(ref positions);
+                            Interlocked.Exchange(ref lastPositionTick, Stopwatch.GetTimestamp());
                         }
                         if (messageId == 30)
                         {
@@ -345,26 +377,41 @@ namespace AeroHelm.GcsCloud
 
         // The CRC validates frame integrity, NOT MAVLink2 signatures or
         // operator/aircraft identity. Only types with known CRC extras are
-        // considered evidence of a live native HUD stream (0=50; 30=39).
+        // considered live HUD/map evidence (0=50; 30=39; 33=104).
         internal static bool HasValidTelemetryChecksum(byte[] frame, int size,
                                                         int expectedId)
         {
             int parsedId;
-            if ((expectedId != 0 && expectedId != 30) ||
+            if ((expectedId != 0 && expectedId != 30 && expectedId != 33) ||
                 !ValidFrame(frame, size, out parsedId) || parsedId != expectedId)
                 return false;
             // A zero-length synthetic HEARTBEAT is not an autopilot HB.
             if (expectedId == 0 && frame[1] < 9) return false;
             if (expectedId == 30 && frame[1] < 12) return false;
+            if (expectedId == 33 && frame[1] < 28) return false;
             int headerLength = frame[0] == 0xFE ? 6 : 10;
             int crcIndex = headerLength + frame[1];
             ushort checksum = 0xFFFF;
             for (int i = 1; i < crcIndex; i++)
                 checksum = AccumulateCrc(checksum, frame[i]);
             checksum = AccumulateCrc(checksum,
-                expectedId == 0 ? (byte)50 : (byte)39);
+                expectedId == 0 ? (byte)50 : expectedId == 30 ? (byte)39 : (byte)104);
             ushort expected = (ushort)(frame[crcIndex] | (frame[crcIndex + 1] << 8));
             return checksum == expected;
+        }
+
+        // GLOBAL_POSITION_INT ID33: time_boot_ms, lat, lon, alt, ...
+        // A stale/non-geographic placeholder must not be reported as a live map fix.
+        internal static bool HasValidGlobalPositionFrame(byte[] frame, int size)
+        {
+            if (!BitConverter.IsLittleEndian || frame == null ||
+                !HasValidTelemetryChecksum(frame, size, 33)) return false;
+            int offset = frame[0] == 0xFE ? 6 : 10;
+            int lat = BitConverter.ToInt32(frame, offset + 4);
+            int lon = BitConverter.ToInt32(frame, offset + 8);
+            return Math.Abs((long)lat) <= 900000000L &&
+                Math.Abs((long)lon) <= 1800000000L &&
+                !(lat == 0 && lon == 0);
         }
 
         private static ushort AccumulateCrc(ushort crc, byte value)
