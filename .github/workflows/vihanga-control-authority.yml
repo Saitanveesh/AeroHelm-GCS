@@ -62,6 +62,13 @@ jobs:
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile and execute real native WSS-to-TCP MAVLink bridge unit tests
+        shell: bash
+        run: |
+          dotnet run --project Tools/AeroHelmMavlinkBridgeTests/AeroHelmMavlinkBridgeTests.csproj --configuration Release
       - name: Verify source contracts and denied raw MAVLink command paths
         shell: pwsh
         run: |
