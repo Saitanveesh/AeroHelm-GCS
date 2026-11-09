@@ -1651,8 +1651,17 @@ namespace MissionPlanner
                 catch (Exception exp2)
                 {
                     log.Error(exp2);
+                    // Engineering cloud observation must not silently connect
+                    // without raw .rlog/.tlog evidence. The independent USB/radio
+                    // behavior remains unchanged for upstream Mission Planner.
+                    if (aeroHelmReadOnlyTcp)
+                        throw new IOException(
+                            "Cloud telemetry recording could not start in " +
+                            Settings.Instance.LogDir +
+                            ". Check Vihanga LocalAppData log-folder access. " +
+                            "No cloud viewer was established.", exp2);
                     CustomMessageBox.Show(Strings.Failclog);
-                } // soft fail
+                } // retain upstream direct-link soft-fail semantics
 
                 // reset connect time - for timeout functions
                 connecttime = DateTime.UtcNow;
