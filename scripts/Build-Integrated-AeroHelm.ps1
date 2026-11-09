@@ -9,7 +9,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$allowedBranches = @("feat/vihanga-phase3-native-toolbar", "feat/gcs-research-cybershield-twin-ui", "feat/gcs-unified-login-readonly-bridge", "feat/aerohelm-touch-console", "feat/aerohelm-windows-integration", "feat/aerohelm-windows-pages-v1", "feat/aerohelm-windows-readiness-v2", "feat/aerohelm-windows-release-candidate", "feat/aerohelm-combined-preflight")
+$allowedBranches = @("feat/vihanga-phase3-native-toolbar", "restore/vihanga-known-good-20261107-1438", "feat/gcs-research-cybershield-twin-ui", "feat/gcs-unified-login-readonly-bridge", "feat/aerohelm-touch-console", "feat/aerohelm-windows-integration", "feat/aerohelm-windows-pages-v1", "feat/aerohelm-windows-readiness-v2", "feat/aerohelm-windows-release-candidate", "feat/aerohelm-combined-preflight")
 $branch = (& git -C $root branch --show-current).Trim()
 if ($LASTEXITCODE -ne 0 -or $branch -notin $allowedBranches) {
     throw "Expected a reviewed AeroHelm Windows development branch; current branch $branch. Git fetch/switch manually first."
