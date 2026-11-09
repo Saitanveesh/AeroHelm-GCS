@@ -124,10 +124,28 @@ namespace MissionPlanner.Utilities
             set { this[ComPort + "_BAUD"] = value; }
         }
 
+        // Vihanga's separated operator profile must not inherit an invalid
+        // legacy Mission Planner Documents logdirectory. Only this exact
+        // branded profile uses its own per-user storage; upstream profiles
+        // retain the existing user-configured log directory behavior.
+        public static string GetVihangaLogDirectory()
+        {
+            string local = Environment.GetFolderPath(
+                Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(local))
+                throw new IOException("Current user LocalApplicationData path is unavailable.");
+            string dir = Path.Combine(local, "Vihanga GCS", "logs");
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+
         public string LogDir
         {
             get
             {
+                if (string.Equals(FileName, "Vihanga GCS.xml",
+                    StringComparison.OrdinalIgnoreCase))
+                    return GetVihangaLogDirectory();
                 string dir = this["logdirectory"];
                 if (string.IsNullOrEmpty(dir))
                 {
