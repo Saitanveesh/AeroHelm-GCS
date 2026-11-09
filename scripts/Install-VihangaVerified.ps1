@@ -7,7 +7,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$allowedBranches = @('feat/vihanga-phase3-native-toolbar', 'restore/vihanga-known-good-20261107-1438')
+$allowedBranches = @('feat/vihanga-phase3-native-toolbar', 'restore/vihanga-known-good-20261107-1438', 'restore/vihanga-known-good-20261108-1700')
 
 if (-not $Apply) {
     throw 'Installation changes runtime files. Re-run with -Apply after reviewing the current source branch.'
