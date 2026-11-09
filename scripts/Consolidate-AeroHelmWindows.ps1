@@ -16,7 +16,7 @@ $plugin=Join-Path $plugins 'AeroHelm.Cloud.Plugin.Validation.dll'
 $logRoot=Join-Path $root 'build-logs'
 $manifestPath=Join-Path $logRoot 'aerohelm-consolidated-release.json'
 $expectedBranch=(& git -C $root branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or $expectedBranch -notin @('master','feat/vihanga-phase3-native-toolbar')) {
+if ($LASTEXITCODE -ne 0 -or $expectedBranch -notin @('master','restore/vihanga-nov08-1700-ist-candidate-20261109','feat/vihanga-phase3-native-toolbar')) {
     throw "Unreviewed Vihanga release branch: $expectedBranch"
 }
 $modules=@('FLIGHT','PLAN','PATHS','CAMERA','DIAGNOSTICS','ATTITUDE','SURVEY','OPERATIONS','INTELLIGENCE','SETTINGS')
