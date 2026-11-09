@@ -154,6 +154,10 @@ namespace AeroHelm.GcsCloud
             paramPanel.Controls.Add(refreshFromPi);
             paramPanel.Controls.Add(ActionButton("Inspect parameter snapshot completeness",
                 async()=>await ParameterSnapshotStatus()));
+            var fullTable = ActionButton("View complete verified onboard parameter list",
+                async()=>await ViewFullParameters());
+            fullTable.Visible = VihangaLinkSession.UsesDedicatedRelay;
+            paramPanel.Controls.Add(fullTable);
             paramPanel.Controls.Add(new Label{Text="Use SETUP/local connection for supported authorized changes. This panel never writes values.",
                 AutoSize=true,ForeColor=Drawing.Color.DarkRed});
 
@@ -401,6 +405,58 @@ namespace AeroHelm.GcsCloud
                     report.Text="Parameter inspection failed: "+Explain(ex);
             }
             finally{running=false;}
+        }
+
+        private async Task ViewFullParameters()
+        {
+            if (!VihangaLinkSession.UsesDedicatedRelay)
+            {
+                report.Text = "Full onboard inventory requires a dedicated authenticated Vihanga relay.";
+                return;
+            }
+            string aircraft;
+            try { aircraft = Id(); }
+            catch (Exception ex) { report.Text = ex.Message; return; }
+            await Run(() =>
+            {
+                // The relay rejects partial/stale parameter tables; no fake
+                // empty values or guessed defaults are shown to the operator.
+                var raw = VihangaLinkSession.ReadParameters(aircraft, true);
+                var payload = json.Deserialize<Dictionary<string,object>>(raw);
+                object statusValue, valuesValue;
+                if (!payload.TryGetValue("snapshot", out statusValue) ||
+                    !payload.TryGetValue("values", out valuesValue))
+                    throw new InvalidDataException("Missing verified FC parameter inventory.");
+                var status = statusValue as Dictionary<string,object>;
+                var rows = valuesValue as Dictionary<string,object>;
+                if (status == null || rows == null ||
+                    !status.ContainsKey("verified_complete") ||
+                    !(status["verified_complete"] is bool) ||
+                    !(bool)status["verified_complete"] ||
+                    !status.ContainsKey("expected") ||
+                    Convert.ToInt32(status["expected"]) != rows.Count)
+                    throw new InvalidDataException("Incomplete or inconsistent Pixhawk parameter list.");
+                var sb = new StringBuilder();
+                sb.AppendLine("PHYSICAL FC PARAMETER INVENTORY (READ-ONLY)");
+                sb.AppendLine("Vehicle: " + aircraft + "; count " + rows.Count +
+                              "; source: verified Pi PARAM_VALUE frames");
+                sb.AppendLine("Readback is a snapshot, not a current write authorization.");
+                foreach (var entry in rows.OrderBy(k => k.Key,
+                            StringComparer.Ordinal))
+                {
+                    var data = entry.Value as Dictionary<string,object>;
+                    if (data == null) throw new InvalidDataException("Invalid FC parameter row.");
+                    object number, encoding;
+                    if (!data.TryGetValue("float32", out number) ||
+                        !data.TryGetValue("encoding", out encoding))
+                        throw new InvalidDataException("Missing FC parameter encoding.");
+                    string displayed = number == null ? "UNINTERPRETED" :
+                        Convert.ToString(number, CultureInfo.InvariantCulture);
+                    sb.Append(entry.Key).Append(" = ").Append(displayed)
+                      .Append(" [").Append(Convert.ToString(encoding)).AppendLine("]");
+                }
+                return sb.ToString();
+            }, "Verified onboard parameter inventory");
         }
 
         private SortedDictionary<string,double> ParseParameterTargets()
