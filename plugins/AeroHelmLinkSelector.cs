@@ -232,6 +232,10 @@ namespace AeroHelm.GcsCloud
                         request.Method = "GET";
                         request.AllowAutoRedirect = false;
                         request.Timeout = 8000;
+                        // Diagnostics use the same exact private relay origin
+                        // and authenticated telemetry session as the WSS viewer.
+                        request.Headers[HttpRequestHeader.Authorization] =
+                            "Bearer " + VihangaLinkSession.AccessToken;
                         using (var response = (HttpWebResponse)request.GetResponse())
                         using (var reader = new System.IO.StreamReader(response.GetResponseStream()))
                         {
@@ -417,6 +421,21 @@ namespace AeroHelm.GcsCloud
                 // explicitly skips native PARAM_REQUEST_* and reuses the
                 // existing Mission Planner HUD/map MAVLink parser.
                 main.doConnect(MainV2.comPort,"TCP","57600",false,false);
+                // doConnect() catches native errors internally and returns void.
+                // Its return is NOT proof the Mission Planner parser has an
+                // open connection, let alone live FC ATTITUDE or GPS.
+                if (!MainV2.comPort.BaseStream.IsOpen)
+                {
+                    MessageBox.Show(main,
+                        "Native cloud TCP did not connect to the Pixhawk stream." +
+                        Environment.NewLine + bridge.Summary +
+                        Environment.NewLine +
+                        "Inspect PATHS, Pi UART stream and Oracle MAVLink health. " +
+                        "No simulated heartbeat or attitude data was generated.",
+                        "Vihanga — cloud telemetry not connected",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return false;
+                }
                 return true;
             }
             catch(Exception ex)
