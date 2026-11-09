@@ -222,8 +222,9 @@ namespace AeroHelm.GcsCloud
                     bool hbLive = active != null && active.NativeHeartbeatFresh;
                     bool attLive = active != null && active.NativeAttitudeFresh;
                     bool posLive = active != null && active.NativePositionFresh;
-                    _paths.Text = hbLive && attLive ?
-                        "PATHS: HUD LIVE" :
+                    _paths.Text = hbLive && attLive && posLive ?
+                        "PATHS: HUD+GPS" :
+                        hbLive && attLive ? "PATHS: NO GPS" :
                         hbLive ? "PATHS: NO ATT" :
                         "PATHS: OFFLINE";
                     _paths.ForeColor = hbLive && attLive ?
