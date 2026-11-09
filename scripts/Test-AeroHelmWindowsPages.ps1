@@ -11,6 +11,7 @@ $productionScripts = @(
     'scripts/Start-AeroHelm-DirectBackup.ps1',
     'scripts/Start-AeroHelm-Touch.ps1',
     'scripts/Start-VihangaGCS.ps1',
+    'scripts/Start-VihangaEngineeringDataLink.ps1',
     'scripts/Test-VihangaPassiveBench.ps1',
     'scripts/Test-VihangaCertification.ps1',
     'scripts/Update-AeroHelmLatest.ps1',
@@ -34,6 +35,17 @@ foreach ($relative in $productionScripts) {
         $first = $parseErrors[0]
         throw "PowerShell SYNTAX FAILED in $relative at line $($first.Extent.StartLineNumber): $($first.Message)"
     }
+}
+$engineeringLauncher = [IO.File]::ReadAllText(
+    (Join-Path $root 'scripts/Start-VihangaEngineeringDataLink.ps1'))
+if ([regex]::Matches($engineeringLauncher, '(?m)^if \(\$Build\) \{').Count -ne 1 -or
+    [regex]::Matches($engineeringLauncher, '(?m)^\[CmdletBinding\(\)\]').Count -ne 1 -or
+    [regex]::Matches($engineeringLauncher, '(?m)^\s*Start-Process -FilePath \$exe').Count -ne 1) {
+    throw 'Engineering launcher duplicated, truncated, or missing its single build/launch path.'
+}
+if (-not $engineeringLauncher.Contains("AEROHELM_CLOUD_READONLY = '1'") -or
+    -not $engineeringLauncher.Contains("AEROHELM_AUTO_NATIVE_TCP = '0'")) {
+    throw 'Engineering viewer must preserve the receive-only cloud and explicit-connection gates.'
 }
 # Structural guard against accidentally pasting a second launcher block into
 # the middle of a quoted string. ParseFile alone cannot catch every validly
