@@ -6,9 +6,10 @@ on:
       - "services/vihanga_link/**"
       - "plugins/**"
       - "scripts/Test-AeroHelmWindowsPages.ps1"
+      - "scripts/Start-VihangaEngineeringDataLink.ps1"
       - ".github/workflows/vihanga-control-authority.yml"
   push:
-    branches: [master, "release/vihanga-integrated-bench-candidate-20261108"]
+    branches: [master, "release/vihanga-integrated-bench-candidate-20261108", "feat/engineering-datalink-native-bind-20261109"]
     paths:
       - "services/vihanga_link/**"
       - ".github/workflows/vihanga-control-authority.yml"
@@ -86,3 +87,11 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile("./scripts/Invoke-VihangaIntegratedAcceptance.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
           Write-Output "PASS: One-command offline/live-readonly test harness parsed."
+      - name: Parse source-hashed engineering Windows viewer launcher
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("./scripts/Start-VihangaEngineeringDataLink.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          Write-Output "PASS: Engineering launcher syntax parsed; no native app or aircraft operated."
