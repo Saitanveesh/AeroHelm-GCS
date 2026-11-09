@@ -11,10 +11,10 @@ $branch = 'restore/vihanga-known-good-20261108-1700'
 $remoteRef = 'origin/' + $branch
 
 function Run-Git {
-    param([string[]]$Args,[string]$WorkingDirectory)
-    & git -C $WorkingDirectory @Args
+    param([string[]]$GitArgs,[string]$WorkingDirectory)
+    & git -C $WorkingDirectory @GitArgs
     if ($LASTEXITCODE -ne 0) {
-        throw ('git failed: git -C "' + $WorkingDirectory + '" ' + ($Args -join ' '))
+        throw ('git failed: git -C "' + $WorkingDirectory + '" ' + ($GitArgs -join ' '))
     }
 }
 
@@ -26,7 +26,7 @@ if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close every Mission Planner/Vihanga window before recovery.'
 }
 
-Run-Git -WorkingDirectory $SourceRoot -Args @('fetch','origin',$branch)
+Run-Git -WorkingDirectory $SourceRoot -GitArgs @('fetch','origin',('+refs/heads/' + $branch + ':refs/remotes/origin/' + $branch))
 
 if (Test-Path -LiteralPath $RecoveryRoot -PathType Container) {
     $inside = (& git -C $RecoveryRoot rev-parse --is-inside-work-tree 2>$null).Trim()
@@ -37,15 +37,15 @@ if (Test-Path -LiteralPath $RecoveryRoot -PathType Container) {
     if ($active -cne $branch) {
         throw "Recovery directory uses branch '$active', expected '$branch'. Nothing was overwritten."
     }
-    Run-Git -WorkingDirectory $RecoveryRoot -Args @('pull','--ff-only','origin',$branch)
+    Run-Git -WorkingDirectory $RecoveryRoot -GitArgs @('pull','--ff-only','origin',$branch)
 }
 else {
     & git -C $SourceRoot show-ref --verify --quiet ('refs/heads/' + $branch)
     if ($LASTEXITCODE -eq 0) {
-        Run-Git -WorkingDirectory $SourceRoot -Args @('worktree','add',$RecoveryRoot,$branch)
+        Run-Git -WorkingDirectory $SourceRoot -GitArgs @('worktree','add',$RecoveryRoot,$branch)
     }
     else {
-        Run-Git -WorkingDirectory $SourceRoot -Args @('worktree','add','-b',$branch,$RecoveryRoot,$remoteRef)
+        Run-Git -WorkingDirectory $SourceRoot -GitArgs @('worktree','add','-b',$branch,$RecoveryRoot,$remoteRef)
     }
 }
 
@@ -59,8 +59,8 @@ if ($LASTEXITCODE -ne 0 -or $tracked.Count -gt 0) {
     throw 'Tracked source changes exist in the recovery worktree. Nothing will be reset automatically.'
 }
 
-Run-Git -WorkingDirectory $RecoveryRoot -Args @('submodule','sync','--recursive')
-Run-Git -WorkingDirectory $RecoveryRoot -Args @('submodule','update','--init','--depth','1','--','ExtLibs/mono')
+Run-Git -WorkingDirectory $RecoveryRoot -GitArgs @('submodule','sync','--recursive')
+Run-Git -WorkingDirectory $RecoveryRoot -GitArgs @('submodule','update','--init','--depth','1','--','ExtLibs/mono')
 
 $required = @(
     'ExtLibs\mono\mcs\class\System.Windows.Forms\System.Windows.Forms-net_4_x.csproj',
