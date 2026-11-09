@@ -389,6 +389,7 @@ Require-Text $nativeBridge 'NativePositionFresh' 'Windows bridge must expose tru
 Require-Text $cloud 'Open cloud Flight Data (HUD + GPS map)' 'Direct native HUD/map connection missing.'
 Require-Text $cloud 'VIHANGA_ENGINEERING_AUTO_CONNECT' 'Cloud viewer must request authenticated native attachment once on startup.'
 Require-Text $cloud 'PATHS: NO ATT' 'Toolbar must distinguish missing physical attitude from link readiness.'
+Require-Text $cloud 'PATHS: NO GPS' 'Toolbar must distinguish live attitude from missing physical GPS/map frames.'
 Require-Text $cloud 'PATHS: OFFLINE' 'Toolbar must label offline viewer clearly.'
 Require-Text $paths 'if (!MainV2.comPort.BaseStream.IsOpen)' 'Native TCP failures must not claim successful cloud HUD connection.'
 Require-Text $mainNative 'Cloud telemetry recording could not start' 'Cloud viewer must abort when native telemetry recording fails.'
