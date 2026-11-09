@@ -189,10 +189,15 @@ if ($Launch) {
     $env:AEROHELM_REQUIRE_LOGIN = '0'
     $env:AEROHELM_CLOUD_READONLY = '1'
     $env:AEROHELM_INTERNAL_TCP_BRIDGE = '1'
+    # Mission Planner's automatic TCP is kept off until authenticated.
+    # The plugin prompts once after UI startup, then starts the private
+    # loopback bridge and explicitly attaches native Flight Data.
     $env:AEROHELM_AUTO_NATIVE_TCP = '0'
+    $env:VIHANGA_ENGINEERING_AUTO_CONNECT = '1'
+    $env:VIHANGA_ENGINEERING_LOCAL_LOGS = '1'
     $env:AEROHELM_REDUCED_TOOLBAR = '1'
 
-    Write-Output 'Launching verified Vihanga engineering viewer (native cloud data is receive-only).'
-    Write-Output 'Use TOOLS > Open cloud Flight Data (HUD + GPS map), then sign in to your telemetry relay.'
+    Write-Output 'Launching read-only engineering viewer with isolated LocalAppData flight logs.'
+    Write-Output 'The viewer prompts for private relay sign-in and opens the native HUD/map once. If cancelled, use PATHS.'
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe)
 }
