@@ -167,7 +167,7 @@ namespace AeroHelm.GcsCloud
             layout.Controls.Add(header,0,0);
 
             var cloud=new VihangaLinkChoice("Cloud telemetry",
-                "Read-only   |   Raspberry Pi to private cloud to GCS",
+                "Read-only   |   FC -> Pi -> Oracle -> native DATA HUD and GPS map",
                 Drawing.Color.FromArgb(66,155,210));
             cloud.Click+=(s,e)=>Select(AeroHelmLinkPath.CloudReadOnly);
             layout.Controls.Add(cloud,0,1);
@@ -413,7 +413,11 @@ namespace AeroHelm.GcsCloud
             main.MenuFlightData.PerformClick();
             try
             {
+                // MainV2.doConnect maps read-only TCP to 127.0.0.1:5760,
+                // explicitly skips native PARAM_REQUEST_* and reuses the
+                // existing Mission Planner HUD/map MAVLink parser.
                 main.doConnect(MainV2.comPort,"TCP","57600",false,false);
+                main.MenuFlightData.PerformClick();
                 return true;
             }
             catch(Exception ex)
