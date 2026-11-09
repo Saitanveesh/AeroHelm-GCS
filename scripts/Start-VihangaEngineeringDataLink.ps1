@@ -42,6 +42,11 @@ $manifestFile = Join-Path $root 'build-logs\engineering-datalink-build.json'
 if ($Build) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\Test-AeroHelmWindowsPages.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Native source safety contract failed.' }
+    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+        throw 'Install .NET 8 SDK to run the actual native bridge regression harness.'
+    }
+    & dotnet run --project (Join-Path $root 'Tools\AeroHelmMavlinkBridgeTests\AeroHelmMavlinkBridgeTests.csproj') --configuration Release
+    if ($LASTEXITCODE -ne 0) { throw 'Real native MAVLink WSS-to-TCP bridge regression failed.' }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\Build-AeroHelmGCS.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Full Mission Planner build failed.' }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\Install-AeroHelmCloud.ps1')
