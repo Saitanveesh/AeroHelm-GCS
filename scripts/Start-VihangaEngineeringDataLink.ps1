@@ -197,6 +197,25 @@ if ($Launch) {
     $env:VIHANGA_ENGINEERING_LOCAL_LOGS = '1'
     $env:AEROHELM_REDUCED_TOOLBAR = '1'
 
+    # Read-only readiness probe. Do not show the default native HUD as if
+    # it were already receiving physical FC telemetry from the relay.
+    try {
+        $linkHealth = Invoke-RestMethod -Method GET -Uri ($origin + '/api/v1/mavlink/health') -TimeoutSec 8
+        Write-Output ("Pi device online: {0} | FC heartbeat fresh: {1} | FC attitude fresh: {2} | Quick data ready: {3} | observed frames: {4}" -f
+            $linkHealth.device_online, $linkHealth.native_hud_heartbeat_ready,
+            $linkHealth.attitude_stream_active, $linkHealth.native_quick_data_ready,
+            $linkHealth.frames)
+        if ($linkHealth.device_online -ne $true -or
+            $linkHealth.native_hud_heartbeat_ready -ne $true -or
+            $linkHealth.attitude_stream_active -ne $true) {
+            Write-Warning 'Physical FC telemetry is missing/stale upstream of Windows. The viewer can open for diagnostics, but its HUD cannot update until Pi UART sends real HEARTBEAT + ATTITUDE frames.'
+        }
+    }
+    catch {
+        Write-Warning ('Relay MAVLink status GET unavailable: ' + $_.Exception.Message +
+            '. Verify exact Oracle deployment and Tailscale link. Viewer remains receive-only.')
+    }
+
     Write-Output 'Launching read-only engineering viewer with isolated LocalAppData flight logs.'
     Write-Output 'The viewer prompts for private relay sign-in and opens the native HUD/map once. If cancelled, use PATHS.'
     Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe)
