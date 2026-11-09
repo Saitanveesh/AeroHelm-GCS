@@ -12,6 +12,9 @@ on:
     branches: [master, "release/vihanga-integrated-bench-candidate-20261108", "feat/engineering-datalink-native-bind-20261109"]
     paths:
       - "services/vihanga_link/**"
+      - "plugins/**"
+      - "scripts/Test-AeroHelmWindowsPages.ps1"
+      - "scripts/Start-VihangaEngineeringDataLink.ps1"
       - ".github/workflows/vihanga-control-authority.yml"
   workflow_dispatch:
 
