@@ -50,7 +50,7 @@ namespace AeroHelm.GcsCloud
             ushort crc=0xffff;
             for(int i=1;i<=crcIndex;i++)
             {
-                byte value=i==crcIndex ? (byte)(id==0?50:39) : frame[i];
+                byte value=i==crcIndex ? (byte)(id==0?50:id==30?39:id==33?104:0) : frame[i];
                 byte b=(byte)(value^(byte)crc);
                 b=(byte)(b ^ (byte)(b<<4));
                 crc=(ushort)((crc>>8)^(b<<8)^(b<<3)^(b>>4));
@@ -131,6 +131,42 @@ namespace AeroHelm.GcsCloud
                 Assert(!AeroHelmReceiveOnlyBridge.ValidFrame(
                     unsupported,unsupported.Length,out id),
                     "reject unknown MAVLink v2 incompatibility bit");
+                // Native map must never trust generic frame counters or
+                // unverified coordinates as a live GLOBAL_POSITION_INT fix.
+                byte[] position = Frame(0xFD, 33, 28);
+                Buffer.BlockCopy(BitConverter.GetBytes(125000000), 0, position, 10+4, 4);
+                Buffer.BlockCopy(BitConverter.GetBytes(775000000), 0, position, 10+8, 4);
+                Seal(position, 33);
+                Assert(AeroHelmReceiveOnlyBridge.HasValidTelemetryChecksum(
+                       position, position.Length, 33),
+                       "MAVLink2 GLOBAL_POSITION_INT CRC_EXTRA 104 validated");
+                Assert(AeroHelmReceiveOnlyBridge.HasValidGlobalPositionFrame(
+                       position, position.Length),
+                       "real CRC-verified GPS coordinate is fit for native map");
+                byte[] brokenPosition = (byte[])position.Clone();
+                brokenPosition[10+4] ^= 0x20;
+                Assert(!AeroHelmReceiveOnlyBridge.HasValidGlobalPositionFrame(
+                       brokenPosition, brokenPosition.Length),
+                       "tampered geographic position cannot mark native map live");
+                byte[] nullPosition = Frame(0xFE, 33, 28);
+                Seal(nullPosition, 33);
+                Assert(!AeroHelmReceiveOnlyBridge.HasValidGlobalPositionFrame(
+                       nullPosition, nullPosition.Length),
+                       "zero/zero GPS placeholder cannot mark native map live");
+                byte[] outOfBounds = Frame(0xFE, 33, 28);
+                Buffer.BlockCopy(BitConverter.GetBytes(int.MaxValue), 0,
+                                 outOfBounds, 6+4, 4);
+                Buffer.BlockCopy(BitConverter.GetBytes(775000000), 0,
+                                 outOfBounds, 6+8, 4);
+                Seal(outOfBounds, 33);
+                Assert(!AeroHelmReceiveOnlyBridge.HasValidGlobalPositionFrame(
+                       outOfBounds, outOfBounds.Length),
+                       "out-of-range coordinates rejected even with valid CRC");
+                byte[] shortPosition = Frame(0xFD, 33, 12);
+                Seal(shortPosition, 33);
+                Assert(!AeroHelmReceiveOnlyBridge.HasValidGlobalPositionFrame(
+                       shortPosition, shortPosition.Length),
+                       "truncated GLOBAL_POSITION_INT cannot reach the native map");
                 var quality = new AeroHelmLinkQuality();
                 long clock = System.Diagnostics.Stopwatch.Frequency;
                 quality.ObserveAt(0, 100*clock);
