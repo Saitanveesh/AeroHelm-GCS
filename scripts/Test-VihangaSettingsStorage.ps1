@@ -22,3 +22,29 @@ finally {
         Remove-Item -LiteralPath $probe -Force -ErrorAction Stop
     }
 }
+
+# Verify Mission Planner's real exclusive telemetry log-open semantics.
+# No existing .tlog/.rlog is modified or deleted.
+$logDirectory = Join-Path $directory 'logs'
+New-Item -Path $logDirectory -ItemType Directory -Force -ErrorAction Stop | Out-Null
+foreach ($suffix in @('tlog','rlog')) {
+    $target = Join-Path $logDirectory ('.write-probe-' + [Guid]::NewGuid().ToString('N') + '.' + $suffix)
+    try {
+        $handle = [IO.File]::Open($target, [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        try {
+            $bytes = [Text.Encoding]::ASCII.GetBytes('Vihanga exclusive telemetry log probe')
+            $handle.Write($bytes, 0, $bytes.Length)
+            $handle.Flush()
+        }
+        finally {
+            $handle.Dispose()
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $target -PathType Leaf) {
+            Remove-Item -LiteralPath $target -Force -ErrorAction Stop
+        }
+    }
+}
+Write-Host "TELEMETRY LOG STORAGE READY: $logDirectory" -ForegroundColor Green
