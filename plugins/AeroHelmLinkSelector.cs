@@ -417,7 +417,6 @@ namespace AeroHelm.GcsCloud
                 // explicitly skips native PARAM_REQUEST_* and reuses the
                 // existing Mission Planner HUD/map MAVLink parser.
                 main.doConnect(MainV2.comPort,"TCP","57600",false,false);
-                main.MenuFlightData.PerformClick();
                 return true;
             }
             catch(Exception ex)
