@@ -22,3 +22,31 @@ finally {
         Remove-Item -LiteralPath $probe -Force -ErrorAction Stop
     }
 }
+
+# Exercise the precise .tlog/.rlog CreateNew / exclusive-share semantics
+# used by Mission Planner, not just a generic profile .tmp write.
+$logs = Join-Path $directory 'logs'
+New-Item -ItemType Directory -Path $logs -Force -ErrorAction Stop | Out-Null
+$nonce = [Guid]::NewGuid().ToString('N')
+foreach ($ext in @('tlog','rlog')) {
+    $target = Join-Path $logs ('.exclusive-probe-' + $nonce + '.' + $ext)
+    try {
+        $handle = [IO.File]::Open($target,
+            [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite,
+            [IO.FileShare]::None)
+        try {
+            $bytes = [Text.Encoding]::ASCII.GetBytes('Vihanga flight-data log preflight')
+            $handle.Write($bytes, 0, $bytes.Length)
+            $handle.Flush()
+        }
+        finally {
+            $handle.Dispose()
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $target -PathType Leaf) {
+            Remove-Item -LiteralPath $target -Force -ErrorAction Stop
+        }
+    }
+}
+Write-Host "TELEMETRY LOG STORAGE READY: $logs" -ForegroundColor Green
