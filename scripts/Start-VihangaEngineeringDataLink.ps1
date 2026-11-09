@@ -59,6 +59,40 @@ $dll = Join-Path $root 'bin\Release\net461\plugins\AeroHelm.Cloud.Plugin.Validat
 $manifestFile = Join-Path $root 'build-logs\engineering-datalink-build.json'
 
 if ($Build) {
+    # This worktree may have been added without initializing Git submodules.
+    # The Solution includes three Mono projects, pinned by its ExtLibs/mono gitlink.
+    # Initialize ONLY an absent submodule. Never reset a modified or wrong-revision
+    # existing submodule: that requires an explicit operator decision.
+    $monoState = @(& git -C $root submodule status -- ExtLibs/mono)
+    if ($LASTEXITCODE -ne 0 -or $monoState.Count -ne 1) {
+        throw 'Cannot inspect the tracked ExtLibs/mono Git submodule.'
+    }
+    $moduleLine = ([string]$monoState[0]).TrimEnd()
+    if ($moduleLine.StartsWith('-')) {
+        Write-Output 'Initializing pinned ExtLibs/mono shallow submodule for native Windows build.'
+        & git -C $root submodule update --init --depth 1 -- ExtLibs/mono
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Mono submodule checkout failed. Verify GitHub access and rerun git submodule update --init --depth 1 -- ExtLibs/mono.'
+        }
+    } elseif ($moduleLine.StartsWith('+') -or $moduleLine.StartsWith('U')) {
+        throw 'ExtLibs/mono is at a different or conflicted revision. Inspect it manually; the launcher will not overwrite it.'
+    }
+    $monoPinned = (& git -C $root rev-parse 'HEAD:ExtLibs/mono').Trim()
+    $monoCheckedOut = (& git -C (Join-Path $root 'ExtLibs/mono') rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0 -or $monoPinned -cne $monoCheckedOut) {
+        throw 'ExtLibs/mono does not match the precise commit pinned by Vihanga source.'
+    }
+    $monoRequiredProjects = @(
+        'ExtLibs/mono/mcs/class/System.Windows.Forms/System.Windows.Forms-net_4_x.csproj',
+        'ExtLibs/mono/mcs/class/Accessibility/Accessibility-net_4_x.csproj',
+        'ExtLibs/mono/mcs/class/System.Runtime.Serialization.Formatters.Soap/System.Runtime.Serialization.Formatters.Soap-net_4_x.csproj'
+    )
+    foreach ($relative in $monoRequiredProjects) {
+        if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) {
+            throw "Required Mono project still missing after pinned checkout: $relative"
+        }
+    }
+    Write-Output 'Pinned Mono submodule project files: verified.'
     $contractScript = Join-Path $root 'scripts\Test-AeroHelmWindowsPages.ps1'
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $contractScript
     if ($LASTEXITCODE -ne 0) {
