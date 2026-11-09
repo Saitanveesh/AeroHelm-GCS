@@ -129,6 +129,7 @@ if ([regex]::IsMatch($shared, '\bnew\s+CloudWindow\s*\(')) {
 }
 $mainProject = Read-Source 'MissionPlanner.csproj'
 $settingsCore = Read-Source 'ExtLibs/Utilities/Settings.cs'
+$engineeringEntry = Read-Source 'scripts/Start-VihangaEngineeringDataLink.ps1'
 # Vihanga operator preferences must save to writable per-user storage and
 # complete XML serialization before replacing the previous profile.
 Require-Text $settingsCore 'Environment.SpecialFolder.LocalApplicationData' 'Vihanga settings must use per-user application storage.'
@@ -144,7 +145,6 @@ Require-Text $settingsCore 'File.Move(temp, filename);' 'New settings file must 
 if ($settingsCore.Contains('new XmlTextWriter(filename, Encoding.UTF8)')) {
     throw 'Settings writer still truncates the active profile before serialization succeeds.'
 }
-$engineeringEntry = Read-Source 'scripts/Start-VihangaEngineeringDataLink.ps1'
 Require-Text $engineeringEntry 'Install-AeroHelmBranding.ps1' 'Engineering build must activate the Vihanga branded LocalAppData profile.'
 Require-Text $engineeringEntry 'Test-VihangaSettingsStorage.ps1' 'Engineering build and launch must check Vihanga profile writability.'
 Require-Text $engineeringEntry "Join-Path (Split-Path -Parent `$exe) 'logo.txt'" 'Engineering viewer must locate the runtime logo.txt.'
