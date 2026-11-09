@@ -32,13 +32,13 @@ if (Get-Process MissionPlanner -ErrorAction SilentlyContinue) {
     throw 'Close other Mission Planner windows before launching Vihanga.'
 }
 $branch = (& git -C $root branch --show-current).Trim()
-if ($branch -notin @('feat/vihanga-phase3-native-toolbar','restore/vihanga-known-good-20261107-1438')) {
+if ($branch -notin @('feat/vihanga-phase3-native-toolbar','restore/vihanga-known-good-20261107-1438','restore/vihanga-known-good-20261108-1700')) {
     throw "Vihanga launcher requires a reviewed Windows integration or pinned restoration branch (found $branch)."
 }
 # The consolidated branch must NEVER silently launch an old cached
 # MissionPlanner.exe or plugin DLL. Use the local manifest produced after a
 # successful backed-up native build, not just git branch/source labels.
-if ($branch -in @('feat/vihanga-phase3-native-toolbar','restore/vihanga-known-good-20261107-1438')) {
+if ($branch -in @('feat/vihanga-phase3-native-toolbar','restore/vihanga-known-good-20261107-1438','restore/vihanga-known-good-20261108-1700')) {
     $manifestFile = Join-Path $root 'build-logs\aerohelm-consolidated-release.json'
     if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
         throw 'Consolidated runtime not verified. Run scripts\Consolidate-AeroHelmWindows.ps1 -Stage Build -Apply, then -Stage Verify.'
