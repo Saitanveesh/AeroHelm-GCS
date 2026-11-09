@@ -15,7 +15,11 @@ $plugins=Join-Path $runtime 'plugins'
 $plugin=Join-Path $plugins 'AeroHelm.Cloud.Plugin.Validation.dll'
 $logRoot=Join-Path $root 'build-logs'
 $manifestPath=Join-Path $logRoot 'aerohelm-consolidated-release.json'
-$expectedBranch='feat/vihanga-phase3-native-toolbar'
+$allowedBranches=@('feat/vihanga-phase3-native-toolbar','restore/vihanga-known-good-20261107-1438')
+$expectedBranch=(& git -C $root branch --show-current).Trim()
+if($LASTEXITCODE -ne 0 -or $expectedBranch -notin $allowedBranches){
+    throw "Unreviewed Vihanga release branch: $expectedBranch"
+}
 $modules=@('FLIGHT','PLAN','CLOUD','PATHS','SURVEY','VISION','LINK','OPS','INTEL','FLEET','SECURITY','ANALYTICS','PARAMETERS','SETTINGS')
 $toolbar=@('CLOUD','PATHS','SURVEY','VISION','LINK','OPS','INTEL','MORE')
 
